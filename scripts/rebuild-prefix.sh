@@ -49,7 +49,7 @@ cp -a "/mnt/windows/Program Files/Common Files/Autodesk Shared/RealDWG Shared 20
 
 echo "[8/20] Copying RealDWGSettings.xml..."
 mkdir -p "$WINEPREFIX/drive_c/users/$USER/AppData/Roaming/Autodesk/Inventor 2026"
-cp "/mnt/windows/Users/Lachlan/AppData/Roaming/Autodesk/Inventor 2026/RealDWGSettings.xml" \
+cp "/mnt/windows/Users/$(ls /mnt/windows/Users/ | grep -vE '^(Public|Default|All Users)$' | head -1)/AppData/Roaming/Autodesk/Inventor 2026/RealDWGSettings.xml" \
    "$WINEPREFIX/drive_c/users/$USER/AppData/Roaming/Autodesk/Inventor 2026/"
 
 echo "[9/20] Installing WebView2..."

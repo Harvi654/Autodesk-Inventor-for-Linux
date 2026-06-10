@@ -204,11 +204,11 @@ The `adskidmgr://` URI scheme passes the OAuth2 authorization code from Firefox 
 
 ```bash
 # Create the .desktop handler
-cat > ~/.local/share/applications/adskidmgr-handler.desktop << 'EOF'
+cat > ~/.local/share/applications/adskidmgr-handler.desktop << EOF
 [Desktop Entry]
 Type=Application
 Name=Autodesk Identity Manager
-Exec=/home/lachlan/.local/bin/adskidmgr-callback %u
+Exec=$HOME/.local/bin/adskidmgr-callback %u
 MimeType=x-scheme-handler/adskidmgr;
 NoDisplay=true
 EOF
@@ -373,7 +373,7 @@ Wine-mono ships stub WPF DLLs in the GAC (`PresentationCore`, `PresentationFrame
 Proton ships a stub `bcp47langs.dll` that returns NULL from all calls. This crashes all Autodesk apps. Remove the file or disable the DLL override entirely.
 
 **3. Identity Manager uses Boost.Interprocess for IPC.**
-The IDSDK IPC directory (`$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/6C6163686C616E/interprocess/01000000/`) must be wiped before each launch. Stale lock files cause Identity Manager to deadlock indefinitely.
+The IDSDK IPC directory (`$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/<USERNAME_HEX>/interprocess/01000000/`) must be wiped before each launch. Stale lock files cause Identity Manager to deadlock indefinitely. The directory name is the ASCII username encoded as uppercase hex (e.g. `alice` → `616C696365`); the launch script computes this dynamically.
 
 **4. OAuth2 callback: launch a client, never kill wineserver.**
 The `adskidmgr://` handler must spawn a new Identity Manager *client* instance (which passes the auth code and exits). Killing `wineserver` destroys the running Inventor session.
@@ -470,7 +470,7 @@ Known issues with investigation leads. Each entry has enough context for a skill
 
 **Remaining edge case:** If the system is hard-killed while Identity Manager is running, stale `IDSDKQuit-v2-*` files from a different session path may survive and block the next start.
 
-**Fix path:** Wipe all subdirectories under `.../IDSDK/6C6163686C616E/interprocess/` before launch, not just the single session directory.
+**Fix path:** Wipe all subdirectories under `.../IDSDK/<USERNAME_HEX>/interprocess/` before launch, not just the single session directory.
 
 ---
 

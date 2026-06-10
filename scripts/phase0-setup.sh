@@ -13,9 +13,9 @@ echo "[2/3] Installing hivex (for Windows registry extraction)..."
 pacman -S --noconfirm --needed hivex
 
 echo "[3/3] Resetting faillock (clearing failed sudo attempts)..."
-faillock --user lachlan --reset
+faillock --user "$USER" --reset
 
 echo ""
 echo "=== Phase 0 complete! ==="
 echo "Installed: dxvk-mingw-git, hivex"
-echo "Cleared: faillock entries for lachlan"
+echo "Cleared: faillock entries for $USER"

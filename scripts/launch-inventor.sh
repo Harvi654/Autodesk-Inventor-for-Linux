@@ -11,7 +11,8 @@ export WINE_LARGE_ADDRESS_AWARE=1
 
 LOGDIR="$HOME/Projects/Inventor on linux/logs"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-IDSDK_IPC="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/6C6163686C616E/interprocess/01000000"
+IDSDK_USER=$(printf '%s' "$USER" | od -An -tx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
+IDSDK_IPC="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$IDSDK_USER/interprocess/01000000"
 
 # Graceful shutdown: kill WINE prefix when systemd stops this process at shutdown
 cleanup() {

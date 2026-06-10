@@ -2,7 +2,8 @@
 # Handle adskidmgr:// protocol callback from browser
 # DON'T kill anything - just pass the auth code to the running Identity Manager
 export WINEPREFIX="$HOME/.wine-inventor2026"
-IPCDIR="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/6C6163686C616E/interprocess/01000000"
+IDSDK_USER=$(printf '%s' "$USER" | od -An -tx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
+IPCDIR="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$IDSDK_USER/interprocess/01000000"
 
 # Ensure the AdOAuth2Code event file exists for the running server
 for f in "$IPCDIR"/IDSDKQuit-v2-*; do
