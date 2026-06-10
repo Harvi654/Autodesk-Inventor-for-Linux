@@ -1,0 +1,119 @@
+--- /tmp/builtin.c.orig	2026-03-21 12:21:58.126709793 +1100
++++ /tmp/wine-11.4/dlls/wbemprox/builtin.c	2026-03-21 01:39:24.731297869 +1100
+@@ -547,6 +547,30 @@
+     { L"GetLastRestoreStatus", CIM_FLAG_ARRAY|COL_FLAG_METHOD },
+     { L"Restore",              CIM_FLAG_ARRAY|COL_FLAG_METHOD },
+ };
++static const struct column col_timezone[] =
++{
++    { L"Bias",                 CIM_SINT32 },
++    { L"Caption",              CIM_STRING },
++    { L"DaylightBias",         CIM_SINT32 },
++    { L"DaylightDay",          CIM_UINT32 },
++    { L"DaylightDayOfWeek",    CIM_UINT8 },
++    { L"DaylightHour",         CIM_UINT32 },
++    { L"DaylightMinute",       CIM_UINT32 },
++    { L"DaylightMonth",        CIM_UINT32 },
++    { L"DaylightName",         CIM_STRING|COL_FLAG_DYNAMIC },
++    { L"DaylightSecond",       CIM_UINT32 },
++    { L"DaylightYear",         CIM_UINT32 },
++    { L"Description",          CIM_STRING },
++    { L"StandardBias",         CIM_SINT32 },
++    { L"StandardDay",          CIM_UINT32 },
++    { L"StandardDayOfWeek",    CIM_UINT8 },
++    { L"StandardHour",         CIM_UINT32 },
++    { L"StandardMinute",       CIM_UINT32 },
++    { L"StandardMonth",        CIM_UINT32 },
++    { L"StandardName",         CIM_STRING|COL_FLAG_DYNAMIC },
++    { L"StandardSecond",       CIM_UINT32 },
++    { L"StandardYear",         CIM_UINT32 },
++};
+ static const struct column col_videocontroller[] =
+ {
+     { L"AcceleratorCapabilities",     CIM_UINT16|CIM_FLAG_ARRAY },
+@@ -1126,6 +1150,30 @@
+     const WCHAR        *serial_number;
+     const WCHAR        *tag;
+ };
++struct record_timezone
++{
++    INT32        bias;
++    const WCHAR *caption;
++    INT32        daylightbias;
++    UINT32       daylightday;
++    UINT8        daylightdayofweek;
++    UINT32       daylighthour;
++    UINT32       daylightminute;
++    UINT32       daylightmonth;
++    const WCHAR *daylightname;
++    UINT32       daylightsecond;
++    UINT32       daylightyear;
++    const WCHAR *description;
++    INT32        standardbias;
++    UINT32       standardday;
++    UINT8        standarddayofweek;
++    UINT32       standardhour;
++    UINT32       standardminute;
++    UINT32       standardmonth;
++    const WCHAR *standardname;
++    UINT32       standardsecond;
++    UINT32       standardyear;
++};
+ struct record_videocontroller
+ {
+     const struct array *accelerator_caps;
+@@ -4769,6 +4817,46 @@
+     return ret;
+ }
+ 
++static enum fill_status fill_timezone( struct table *table, const struct expr *cond )
++{
++    enum fill_status status = FILL_STATUS_UNFILTERED;
++    TIME_ZONE_INFORMATION tzi;
++    struct record_timezone *rec;
++    DWORD res;
++
++    if (!resize_table( table, 1, sizeof(*rec) )) return FILL_STATUS_FAILED;
++
++    res = GetTimeZoneInformation( &tzi );
++
++    rec = (struct record_timezone *)table->data;
++    rec->bias               = tzi.Bias;
++    rec->caption            = L"";
++    rec->daylightbias       = tzi.DaylightBias;
++    rec->daylightday        = tzi.DaylightDate.wDay;
++    rec->daylightdayofweek  = tzi.DaylightDate.wDayOfWeek;
++    rec->daylighthour       = tzi.DaylightDate.wHour;
++    rec->daylightminute     = tzi.DaylightDate.wMinute;
++    rec->daylightmonth      = tzi.DaylightDate.wMonth;
++    rec->daylightname       = wcsdup( tzi.DaylightName );
++    rec->daylightsecond     = tzi.DaylightDate.wSecond;
++    rec->daylightyear       = tzi.DaylightDate.wYear;
++    rec->description        = L"";
++    rec->standardbias       = tzi.StandardBias;
++    rec->standardday        = tzi.StandardDate.wDay;
++    rec->standarddayofweek  = tzi.StandardDate.wDayOfWeek;
++    rec->standardhour       = tzi.StandardDate.wHour;
++    rec->standardminute     = tzi.StandardDate.wMinute;
++    rec->standardmonth      = tzi.StandardDate.wMonth;
++    rec->standardname       = wcsdup( tzi.StandardName );
++    rec->standardsecond     = tzi.StandardDate.wSecond;
++    rec->standardyear       = tzi.StandardDate.wYear;
++
++    if (match_row( table, 0, cond, &status )) table->num_rows++;
++
++    TRACE("created %u rows\n", table->num_rows);
++    return status;
++}
++
+ static enum fill_status fill_videocontroller( struct table *table, const struct expr *cond )
+ {
+     struct record_videocontroller *rec;
+@@ -4952,6 +5040,7 @@
+     { L"Win32_Service", C(col_service), 0, 0, NULL, fill_service },
+     { L"Win32_SoundDevice", C(col_sounddevice), 0, 0, NULL, fill_sounddevice },
+     { L"Win32_SystemEnclosure", C(col_systemenclosure), 0, 0, NULL, fill_systemenclosure },
++    { L"Win32_TimeZone", C(col_timezone), 0, 0, NULL, fill_timezone },
+     { L"Win32_VideoController", C(col_videocontroller), 0, 0, NULL, fill_videocontroller },
+     { L"Win32_Volume", C(col_volume), 0, 0, NULL, fill_volume },
+     { L"Win32_WinSAT", C(col_winsat), D(data_winsat) },
