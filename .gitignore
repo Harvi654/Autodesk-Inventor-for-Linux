@@ -2,3 +2,4 @@ logs/
 *.tar.gz
 *.tar.zst
 backtrace*.txt
+registry/autodesk-full.reg

@@ -86,6 +86,9 @@ This is believed to be the first instance of Inventor running on Linux.
 # Install system prerequisites (CachyOS/Arch)
 sudo bash scripts/phase0-setup.sh
 
+# Export Autodesk registry keys from your Windows installation
+bash scripts/export-registry.sh
+
 # Build the Wine prefix (~15 min; requires Windows partition mounted at /mnt/windows)
 bash scripts/rebuild-prefix.sh
 
