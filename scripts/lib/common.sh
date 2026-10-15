@@ -281,6 +281,21 @@ sandbox_fs() {
     echo disable > "$WINEPREFIX/.update-timestamp"
 }
 
+# Font paths Wine stored while a font folder had no drive letter look like
+# "\\??\\unix\\usr\\share\\fonts\\..." (in system.reg). Deleting Wine's
+# "External Fonts" list makes it re-register every font with the current
+# drive letters on the next start. Run only with no wineserver running.
+fix_font_registry() {
+    [ -f "$WINEPREFIX/system.reg" ] || return 0
+    local n
+    n=$(grep -cF '??\\unix\\' "$WINEPREFIX/system.reg" || true)
+    [ "${n:-0}" -gt 0 ] || return 0
+    info "    $n font path(s) without a drive letter in the registry - re-registering fonts"
+    wine_stop
+    wine_q reg delete 'HKCU\Software\Wine\Fonts\External Fonts' /f || true
+    wine_stop
+}
+
 # Registry part: hides the "/" (unixfs) entry in file dialogs. Needs Wine.
 sandbox_reg() {
     [ "$INV_SANDBOX" = 1 ] || return 0

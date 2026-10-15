@@ -44,6 +44,11 @@ rm -rf -- "$IDSDK_IPC_ROOT"
 mkdir -p "$IDSDK_IPC_ROOT/01000000"
 
 info "[1/4] starting wineserver"
+# Drives first: Wine records font paths in the registry when it starts, and a
+# font folder without a drive letter gets a "\\??\\unix\\..." path that WPF
+# cannot handle. So the font drives must exist before ANY wine process runs.
+sandbox_fs
+fix_font_registry
 # Update the prefix only when the Wine version changed (auto-update is disabled
 # by the isolation setup), then re-apply isolation in case the update re-created
 # Z: or the $HOME links.
@@ -56,7 +61,7 @@ if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ];
     echo "$WINE_NOW" > "$WINEPREFIX/.inventor-wine-version"
 fi
 wineboot >>"$LOGDIR/inventor-$TS.log" 2>&1
-sandbox_fs   # after wineboot, so nothing it does can bring Z: or the $HOME links back
+sandbox_fs   # again after wineboot, so nothing it does can bring Z: or the $HOME links back
 
 info "[2/4] starting Identity Manager"
 # Only look at log lines written after this point, not a previous session's "ready".
