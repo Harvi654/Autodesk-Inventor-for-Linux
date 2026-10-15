@@ -206,8 +206,8 @@ This patch is ready for upstream submission. Steps:
 1. Fork Wine at https://gitlab.winehq.org/wine/wine
 2. The patch is at `patches/wbemprox-timezone.patch` — apply it to a clean Wine tree
 3. Add a conformance test in `dlls/wbemprox/tests/` querying `Win32_TimeZone`
-4. Format with `git format-patch --subject-prefix="PATCH"` following Wine's commit style
-5. Send to wine-devel@winehq.org
+4. Wine takes contributions as merge requests on https://gitlab.winehq.org/wine/wine
+   (one logical change per commit, commit message in Wine's style - see below)
 
 Wine commit message format:
 ```

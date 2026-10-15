@@ -1,97 +1,72 @@
 #!/bin/bash
-# Launch Inventor 2026 under WINE with all required services
-# Services must start in order: Identity Manager -> Licensing Service -> Inventor
+# Launch Inventor under Wine with its required services, in order:
+#   Identity Manager (SSO) -> Licensing Service -> Inventor.exe
+# Works from a terminal or from the app-launcher entry (logs go to logs/).
 
-export WINEPREFIX="$HOME/.wine-inventor2026"
-export WINEARCH=win64
-export WINEDEBUG=err+all,fixme-all
-export DXVK_LOG_LEVEL=info
+set -uo pipefail
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+
+export WINEDEBUG="${WINEDEBUG:-err+all,fixme-all}"
+export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-info}"
+export DXVK_LOG_PATH="$LOGDIR"
 export DXVK_ASYNC=1
 export WINE_LARGE_ADDRESS_AWARE=1
+# msquic= : stops .NET 8 crashing in its QUIC networking stack (README, Key Discovery #6)
+export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}msquic="
 
-LOGDIR="$HOME/Projects/Inventor on linux/logs"
-TIMESTAMP=$(date +%Y%m%d-%H%M%S)
-IDSDK_USER=$(printf '%s' "$USER" | od -An -tx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
-IDSDK_IPC="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$IDSDK_USER/interprocess/01000000"
+TS=$(date +%Y%m%d-%H%M%S)
+IDSERVICES_LOG="$P_USER/AppData/Local/Autodesk/Identity Services/Log/IdServices.log"
+detect_prefix_versions
+LIC_EXE="C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\$LIC_VER\\AdskLicensingService\\AdskLicensingService.exe"
+IDMGR_EXE='C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe'
 
-# Graceful shutdown: kill WINE prefix when systemd stops this process at shutdown
-cleanup() {
-    echo "=== Shutting down Inventor WINE prefix ==="
-    wineserver -k 2>/dev/null
-}
-trap cleanup SIGTERM SIGINT EXIT
+notify() { command -v notify-send >/dev/null && notify-send -a "Inventor" "Autodesk Inventor" "$*" || true; }
 
-echo "=== Starting Inventor 2026 on WINE ==="
-echo "Timestamp: $TIMESTAMP"
-echo "Log directory: $LOGDIR"
+[ -f "$P_INV/Bin/Inventor.exe" ] || { err "prefix not built: $P_INV"; notify "Prefix not built - run rebuild-prefix.sh"; exit 1; }
+[ -n "$LIC_VER" ] || { err "AdskLicensing not found in prefix"; exit 1; }
 
-# Step 0: Clean stale IPC state
-echo "[0/4] Cleaning IDSDK IPC state..."
-rm -rf "$IDSDK_IPC"
-mkdir -p "$IDSDK_IPC"
-echo "    IPC directory cleaned"
+if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
+    warn "Inventor is already running"
+    notify "Inventor is already running"
+    exit 0
+fi
 
-# Step 1: Initialize wineserver
-echo "[1/4] Initializing wineserver..."
-wineboot -u 2>/dev/null
-sleep 2
+cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; }
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
-# Step 2: Start Identity Manager (SSO service)
-echo "[2/4] Starting AdskIdentityManager..."
-wine "C:\\Program Files\\Autodesk\\AdskIdentityManager\\Current\\AdskIdentityManager.exe" \
-    2>&1 | tee "$LOGDIR/idmgr-$TIMESTAMP.log" &
-IDMGR_PID=$!
+echo "=== Inventor $INV_YEAR | prefix $WINEPREFIX | logs $LOGDIR/*-$TS.log ==="
 
-# Wait for Identity Manager to be ready (check its own log file)
-IDSERVICES_LOG="$WINEPREFIX/drive_c/users/$USER/AppData/Local/Autodesk/Identity Services/Log/IdServices.log"
-echo "    Waiting for Identity Manager to initialize..."
-IDMGR_READY=0
-for i in $(seq 1 30); do
+# 0. Stale Boost.Interprocess state deadlocks Identity Manager. Wipe ALL
+#    session dirs, not only 01000000 (README, Open Problem #4).
+info "[0/4] cleaning IDSDK IPC state"
+rm -rf -- "$IDSDK_IPC_ROOT"
+mkdir -p "$IDSDK_IPC_ROOT/01000000"
+
+info "[1/4] starting wineserver"
+wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
+
+info "[2/4] starting Identity Manager"
+# Only look at log lines written after this point, not a previous session's "ready".
+LOG_OFFSET=$(stat -c %s "$IDSERVICES_LOG" 2>/dev/null || echo 0)
+wine "$IDMGR_EXE" >"$LOGDIR/idmgr-$TS.log" 2>&1 &
+READY=0
+for i in $(seq 1 45); do
     sleep 1
-    if grep -q "SSO Server is ready" "$IDSERVICES_LOG" 2>/dev/null; then
-        IDMGR_READY=1
-        echo "    Identity Manager: READY (SSO Server started in ${i}s)"
-        break
+    if tail -c +"$((LOG_OFFSET + 1))" "$IDSERVICES_LOG" 2>/dev/null | grep -q "SSO Server is ready"; then
+        READY=1; ok "Identity Manager ready after ${i}s"; break
     fi
-    # Check if process died
-    if ! pgrep -f "AdskIdentityManager.exe" > /dev/null; then
-        echo "    Identity Manager: PROCESS DIED"
-        echo "    Last lines from Wine log:"
-        tail -5 "$LOGDIR/idmgr-$TIMESTAMP.log" 2>/dev/null | sed 's/^/      /'
-        break
-    fi
-    # Show progress
-    if [ $((i % 5)) -eq 0 ]; then
-        echo "    ... waiting ${i}s"
+    if ! pgrep -if '(^|[\\/])adskidentitymanager\.exe( |$)' >/dev/null; then
+        err "Identity Manager died:"; tail -5 "$LOGDIR/idmgr-$TS.log" | sed 's/^/      /'; break
     fi
 done
+[ "$READY" -eq 1 ] || warn "Identity Manager not ready after 45s - continuing (cached token may still work)"
 
-if [ $IDMGR_READY -eq 0 ]; then
-    echo "    Identity Manager: DID NOT REACH READY STATE (30s timeout)"
-    echo "    Last 10 lines of IdServices log:"
-    tail -10 "$IDSERVICES_LOG" 2>/dev/null | sed 's/^/      /'
-    echo ""
-    echo "    Continuing anyway (licensing may use cached tokens)..."
-fi
-
-# Check IPC state
-echo "    IPC files after IdMgr start:"
-ls -la "$IDSDK_IPC/" 2>/dev/null | sed 's/^/      /'
-
-# Step 3: Start Licensing Service
-echo "[3/4] Starting AdskLicensingService..."
-wine "C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\15.4.2.4\\AdskLicensingService\\AdskLicensingService.exe" \
-    2>&1 | tee "$LOGDIR/licensing-$TIMESTAMP.log" &
+info "[3/4] starting Licensing Service $LIC_VER"
+wine "$LIC_EXE" >"$LOGDIR/licensing-$TS.log" 2>&1 &
 sleep 5
+pgrep -if '(^|[\\/])adsklicensingservice\.exe( |$)' >/dev/null && ok "Licensing Service running" || err "Licensing Service failed to start"
 
-# Verify it's running
-if pgrep -f "AdskLicensingService.exe" > /dev/null; then
-    echo "    Licensing Service: RUNNING"
-else
-    echo "    Licensing Service: FAILED TO START"
-fi
-
-# Step 4: Launch Inventor
-echo "[4/4] Launching Inventor 2026..."
-cd "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor 2026/Bin"
-wine Inventor.exe "$@" 2>&1 | tee "$LOGDIR/inventor-$TIMESTAMP.log"
+info "[4/4] launching Inventor"
+cd "$P_INV/Bin" || exit 1
+wine Inventor.exe "$@" 2>&1 | tee -a "$LOGDIR/inventor-$TS.log"

@@ -80,6 +80,8 @@ This is believed to be the first instance of Inventor running on Linux.
 
 ---
 
+> **Arch / Hyprland / other compositors:** see [docs/arch-hyprland.md](docs/arch-hyprland.md). Run `scripts/check-system.sh` first; it verifies the Windows source and shows which component versions will be used.
+
 ## Quick Start
 
 ```bash
@@ -182,7 +184,8 @@ cd /tmp
 curl -LO https://dl.winehq.org/wine/source/11.x/wine-11.4.tar.xz
 tar xf wine-11.4.tar.xz && cd wine-11.4
 
-patch -p1 < ~/Projects/Inventor\ on\ linux/patches/wbemprox-timezone.patch
+patch -p1 < /path/to/inventor-on-linux/patches/wbemprox-timezone.patch
+# or simply: bash scripts/build-wbemprox.sh --install
 
 ./configure --enable-win64 --without-x --without-freetype
 make -C dlls/wbemprox

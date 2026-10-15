@@ -1,17 +1,19 @@
 #!/bin/bash
-# Handle adskidmgr:// protocol callback from browser
-# DON'T kill anything - just pass the auth code to the running Identity Manager
-export WINEPREFIX="$HOME/.wine-inventor2026"
-IDSDK_USER=$(printf '%s' "$USER" | od -An -tx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
-IPCDIR="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$IDSDK_USER/interprocess/01000000"
+# xdg-mime handler for adskidmgr:// - the browser calls this after Autodesk SSO login.
+# Passes the OAuth2 code to the RUNNING Identity Manager by starting a short-lived
+# client instance. Never kill wineserver here: that would end the Inventor session.
 
-# Ensure the AdOAuth2Code event file exists for the running server
-for f in "$IPCDIR"/IDSDKQuit-v2-*; do
-    PID=$(basename "$f" | grep -oP 'v2-\K[0-9]+')
-    if [ -n "$PID" ] && [ ! -f "$IPCDIR/AdOAuth2Code-$PID" ]; then
-        printf '\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' > "$IPCDIR/AdOAuth2Code-$PID"
-    fi
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+echo "$(date '+%F %T') callback: ${1%%\?*}?..." >>"$LOGDIR/adskidmgr-callback.log"
+
+# Make sure the AdOAuth2Code event file exists for every running server instance
+shopt -s nullglob
+for f in "$IDSDK_IPC_ROOT"/*/IDSDKQuit-v2-*; do
+    dir="$(dirname "$f")"
+    pid="${f##*IDSDKQuit-v2-}"
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [ -f "$dir/AdOAuth2Code-$pid" ] || head -c 24 /dev/zero | { printf '\x01'; tail -c 23; } > "$dir/AdOAuth2Code-$pid"
 done
 
-# Launch client instance to pass the auth code to the running server
-wine "C:\\Program Files\\Autodesk\\AdskIdentityManager\\Current\\AdskIdentityManager.exe" "$1" &>/dev/null &
+wine 'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$1" \
+    >>"$LOGDIR/adskidmgr-callback.log" 2>&1 &

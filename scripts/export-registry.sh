@@ -1,84 +1,51 @@
 #!/bin/bash
-# Export Autodesk registry keys from a Windows installation.
-# Generates registry/autodesk-full.reg from the Windows hive files directly,
-# so no Autodesk data needs to be committed to the repo.
+# Export Autodesk registry keys from a Windows installation into
+# registry/autodesk-full.reg (gitignored), read directly from the hive files.
+# rebuild-prefix.sh imports it and reads component versions from it.
 #
-# Requires: hivex (sudo pacman -S hivex)
+# Requires: hivex (pacman -S hivex)
 # Usage:    bash scripts/export-registry.sh [/mnt/windows]
 
 set -euo pipefail
+[ -n "${1:-}" ] && export WIN_ROOT="$1"
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
-WINDOWS="${1:-/mnt/windows}"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT="$SCRIPT_DIR/../registry/autodesk-full.reg"
+command -v hivexregedit >/dev/null || die "hivexregedit not found: sudo pacman -S hivex"
+[ -d "$WIN_ROOT/Windows" ] || die "Windows partition not found at $WIN_ROOT"
 
-# Verify hivex is available
-if ! command -v hivexregedit &>/dev/null; then
-    echo "ERROR: hivexregedit not found. Install hivex:"
-    echo "  sudo pacman -S hivex"
-    exit 1
-fi
+WU="$(detect_win_user)"
+[ -n "$WU" ] || die "no Windows user profile found (set WIN_USER=...)"
+SOFTWARE_HIVE="$WIN_ROOT/Windows/System32/config/SOFTWARE"
+NTUSER_HIVE="$WIN_ROOT/Users/$WU/NTUSER.DAT"
+for h in "$SOFTWARE_HIVE" "$NTUSER_HIVE"; do [ -f "$h" ] || die "hive not found: $h"; done
 
-# Verify Windows partition is mounted
-if [ ! -d "$WINDOWS/Windows" ]; then
-    echo "ERROR: Windows partition not found at $WINDOWS"
-    echo "  Mount it first, or pass the path as an argument:"
-    echo "  bash scripts/export-registry.sh /path/to/windows"
-    exit 1
-fi
+echo "=== Autodesk registry export ==="
+info "Windows: $WIN_ROOT   user: $WU"
+info "Output:  $REG_FILE"
+mkdir -p "$(dirname "$REG_FILE")"
 
-# Detect first non-system Windows user profile
-WIN_USER=$(ls "$WINDOWS/Users/" 2>/dev/null \
-    | grep -vxE 'Public|Default|Default User|All Users' \
-    | head -1)
-
-if [ -z "$WIN_USER" ]; then
-    echo "ERROR: No user profile found under $WINDOWS/Users/"
-    exit 1
-fi
-
-SOFTWARE_HIVE="$WINDOWS/Windows/System32/config/SOFTWARE"
-NTUSER_HIVE="$WINDOWS/Users/$WIN_USER/NTUSER.DAT"
-
-echo "=== Autodesk Registry Exporter ==="
-echo "  Windows:  $WINDOWS"
-echo "  User:     $WIN_USER"
-echo "  Output:   $OUTPUT"
-echo ""
-
-for hive in "$SOFTWARE_HIVE" "$NTUSER_HIVE"; do
-    if [ ! -f "$hive" ]; then
-        echo "ERROR: Registry hive not found: $hive"
-        exit 1
+# export <hive> <hive-path> <prefix-for-.reg>
+export_key() {
+    local out
+    if out="$(hivexregedit --export "$1" "$2" 2>/dev/null)"; then
+        # drop per-export headers; rewrite the hive-relative key names to full paths
+        local repl="${3//\\/\\\\}\\\\"   # escape backslashes for sed
+        grep -v '^Windows Registry Editor' <<<"$out" | sed "s|^\[\\\\|[$repl|"
+        ok "$2" >&2
+    else
+        warn "$2 not found in $(basename "$1")" >&2
     fi
-done
-
-mkdir -p "$(dirname "$OUTPUT")"
+}
 
 {
     printf 'Windows Registry Editor Version 5.00\r\n\r\n'
+    export_key "$SOFTWARE_HIVE" '\Autodesk'             'HKEY_LOCAL_MACHINE\SOFTWARE'
+    export_key "$SOFTWARE_HIVE" '\WOW6432Node\Autodesk' 'HKEY_LOCAL_MACHINE\SOFTWARE'
+    export_key "$NTUSER_HIVE"   '\Software\Autodesk'    'HKEY_CURRENT_USER'
+} > "$REG_FILE"
 
-    echo "[1/2] Exporting HKLM\\SOFTWARE\\Autodesk..." >&2
-    if hivexregedit --export "$SOFTWARE_HIVE" '\Autodesk' 2>/dev/null \
-            | sed 's|^\[\\|[HKEY_LOCAL_MACHINE\\SOFTWARE\\|'; then
-        echo "      OK" >&2
-    else
-        echo "      WARNING: HKLM Autodesk keys not found or export failed" >&2
-    fi
-
-    echo "[2/2] Exporting HKCU\\Software\\Autodesk..." >&2
-    if hivexregedit --export "$NTUSER_HIVE" '\Software\Autodesk' 2>/dev/null \
-            | sed 's|^\[\\Software\\|[HKEY_CURRENT_USER\\Software\\|'; then
-        echo "      OK" >&2
-    else
-        echo "      WARNING: HKCU Autodesk keys not found or export failed" >&2
-    fi
-
-} > "$OUTPUT"
-
-LINE_COUNT=$(wc -l < "$OUTPUT")
-echo ""
-echo "=== Export complete ==="
-echo "  $LINE_COUNT lines written to $OUTPUT"
-echo ""
-echo "Next: run scripts/rebuild-prefix.sh"
+info "$(wc -l < "$REG_FILE") lines written"
+CV="$(reg_value "Inventor\\RegistryVersion$INV_REGMAJOR.0" ClientVersion)"
+info "Inventor ClientVersion: ${CV:-<not found>}"
+info "IdentityManager versions: $(reg_idmgr_versions | tr '\n' ' ')"
+info "Next: bash scripts/rebuild-prefix.sh"

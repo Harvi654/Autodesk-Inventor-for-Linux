@@ -1,201 +1,302 @@
 #!/bin/bash
-set -e
-export WINEPREFIX="$HOME/.wine-inventor2026"
-export WINEARCH=win64
+# Build the Inventor Wine prefix from a mounted Windows installation.
+#
+# Usage: bash scripts/rebuild-prefix.sh [--yes] [--content-center] [--data-dir PATH]
+#   --yes              don't ask before deleting an existing prefix
+#   --content-center   also copy Content Center libraries (~7 GB)
+#   --data-dir PATH    map PATH as drive D: inside Wine
+#
+# Component versions (Shared Components, AdskLicensing, Identity Manager) are
+# detected from the Windows installation instead of being hard-coded.
+# Run scripts/check-system.sh first - it shows what will be used.
 
-echo "=== Rebuilding Inventor 2026 Wine Prefix ==="
+set -Eeuo pipefail
+source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+trap 'err "failed at line $LINENO: $BASH_COMMAND (see $LOGDIR/setup-wine.log)"' ERR
 
-# Kill existing
-wineserver -k 2>/dev/null; sleep 3
-rm -rf "$WINEPREFIX"
-echo "[1/20] Creating fresh prefix..."
-wineboot --init 2>/dev/null
-sleep 3
-
-echo "[2/20] Setting Windows 10..."
-winetricks -q win10 2>/dev/null
-
-echo "[3/20] Installing DXVK..."
-setup_dxvk install 2>/dev/null
-wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3d11 /t REG_SZ /d native /f 2>/dev/null
-wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v dxgi /t REG_SZ /d native /f 2>/dev/null
-wine reg add "HKCU\\Software\\Wine\\DllOverrides" /v d3dcompiler_47 /t REG_SZ /d native /f 2>/dev/null
-
-echo "[4/20] Copying Inventor files..."
-DEST="$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor 2026"
-mkdir -p "$DEST"
-rsync -a --exclude='Anark' "/mnt/windows/Program Files/Autodesk/Inventor 2026/Bin/" "$DEST/Bin/"
-cp -a "/mnt/windows/Program Files/Autodesk/Inventor 2026/Configuration" "$DEST/"
-cp -a "/mnt/windows/Program Files/Autodesk/Inventor 2026/Preferences" "$DEST/"
-
-echo "[5/20] Copying ASC SharedComponents into Bin..."
-for dll in "/mnt/windows/Program Files/Common Files/Autodesk Shared/Components/2026/1.8.0/"*.dll; do
-    base=$(basename "$dll")
-    [ ! -f "$DEST/Bin/$base" ] && cp "$dll" "$DEST/Bin/"
-done
-mkdir -p "$WINEPREFIX/drive_c/Program Files/Common Files/Autodesk Shared"
-cp -a "/mnt/windows/Program Files/Common Files/Autodesk Shared/Components" \
-   "$WINEPREFIX/drive_c/Program Files/Common Files/Autodesk Shared/"
-
-echo "[6/20] Copying MSVC/MFC runtimes..."
-for dll in msvcp140.dll msvcp140_1.dll msvcp140_2.dll vcruntime140.dll vcruntime140_1.dll concrt140.dll vcomp140.dll mfc140u.dll mfc140.dll; do
-    cp "/mnt/windows/Windows/System32/$dll" "$WINEPREFIX/drive_c/windows/system32/" 2>/dev/null
+ASSUME_YES=0; WITH_CC=0; DATA_DIR="${INV_DATA_DIR:-}"
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --yes|-y) ASSUME_YES=1 ;;
+        --content-center) WITH_CC=1 ;;
+        --data-dir) DATA_DIR="$2"; shift ;;
+        *) die "unknown option: $1" ;;
+    esac
+    shift
 done
 
-echo "[7/20] Copying RealDWG..."
-mkdir -p "$WINEPREFIX/drive_c/Program Files/Common Files/Autodesk Shared/RealDWG Shared 2026"
-cp -a "/mnt/windows/Program Files/Common Files/Autodesk Shared/RealDWG Shared 2026/"* \
-   "$WINEPREFIX/drive_c/Program Files/Common Files/Autodesk Shared/RealDWG Shared 2026/"
+WEBVIEW2_URL="https://go.microsoft.com/fwlink/?linkid=2124701"   # Evergreen Standalone x64
+WEBVIEW2_INSTALLER="${WEBVIEW2_INSTALLER:-$DOWNLOAD_DIR/MicrosoftEdgeWebView2RuntimeInstallerX64.exe}"
+: > "$LOGDIR/setup-wine.log"
+_STEPS=22
 
-echo "[8/20] Copying RealDWGSettings.xml..."
-mkdir -p "$WINEPREFIX/drive_c/users/$USER/AppData/Roaming/Autodesk/Inventor 2026"
-cp "/mnt/windows/Users/$(ls /mnt/windows/Users/ | grep -vE '^(Public|Default|All Users)$' | head -1)/AppData/Roaming/Autodesk/Inventor 2026/RealDWGSettings.xml" \
-   "$WINEPREFIX/drive_c/users/$USER/AppData/Roaming/Autodesk/Inventor 2026/"
+# rsync wrapper: archive mode, no ownership/permissions from NTFS
+copy() { rsync -rlt --info=progress2 --no-inc-recursive "$@"; }
 
-echo "[9/20] Installing WebView2..."
-wine /tmp/MicrosoftEdgeWebView2RuntimeInstallerX64.exe /silent /install 2>/dev/null &
-sleep 30
+# -----------------------------------------------------------------------------
+step "Preflight checks..."
+for c in wine wineserver winetricks setup_dxvk rsync; do
+    command -v "$c" >/dev/null || die "$c not found - run scripts/phase0-setup.sh"
+done
+[ -f "$WIN_INV/Bin/Inventor.exe" ] || die "Inventor not found at $WIN_INV (is $WIN_ROOT mounted?)"
+detect_source_versions
+WU="$(detect_win_user)"
+[ -n "$ASC_VER" ] || die "Shared Components version not found in $WIN_ASC_BASE"
+[ -n "$LIC_VER" ] || die "AdskLicensing version not found in $WIN_LIC_BASE"
+[ -n "$WU" ]      || die "no Windows user profile found in $WIN_ROOT/Users (set WIN_USER=...)"
+INV_CLIENT_VER="$(reg_value "Inventor\\RegistryVersion$INV_REGMAJOR.0" ClientVersion)"
+mapfile -t IDMGR_VERS < <(reg_idmgr_versions)
+info "Wine $(wine_version) | prefix $WINEPREFIX"
+info "Windows user: $WU | Components $ASC_VER | Licensing $LIC_VER"
+info "Inventor ClientVersion: ${INV_CLIENT_VER:-<from registry export: none, using 30.0.17500.0000>}"
+info "IdentityManager versions in registry: ${IDMGR_VERS[*]:-<none, using 1.16.5.1 1.14.0.3>}"
+[ -f "$REG_FILE" ] || warn "no registry export - run scripts/export-registry.sh first for a complete setup"
+[ ${#IDMGR_VERS[@]} -gt 0 ] || IDMGR_VERS=(1.16.5.1 1.14.0.3)
+INV_CLIENT_VER="${INV_CLIENT_VER:-30.0.17500.0000}"
+FREE_GB=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
+[ "$FREE_GB" -ge 25 ] || die "only ${FREE_GB} GB free in \$HOME, need ~25 GB"
 
-echo "[10/20] Copying Identity Manager..."
-mkdir -p "$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager"
-cp -a "/mnt/windows/Program Files/Autodesk/AdskIdentityManager/Current" \
-   "$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager/"
-cp -a "$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager/Current" \
-   "$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager/1.16.5.1"
-cp -a "$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager/Current" \
-   "$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager/1.14.0.3"
+# -----------------------------------------------------------------------------
+step "Creating fresh prefix..."
+if [ -d "$WINEPREFIX" ]; then
+    if [ "$ASSUME_YES" -ne 1 ]; then
+        read -r -p "    Delete existing prefix $WINEPREFIX? [y/N] " a
+        [[ "$a" =~ ^[Yy]$ ]] || die "aborted"
+    fi
+    wine_stop
+    rm -rf -- "$WINEPREFIX"
+fi
+wine_q wineboot --init
+wine_stop
+ok "prefix created"
 
-echo "[11/20] Copying Licensing Service..."
-mkdir -p "$WINEPREFIX/drive_c/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
-cp -a "/mnt/windows/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing/15.4.2.4" \
-   "$WINEPREFIX/drive_c/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing/"
+step "Windows 10 mode, X11 (XWayland) graphics driver..."
+winetricks -q win10 >>"$LOGDIR/setup-wine.log" 2>&1
+# Pin the X11 driver: under Hyprland it runs via XWayland. Wine's native
+# Wayland driver is not tested with Inventor yet.
+wine_reg_add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d x11
 
-echo "[12/20] Copying license cache..."
-mkdir -p "$WINEPREFIX/drive_c/ProgramData/Autodesk/Adlm/ASR"
-mkdir -p "$WINEPREFIX/drive_c/ProgramData/Autodesk/AdskLicensingService"
-cp "/mnt/windows/ProgramData/Autodesk/Adlm/ASR/INVPROSA202600F_"*.asr \
-   "$WINEPREFIX/drive_c/ProgramData/Autodesk/Adlm/ASR/" 2>/dev/null
-cp "/mnt/windows/ProgramData/Autodesk/Adlm/ProductInformation.pit" \
-   "$WINEPREFIX/drive_c/ProgramData/Autodesk/Adlm/" 2>/dev/null
-cp "/mnt/windows/ProgramData/Autodesk/AdskLicensingService/AdskLicensingService.data" \
-   "$WINEPREFIX/drive_c/ProgramData/Autodesk/AdskLicensingService/" 2>/dev/null
-cp "/mnt/windows/ProgramData/Autodesk/AdskLicensingService/AdskLicensingService.sds" \
-   "$WINEPREFIX/drive_c/ProgramData/Autodesk/AdskLicensingService/" 2>/dev/null
+step "Installing DXVK..."
+setup_dxvk install >>"$LOGDIR/setup-wine.log" 2>&1
+for dll in d3d11 dxgi d3dcompiler_47; do
+    wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$dll" /t REG_SZ /d native
+done
 
-echo "[13/20] Setting Inventor registry keys..."
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion30.0" /v ProductVersionMajor /t REG_DWORD /d 30 /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion30.0" /v BinPath /t REG_SZ /d "C:\\Program Files\\Autodesk\\Inventor 2026\\Bin\\" /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion30.0" /v AppPath /t REG_SZ /d "C:\\Program Files\\Autodesk\\Inventor 2026\\" /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion30.0" /v ClientVersion /t REG_SZ /d "30.0.17500.0000" /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion30.0" /v ProductEdition /t REG_SZ /d "INVPROSA" /f 2>/dev/null
+step "Starting WebView2 install in the background..."
+if [ ! -f "$WEBVIEW2_INSTALLER" ]; then
+    mkdir -p "$(dirname "$WEBVIEW2_INSTALLER")"
+    info "downloading WebView2 runtime installer..."
+    curl -fL --retry 3 -o "$WEBVIEW2_INSTALLER" "$WEBVIEW2_URL" \
+        || { rm -f "$WEBVIEW2_INSTALLER"; die "download failed - put the installer at $WEBVIEW2_INSTALLER"; }
+fi
+wine "$WEBVIEW2_INSTALLER" /silent /install >>"$LOGDIR/webview2.log" 2>&1 &
+WEBVIEW2_PID=$!
 
-echo "[14/20] Setting SharedComponents registry..."
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\2026" /v InstallPath /t REG_EXPAND_SZ /d "C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\2026" /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\2026" /v Version /t REG_EXPAND_SZ /d "1.8.0" /f 2>/dev/null
+# -----------------------------------------------------------------------------
+step "Copying Inventor $INV_YEAR (Bin, Configuration, Preferences)..."
+mkdir -p "$P_INV"
+copy --exclude='Anark' "$WIN_INV/Bin/" "$P_INV/Bin/"
+for d in Configuration Preferences; do
+    [ -d "$WIN_INV/$d" ] && copy "$WIN_INV/$d" "$P_INV/"
+done
 
-echo "[15/20] Setting licensing registry..."
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\AdskLicensing" /v Version /t REG_EXPAND_SZ /d "15.4.2.4" /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\AdskIdentityManager\\1.16.5.1" /v Location /t REG_EXPAND_SZ /d "C:\\Program Files\\Autodesk\\AdskIdentityManager\\1.16.5.1" /f 2>/dev/null
-wine reg add "HKLM\\SOFTWARE\\Autodesk\\AdskIdentityManager\\1.14.0.3" /v Location /t REG_EXPAND_SZ /d "C:\\Program Files\\Autodesk\\AdskIdentityManager\\1.14.0.3" /f 2>/dev/null
+step "Copying Shared Components $ASC_VER..."
+mkdir -p "$(dirname "$P_ASC_BASE")"
+copy "$WIN_ASC_BASE" "$(dirname "$P_ASC_BASE")/"
+for dll in "$WIN_ASC_BASE/$ASC_VER/"*.dll; do
+    [ -f "$P_INV/Bin/$(basename "$dll")" ] || cp "$dll" "$P_INV/Bin/"
+done
 
-echo "[16/20] Setting protocol handler registry..."
-wine reg add "HKCR\\adskidmgr" /ve /t REG_SZ /d "URL:Autodesk Identity Manager Protocol" /f 2>/dev/null
-wine reg add "HKCR\\adskidmgr" /v "URL Protocol" /t REG_SZ /d "" /f 2>/dev/null
-wine reg add "HKCR\\adskidmgr\\shell\\open\\command" /ve /t REG_SZ /d "\"C:\\Program Files\\Autodesk\\AdskIdentityManager\\Current\\AdskIdentityManager.exe\" \"%1\"" /f 2>/dev/null
+step "Copying MSVC/MFC runtimes..."
+for dll in msvcp140.dll msvcp140_1.dll msvcp140_2.dll vcruntime140.dll vcruntime140_1.dll \
+           concrt140.dll vcomp140.dll mfc140u.dll mfc140.dll; do
+    if [ -f "$WIN_ROOT/Windows/System32/$dll" ]; then cp "$WIN_ROOT/Windows/System32/$dll" "$P_C/windows/system32/"
+    else warn "$dll not found on Windows"; fi
+done
 
-echo "[17/20] Setting PATH..."
-wine reg add "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" /v Path /t REG_EXPAND_SZ /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\2026\\1.8.0;C:\\Program Files\\Autodesk\\Inventor 2026\\Bin" /f 2>/dev/null
+step "Copying RealDWG and user settings..."
+RDWG="Program Files/Common Files/Autodesk Shared/RealDWG Shared $INV_YEAR"
+if [ -d "$WIN_ROOT/$RDWG" ]; then mkdir -p "$P_C/$RDWG"; copy "$WIN_ROOT/$RDWG/" "$P_C/$RDWG/"; else warn "RealDWG not found"; fi
+WIN_APPDATA_INV="$WIN_ROOT/Users/$WU/AppData/Roaming/Autodesk/Inventor $INV_YEAR"
+mkdir -p "$P_USER/AppData/Roaming/Autodesk/Inventor $INV_YEAR"
+[ -f "$WIN_APPDATA_INV/RealDWGSettings.xml" ] \
+    && cp "$WIN_APPDATA_INV/RealDWGSettings.xml" "$P_USER/AppData/Roaming/Autodesk/Inventor $INV_YEAR/" \
+    || warn "RealDWGSettings.xml not found for user $WU"
+# Shared material libraries (location varies between releases; copy what exists)
+for m in "Program Files (x86)/Common Files/Autodesk Shared/Materials" \
+         "Program Files/Common Files/Autodesk Shared/Materials"; do
+    [ -d "$WIN_ROOT/$m" ] && { mkdir -p "$P_C/$m"; copy "$WIN_ROOT/$m/" "$P_C/$m/"; info "copied $m"; }
+done
 
-echo "[18/20] CRITICAL: Copying IDSDK plugin to licensing agent..."
-AGENTDIR="$WINEPREFIX/drive_c/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing/15.4.2.4/AdskLicensingAgent"
-IDMGRDIR="$WINEPREFIX/drive_c/Program Files/Autodesk/AdskIdentityManager/Current"
+step "Copying Identity Manager..."
+mkdir -p "$P_IDMGR_BASE"
+copy "$WIN_IDMGR_BASE/" "$P_IDMGR_BASE/"
+for v in "${IDMGR_VERS[@]}"; do
+    [ -d "$P_IDMGR_BASE/$v" ] || cp -a "$P_IDMGR_BASE/Current" "$P_IDMGR_BASE/$v"
+done
+
+step "Copying Licensing $LIC_VER and license cache..."
+mkdir -p "$P_LIC_BASE"
+copy "$WIN_LIC_BASE/$LIC_VER" "$P_LIC_BASE/"
+[ -d "$WIN_LIC_BASE/Current" ] && copy "$WIN_LIC_BASE/Current" "$P_LIC_BASE/"
+mkdir -p "$P_C/ProgramData/Autodesk/Adlm/ASR" "$P_C/ProgramData/Autodesk/AdskLicensingService"
+shopt -s nullglob
+for f in "$WIN_PROGDATA/Adlm/ASR/"*.asr; do cp "$f" "$P_C/ProgramData/Autodesk/Adlm/ASR/"; done
+shopt -u nullglob
+for f in Adlm/ProductInformation.pit AdskLicensingService/AdskLicensingService.data \
+         AdskLicensingService/AdskLicensingService.sds; do
+    [ -f "$WIN_PROGDATA/$f" ] && cp "$WIN_PROGDATA/$f" "$P_C/ProgramData/Autodesk/$f" || info "(no $f)"
+done
+
+step "Copying .NET runtime..."
+if [ -d "$WIN_ROOT/Program Files/dotnet" ]; then
+    copy "$WIN_ROOT/Program Files/dotnet" "$P_C/Program Files/"
+    ok ".NET $(ls "$P_C/Program Files/dotnet/shared/Microsoft.NETCore.App" | tr '\n' ' ')"
+else
+    warn ".NET not found on Windows - Inventor add-ins will not load"
+fi
+
+# -----------------------------------------------------------------------------
+step "Importing registry..."
+if [ -f "$REG_FILE" ]; then
+    # Full export from Windows first; the explicit keys below then fix paths/versions.
+    wine_q regedit /S "$(winepath -w "$REG_FILE")"
+    ok "imported $(basename "$REG_FILE")"
+fi
+K="HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion$INV_REGMAJOR.0"
+wine_reg_add "$K" /v ProductVersionMajor /t REG_DWORD /d "$INV_REGMAJOR"
+wine_reg_add "$K" /v BinPath /t REG_SZ /d "C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin\\"
+wine_reg_add "$K" /v AppPath /t REG_SZ /d "C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\"
+wine_reg_add "$K" /v ClientVersion /t REG_SZ /d "$INV_CLIENT_VER"
+wine_reg_add "$K" /v ProductEdition /t REG_SZ /d "INVPROSA"
+wine_reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v InstallPath /t REG_EXPAND_SZ \
+    /d "C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR"
+wine_reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v Version /t REG_EXPAND_SZ /d "$ASC_VER"
+wine_reg_add 'HKLM\SOFTWARE\Autodesk\AdskLicensing' /v Version /t REG_EXPAND_SZ /d "$LIC_VER"
+for v in "${IDMGR_VERS[@]}"; do
+    wine_reg_add "HKLM\\SOFTWARE\\Autodesk\\AdskIdentityManager\\$v" /v Location /t REG_EXPAND_SZ \
+        /d "C:\\Program Files\\Autodesk\\AdskIdentityManager\\$v"
+done
+IDMGR_EXE='C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe'
+wine_reg_add 'HKCR\adskidmgr' /ve /t REG_SZ /d "URL:Autodesk Identity Manager Protocol"
+wine_reg_add 'HKCR\adskidmgr' /v "URL Protocol" /t REG_SZ /d ""
+wine_reg_add 'HKCR\adskidmgr\shell\open\command' /ve /t REG_SZ /d "\"$IDMGR_EXE\" \"%1\""
+wine_reg_add 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' /v Path /t REG_EXPAND_SZ \
+    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\$ASC_VER;C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin"
+ok "registry keys set"
+
+step "Installing IdSDK SSO plugin into the Licensing Agent..."
+AGENTDIR="$P_LIC_BASE/$LIC_VER/AdskLicensingAgent"
+AGENT_WIN="C:\\\\Program Files (x86)\\\\Common Files\\\\Autodesk Shared\\\\AdskLicensing\\\\$LIC_VER\\\\AdskLicensingAgent\\\\SSOPlugin\\\\Current"
 mkdir -p "$AGENTDIR/SSOPlugin/Current"
-cp "$IDMGRDIR/SSOPlugin/Current/"*.dll "$AGENTDIR/SSOPlugin/Current/"
-cat > "$AGENTDIR/IDSDKVersionCompatibility.config" << 'VEOF'
+cp "$P_IDMGR_BASE/Current/SSOPlugin/Current/"*.dll "$AGENTDIR/SSOPlugin/Current/"
+cat > "$AGENTDIR/IDSDKVersionCompatibility.config" <<EOF
 {
     "comment": "Version compatibility file",
     "ssoClientPlugin": [
         {
             "version": "0",
             "module": "IdSDKPlugin.dll",
-            "modulePath": "C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\15.4.2.4\\AdskLicensingAgent\\SSOPlugin\\Current",
-            "modulePathWoW64": "C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\15.4.2.4\\AdskLicensingAgent\\SSOPlugin\\Current",
-            "compatibleSsoServicesVersion": {
-                "minVersion": "0.0"
-            }
+            "modulePath": "$AGENT_WIN",
+            "modulePathWoW64": "$AGENT_WIN",
+            "compatibleSsoServicesVersion": { "minVersion": "0.0" }
         }
     ]
 }
-VEOF
+EOF
 
-echo "[19/28] Disabling non-essential addins..."
-ADDINS="$DEST/Bin/Addins"
+# -----------------------------------------------------------------------------
+step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."
+ADDINS="$P_INV/Bin/Addins"
 mkdir -p "$ADDINS/disabled/libs"
 for f in Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin \
          Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin \
          Autodesk.Publisher.Inventor.addin autodesk.dynamicsimulation.inventor.addin \
          autodesk.frameanalysis.inventor.addin autodesk.simulationstressanalysis.inventor.addin \
          autodesk.translatorfusion.inventor.addin autodesk.ilogic.inventor.addin; do
-    mv "$ADDINS/$f" "$ADDINS/disabled/" 2>/dev/null
+    if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$ADDINS/disabled/"; else info "(not present: $f)"; fi
 done
 
-echo "[20/28] Moving InteractiveTutorial.dll (breaks wine-mono)..."
-mv "$DEST/Bin/InteractiveTutorial.dll" "$ADDINS/disabled/libs/" 2>/dev/null
-mv "$DEST/Bin/en-US/InteractiveTutorial.resources.dll" "$ADDINS/disabled/libs/" 2>/dev/null
-
-echo "[21/28] Disabling CER crash reporter..."
-mv "$DEST/Bin/CER/senddmp.exe" "$DEST/Bin/CER/senddmp.exe.disabled" 2>/dev/null
-
-echo "[22/28] Removing bcp47langs.dll stubs (if present)..."
-for f in "$WINEPREFIX/drive_c/windows/system32/bcp47langs.dll" \
-         "$WINEPREFIX/drive_c/windows/syswow64/bcp47langs.dll"; do
-    [ -f "$f" ] && mv "$f" "${f}.disabled"
+step "Removing known crash sources (InteractiveTutorial, CER reporter, bcp47langs)..."
+for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
+    [ -f "$f" ] && mv "$f" "$ADDINS/disabled/libs/"
 done
-wine reg delete 'HKCU\Software\Wine\DllOverrides' /v bcp47langs /f 2>/dev/null
+[ -f "$P_INV/Bin/CER/senddmp.exe" ] && mv "$P_INV/Bin/CER/senddmp.exe" "$P_INV/Bin/CER/senddmp.exe.disabled"
+for f in "$P_C/windows/system32/bcp47langs.dll" "$P_C/windows/syswow64/bcp47langs.dll"; do
+    [ -f "$f" ] && mv "$f" "$f.disabled"
+done
+wine_q reg delete 'HKCU\Software\Wine\DllOverrides' /v bcp47langs /f || true
 
-echo "[23/28] Copying .NET 8 runtime..."
-if [ -d "/mnt/windows/Program Files/dotnet" ]; then
-    cp -a "/mnt/windows/Program Files/dotnet" "$WINEPREFIX/drive_c/Program Files/"
-    echo "    Copied .NET 8 runtime ($(du -sh "$WINEPREFIX/drive_c/Program Files/dotnet" | cut -f1))"
+step "Removing wine-mono WPF stub assemblies (README: Key Discovery #1)..."
+# Delete only the DLL files, not the GAC directories.
+WPF_RE='/(PresentationCore|PresentationFramework|WindowsBase|System\.Xaml)\.dll$'
+mapfile -t WPF_LOCAL < <(find "$P_C/windows" -path '*gac*' -name '*.dll' 2>/dev/null | grep -E "$WPF_RE" || true)
+if [ ${#WPF_LOCAL[@]} -gt 0 ]; then
+    rm -f -- "${WPF_LOCAL[@]}"
+    ok "removed ${#WPF_LOCAL[@]} stub DLL(s) from the prefix"
+else
+    mapfile -t WPF_SYS < <(find /usr/share/wine/mono -path '*gac*' -name '*.dll' 2>/dev/null | grep -E "$WPF_RE" || true)
+    if [ ${#WPF_SYS[@]} -gt 0 ]; then
+        warn "wine-mono is the shared system install (/usr/share/wine/mono); its WPF stubs are still there."
+        warn "This is the case the original setup did not cover - test Inventor first; if it exits"
+        warn "right after loading .NET add-ins, see docs/arch-hyprland.md (wine-mono section)."
+    else
+        info "no WPF stub assemblies found"
+    fi
 fi
 
-echo "[24/28] Copying Design Data..."
-cp -r "/mnt/windows/Users/Public/Documents/Autodesk/Inventor 2026/Design Data" \
-   "$WINEPREFIX/drive_c/users/Public/Documents/Autodesk/Inventor 2026/" 2>/dev/null
+step "Copying Design Data, Templates, Textures..."
+mkdir -p "$P_PUBDOCS"
+for d in "Design Data" Templates Textures; do
+    if [ -d "$WIN_PUBDOCS/$d" ]; then copy "$WIN_PUBDOCS/$d" "$P_PUBDOCS/"; else warn "$d not found"; fi
+done
 
-echo "[25/28] Copying Templates..."
-mkdir -p "$WINEPREFIX/drive_c/users/Public/Documents/Autodesk/Inventor 2026/Templates/en-US"
-cp -r "/mnt/windows/Users/Public/Documents/Autodesk/Inventor 2026/Templates/en-US/"* \
-   "$WINEPREFIX/drive_c/users/Public/Documents/Autodesk/Inventor 2026/Templates/en-US/" 2>/dev/null
-
-echo "[26/28] Copying Textures..."
-cp -r "/mnt/windows/Users/Public/Documents/Autodesk/Inventor 2026/Textures" \
-   "$WINEPREFIX/drive_c/users/Public/Documents/Autodesk/Inventor 2026/" 2>/dev/null
-
-echo "[27/28] Patching OGSFactory.dll (null pointer fix for 3D viewport)..."
-OGSDLL="$DEST/Bin/OGSFactory.dll"
-if [ -f "$OGSDLL" ]; then
-    cp "$OGSDLL" "${OGSDLL}.original"
-    # Patch 1: Null check at crash site 1 (file offset 0x56E5B)
-    printf '\xe9\x00\x9c\x0b\x00\x90\x90\x90' | dd of="$OGSDLL" bs=1 seek=$((0x56E5B)) conv=notrunc 2>/dev/null
-    # Code cave 1 (file offset 0x110A60)
-    printf '\x48\x8b\x4c\x24\x70\x48\x85\xc9\x0f\x84\x11\x64\xf4\xff\x48\x8b\x11\xe9\xed\x63\xf4\xff' | dd of="$OGSDLL" bs=1 seek=$((0x110A60)) conv=notrunc 2>/dev/null
-    # Patch 2: Null check at crash site 2 (file offset 0x56EA8)
-    printf '\xe9\xc9\x9b\x0b\x00\x90\x90\x90' | dd of="$OGSDLL" bs=1 seek=$((0x56EA8)) conv=notrunc 2>/dev/null
-    # Code cave 2 (file offset 0x110A76)
-    printf '\x48\x8b\x4c\x24\x70\x48\x85\xc9\x0f\x84\x48\x64\xf4\xff\x48\x8b\x11\xe9\x24\x64\xf4\xff' | dd of="$OGSDLL" bs=1 seek=$((0x110A76)) conv=notrunc 2>/dev/null
-    echo "    OGSFactory.dll patched (backup at .original)"
+step "Content Center..."
+WIN_CC="$WIN_PROGDATA/Inventor $INV_YEAR/Content Center"
+if [ "$WITH_CC" -eq 1 ] && [ -d "$WIN_CC" ]; then
+    mkdir -p "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR"
+    copy "$WIN_CC" "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/"
+else
+    info "skipped (use --content-center to copy ~7 GB)"
 fi
 
-echo "[28/28] Waiting for WebView2 installer to finish..."
-wait
-sleep 5
+# -----------------------------------------------------------------------------
+step "Patching OGSFactory.dll (null-pointer guard for the 3D viewport)..."
+OGSDLL="$P_INV/Bin/OGSFactory.dll"
+hexat() { od -v -An -tx1 -j "$1" -N "$2" "$OGSDLL" | tr -d ' \n'; }
+# Bytes the patch replaces: mov rcx,[rsp+0x70] / mov rdx,[rcx]
+EXPECT_SITE="488b4c2470488b11"
+if [ "$(hexat $((0x56E5B)) 8)" = "$EXPECT_SITE" ] && [ "$(hexat $((0x56EA8)) 8)" = "$EXPECT_SITE" ] \
+   && [[ "$(hexat $((0x110A60)) 44)" =~ ^(00|cc)+$ ]]; then
+    cp "$OGSDLL" "$OGSDLL.original"
+    patch_bytes() { printf "$2" | dd of="$OGSDLL" bs=1 seek="$1" conv=notrunc status=none; }
+    patch_bytes $((0x56E5B))  '\xe9\x00\x9c\x0b\x00\x90\x90\x90'
+    patch_bytes $((0x110A60)) '\x48\x8b\x4c\x24\x70\x48\x85\xc9\x0f\x84\x11\x64\xf4\xff\x48\x8b\x11\xe9\xed\x63\xf4\xff'
+    patch_bytes $((0x56EA8))  '\xe9\xc9\x9b\x0b\x00\x90\x90\x90'
+    patch_bytes $((0x110A76)) '\x48\x8b\x4c\x24\x70\x48\x85\xc9\x0f\x84\x48\x64\xf4\xff\x48\x8b\x11\xe9\x24\x64\xf4\xff'
+    ok "patched (original saved as OGSFactory.dll.original)"
+elif [ "$(hexat $((0x56E5B)) 1)" = "e9" ]; then
+    info "already patched"
+else
+    warn "OGSFactory.dll does not match the known build - NOT patched (offsets would corrupt it)."
+    warn "sha256: $(sha256sum "$OGSDLL" | cut -d' ' -f1)  - please report this in an issue."
+fi
 
-echo ""
-echo "=== Prefix rebuild complete! ==="
-echo ""
-echo "Post-rebuild steps:"
-echo "  1. Set up OAuth2 handler: see README.md section 8"
-echo "  2. First launch will require Autodesk SSO login via browser"
-echo ""
-echo "Run: bash ~/Projects/Inventor\ on\ linux/scripts/launch-inventor.sh"
+step "Drive mappings..."
+if [ -n "$DATA_DIR" ]; then
+    [ -d "$DATA_DIR" ] || die "data dir $DATA_DIR does not exist"
+    ln -sfn "$DATA_DIR" "$WINEPREFIX/dosdevices/d:"
+    ok "D: -> $DATA_DIR"
+else
+    info "no data drive (use --data-dir PATH to map D:)"
+fi
+
+step "Waiting for the WebView2 installer..."
+for _ in $(seq 1 180); do kill -0 "$WEBVIEW2_PID" 2>/dev/null || break; sleep 1; done
+if kill -0 "$WEBVIEW2_PID" 2>/dev/null; then warn "WebView2 installer still running after 3 min - leaving it"; else ok "done"; fi
+wine_stop
+
+echo
+ok "Prefix ready: $WINEPREFIX ($(du -sh "$WINEPREFIX" | cut -f1))"
+info "Next: bash scripts/install-desktop-integration.sh   (OAuth2 handler + app launcher entry)"
+info "Then: bash scripts/launch-inventor.sh"
