@@ -11,6 +11,7 @@ export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-info}"
 export DXVK_ASYNC=1
 export WINE_LARGE_ADDRESS_AWARE=1
 [ -n "$INV_GPU" ] && export DXVK_FILTER_DEVICE_NAME="$INV_GPU"
+[ -n "$INV_WEBVIEW2_ARGS" ] && export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="$INV_WEBVIEW2_ARGS"
 # msquic= : stops .NET 8 crashing in its QUIC networking stack (README, Key Discovery #6)
 export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}msquic="
 
@@ -86,4 +87,9 @@ pgrep -if '(^|[\\/])adsklicensingservice\.exe( |$)' >/dev/null && ok "Licensing 
 
 info "[4/4] launching Inventor"
 cd "$P_INV/Bin" || exit 1
-wine Inventor.exe "$@" 2>&1 | tee -a "$LOGDIR/inventor-$TS.log"
+if [ -n "$INV_VDESKTOP" ]; then
+    info "    inside Wine virtual desktop $INV_VDESKTOP"
+    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "$@" 2>&1 | tee -a "$LOGDIR/inventor-$TS.log"
+else
+    wine Inventor.exe "$@" 2>&1 | tee -a "$LOGDIR/inventor-$TS.log"
+fi

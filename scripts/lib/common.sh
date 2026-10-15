@@ -68,6 +68,12 @@ DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
+# Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
+# Empty = normal windows managed by Hyprland.
+INV_VDESKTOP="${INV_VDESKTOP:-}"
+# Extra Chromium switches for WebView2 (Inventor's home page, login, InfoCenter),
+# e.g. "--no-sandbox". Passed as WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS.
+INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:-}"
 
 export WINEPREFIX="$INV_PREFIX"
 export WINEARCH=win64
