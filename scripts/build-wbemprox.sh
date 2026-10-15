@@ -86,7 +86,7 @@ if [ "$DO_INSTALL" -eq 1 ]; then
     [ -f "$BACKUP" ] || sudo cp "$SYS_DLL" "$BACKUP"
     sudo cp "$BUILT" "$SYS_DLL"
     ok "installed to $SYS_DLL (original: $BACKUP)"
-    info "Prefixes pick it up on the next wineboot (launch-inventor.sh runs wineboot -u)."
+    info "Wine loads builtin DLLs from that directory, so prefixes use it on their next start."
 else
     info "not installed (rerun with --install)"
 fi

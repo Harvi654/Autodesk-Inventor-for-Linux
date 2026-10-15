@@ -37,6 +37,20 @@ LOGDIR="${INV_LOGDIR:-$PROJECT_DIR/logs}"
 REG_FILE="${REG_FILE:-$PROJECT_DIR/registry/autodesk-full.reg}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
 
+# Isolation: 1 = prefix sees only C: (its own drive_c) and D: (INV_DATA_DIR).
+# No Z: -> /, no Desktop/Documents/... symlinks into $HOME. 0 = Wine defaults.
+INV_SANDBOX="${INV_SANDBOX:-1}"
+# Your files for Inventor (projects, exports). Mapped as D:. Empty = no D:.
+INV_DATA_DIR="${INV_DATA_DIR-$HOME/Inventor}"
+
+# DXVK: pinned release from the official GitHub project, verified by SHA-256.
+# Same version and hash as winetricks' "dxvk2071" verb and the original setup.
+# INV_DXVK=system uses setup_dxvk from an installed package instead.
+INV_DXVK="${INV_DXVK:-pinned}"
+DXVK_VER="${DXVK_VER:-2.7.1}"
+DXVK_SHA256="${DXVK_SHA256:-d85ce7c79f57ecd765aaa1b9e7007cb875e6fde9f6d331df799bce73d513ce87}"
+DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
+
 export WINEPREFIX="$INV_PREFIX"
 export WINEARCH=win64
 
@@ -169,6 +183,94 @@ wine_pe_dir() {
         /usr/local/lib/wine/x86_64-windows; do
         [ -n "$d" ] && [ -f "$d/wbemprox.dll" ] && { readlink -f "$d"; return; }
     done
+}
+
+# --- DXVK --------------------------------------------------------------------
+
+# Download (once, cached in DOWNLOAD_DIR), verify, and copy DXVK into the prefix.
+install_dxvk() {
+    if [ "$INV_DXVK" = system ]; then
+        command -v setup_dxvk >/dev/null || die "INV_DXVK=system but setup_dxvk is not installed"
+        setup_dxvk install >>"$LOGDIR/setup-wine.log" 2>&1
+    else
+        local tgz="$DOWNLOAD_DIR/dxvk-$DXVK_VER.tar.gz" tmp d
+        local url="https://github.com/doitsujin/dxvk/releases/download/v$DXVK_VER/dxvk-$DXVK_VER.tar.gz"
+        mkdir -p "$DOWNLOAD_DIR"
+        if [ ! -f "$tgz" ]; then
+            info "downloading $url"
+            curl -fL --retry 3 -o "$tgz.part" "$url" || die "DXVK download failed"
+            mv "$tgz.part" "$tgz"
+        fi
+        if ! echo "$DXVK_SHA256  $tgz" | sha256sum -c --quiet - >/dev/null 2>&1; then
+            rm -f "$tgz"
+            die "DXVK $DXVK_VER checksum mismatch - file deleted. (Changed DXVK_VER? Set DXVK_SHA256 too.)"
+        fi
+        ok "DXVK $DXVK_VER sha256 verified"
+        tmp="$(mktemp -d)"
+        tar -xzf "$tgz" -C "$tmp"
+        for d in "${DXVK_DLLS[@]}"; do
+            cp "$tmp/dxvk-$DXVK_VER/x64/$d.dll" "$P_C/windows/system32/"
+            if [ -d "$P_C/windows/syswow64" ]; then cp "$tmp/dxvk-$DXVK_VER/x32/$d.dll" "$P_C/windows/syswow64/"; fi
+        done
+        rm -rf "$tmp"
+    fi
+    # native = load DXVK's DLLs instead of Wine's wined3d; d3dcompiler_47 as in the original setup
+    for d in "${DXVK_DLLS[@]}" d3dcompiler_47; do
+        wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d native
+    done
+}
+
+# --- isolation ---------------------------------------------------------------
+# Limits what the Windows programs SEE: drive letters and the user's shell
+# folders. This is not a security boundary - Wine programs run as your user and
+# can still reach Unix paths directly (e.g. \\?\unix\...). It stops file
+# dialogs, drive scans and default save locations from touching the rest of
+# the system. For a real boundary see docs/arch-hyprland.md (bubblewrap).
+
+# Filesystem part: safe to run on every launch (no Wine needed).
+sandbox_fs() {
+    [ "$INV_SANDBOX" = 1 ] || return 0
+    local dd="$WINEPREFIX/dosdevices" l n
+    [ -d "$dd" ] || return 0
+    for l in "$dd"/*; do
+        n="$(basename "$l")"
+        case "$n" in
+            c:) ;;                                   # the prefix's own drive_c
+            [a-z]:|[a-z]::) rm -f -- "$l" ;;          # z: -> /, raw devices, auto-mounted media
+        esac
+    done
+    if [ -n "$INV_DATA_DIR" ]; then
+        mkdir -p "$INV_DATA_DIR"
+        ln -sfn "$INV_DATA_DIR" "$dd/d:"
+    fi
+    # Desktop, Documents, Downloads, ... are symlinks into $HOME by default:
+    # replace every directory symlink that leaves the prefix with a real directory.
+    local prefix_real; prefix_real="$(readlink -f "$WINEPREFIX")"
+    while IFS= read -r -d '' l; do
+        case "$(readlink -f "$l")" in
+            "$prefix_real"/*) ;;
+            *) if [ -d "$l" ]; then rm -f -- "$l"; mkdir -p -- "$l"; fi ;;
+        esac
+    done < <(find "$P_C/users" -maxdepth 4 -type l -print0 2>/dev/null)
+    # Don't let wineboot re-create the links/drives automatically after a Wine
+    # update; launch-inventor.sh runs the update itself and re-applies this.
+    echo disable > "$WINEPREFIX/.update-timestamp"
+}
+
+# Registry part: hides the "/" (unixfs) entry in file dialogs. Needs Wine.
+sandbox_reg() {
+    [ "$INV_SANDBOX" = 1 ] || return 0
+    wine_q reg delete 'HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\Namespace\{9D20AAE8-0625-44B0-9CA7-71889C2254D9}' /f || true
+}
+
+# Copy a Linux file into C:\windows\temp and print its Windows path, so Wine
+# can open it without a Z: drive.
+to_wine_temp() {
+    local dst
+    dst="$P_C/windows/temp/$(basename "$1")"
+    mkdir -p "$P_C/windows/temp"
+    cp -f "$1" "$dst"
+    printf 'C:\\windows\\temp\\%s\n' "$(basename "$1")"
 }
 
 mkdir -p "$LOGDIR"

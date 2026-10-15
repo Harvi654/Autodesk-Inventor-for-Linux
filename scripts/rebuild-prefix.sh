@@ -1,10 +1,11 @@
 #!/bin/bash
 # Build the Inventor Wine prefix from a mounted Windows installation.
 #
-# Usage: bash scripts/rebuild-prefix.sh [--yes] [--content-center] [--data-dir PATH]
+# Usage: bash scripts/rebuild-prefix.sh [--yes] [--content-center] [--data-dir PATH] [--no-sandbox]
 #   --yes              don't ask before deleting an existing prefix
 #   --content-center   also copy Content Center libraries (~7 GB)
-#   --data-dir PATH    map PATH as drive D: inside Wine
+#   --data-dir PATH    your Inventor files, mapped as D: (default: ~/Inventor)
+#   --no-sandbox       keep Wine's defaults (Z: = /, Documents etc. linked to $HOME)
 #
 # Component versions (Shared Components, AdskLicensing, Identity Manager) are
 # detected from the Windows installation instead of being hard-coded.
@@ -14,12 +15,13 @@ set -Eeuo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 trap 'err "failed at line $LINENO: $BASH_COMMAND (see $LOGDIR/setup-wine.log)"' ERR
 
-ASSUME_YES=0; WITH_CC=0; DATA_DIR="${INV_DATA_DIR:-}"
+ASSUME_YES=0; WITH_CC=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --yes|-y) ASSUME_YES=1 ;;
         --content-center) WITH_CC=1 ;;
-        --data-dir) DATA_DIR="$2"; shift ;;
+        --data-dir) INV_DATA_DIR="$2"; shift ;;
+        --no-sandbox) INV_SANDBOX=0 ;;
         *) die "unknown option: $1" ;;
     esac
     shift
@@ -35,7 +37,7 @@ copy() { rsync -rlt --info=progress2 --no-inc-recursive "$@"; }
 
 # -----------------------------------------------------------------------------
 step "Preflight checks..."
-for c in wine wineserver winetricks setup_dxvk rsync; do
+for c in wine wineserver winetricks rsync curl sha256sum; do
     command -v "$c" >/dev/null || die "$c not found - run scripts/phase0-setup.sh"
 done
 [ -f "$WIN_INV/Bin/Inventor.exe" ] || die "Inventor not found at $WIN_INV (is $WIN_ROOT mounted?)"
@@ -76,11 +78,8 @@ winetricks -q win10 >>"$LOGDIR/setup-wine.log" 2>&1
 # Wayland driver is not tested with Inventor yet.
 wine_reg_add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d x11
 
-step "Installing DXVK..."
-setup_dxvk install >>"$LOGDIR/setup-wine.log" 2>&1
-for dll in d3d11 dxgi d3dcompiler_47; do
-    wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$dll" /t REG_SZ /d native
-done
+step "Installing DXVK ($([ "$INV_DXVK" = system ] && echo "system setup_dxvk" || echo "$DXVK_VER, pinned"))..."
+install_dxvk
 
 step "Starting WebView2 install in the background..."
 if [ ! -f "$WEBVIEW2_INSTALLER" ]; then
@@ -89,7 +88,7 @@ if [ ! -f "$WEBVIEW2_INSTALLER" ]; then
     curl -fL --retry 3 -o "$WEBVIEW2_INSTALLER" "$WEBVIEW2_URL" \
         || { rm -f "$WEBVIEW2_INSTALLER"; die "download failed - put the installer at $WEBVIEW2_INSTALLER"; }
 fi
-wine "$WEBVIEW2_INSTALLER" /silent /install >>"$LOGDIR/webview2.log" 2>&1 &
+wine "$(to_wine_temp "$WEBVIEW2_INSTALLER")" /silent /install >>"$LOGDIR/webview2.log" 2>&1 &
 WEBVIEW2_PID=$!
 
 # -----------------------------------------------------------------------------
@@ -160,7 +159,8 @@ fi
 step "Importing registry..."
 if [ -f "$REG_FILE" ]; then
     # Full export from Windows first; the explicit keys below then fix paths/versions.
-    wine_q regedit /S "$(winepath -w "$REG_FILE")"
+    wine_q regedit /S "$(to_wine_temp "$REG_FILE")"
+    rm -f "$P_C/windows/temp/$(basename "$REG_FILE")"
     ok "imported $(basename "$REG_FILE")"
 fi
 K="HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion$INV_REGMAJOR.0"
@@ -268,19 +268,24 @@ else
     info "skipped (INV_OGS_PATCH=0) - experiment: does Inventor work unpatched with the wbemprox patch?"
 fi
 
-step "Drive mappings..."
-if [ -n "$DATA_DIR" ]; then
-    [ -d "$DATA_DIR" ] || die "data dir $DATA_DIR does not exist"
-    ln -sfn "$DATA_DIR" "$WINEPREFIX/dosdevices/d:"
-    ok "D: -> $DATA_DIR"
-else
-    info "no data drive (use --data-dir PATH to map D:)"
-fi
-
 step "Waiting for the WebView2 installer..."
 for _ in $(seq 1 180); do kill -0 "$WEBVIEW2_PID" 2>/dev/null || break; sleep 1; done
 if kill -0 "$WEBVIEW2_PID" 2>/dev/null; then warn "WebView2 installer still running after 3 min - leaving it"; else ok "done"; fi
+rm -f "$P_C/windows/temp/$(basename "$WEBVIEW2_INSTALLER")"
+
+step "Isolation (drives, home folders)..."
+if [ "$INV_SANDBOX" = 1 ]; then
+    sandbox_reg
+    wine_stop
+    sandbox_fs
+    ok "drives: $(cd "$WINEPREFIX/dosdevices" && ls -d ?: 2>/dev/null | while read -r d; do printf '%s->%s ' "$d" "$(readlink "$d")"; done)"
+    info "your Inventor files go to: ${INV_DATA_DIR:-<none, set INV_DATA_DIR>} (D:)"
+else
+    [ -n "$INV_DATA_DIR" ] && { mkdir -p "$INV_DATA_DIR"; ln -sfn "$INV_DATA_DIR" "$WINEPREFIX/dosdevices/d:"; }
+    info "sandbox disabled - Wine defaults (Z: = /)"
+fi
 wine_stop
+wine --version > "$WINEPREFIX/.inventor-wine-version"
 
 echo
 ok "Prefix ready: $WINEPREFIX ($(du -sh "$WINEPREFIX" | cut -f1))"

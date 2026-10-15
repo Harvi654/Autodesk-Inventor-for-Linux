@@ -8,7 +8,6 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 export WINEDEBUG="${WINEDEBUG:-err+all,fixme-all}"
 export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-info}"
-export DXVK_LOG_PATH="$LOGDIR"
 export DXVK_ASYNC=1
 export WINE_LARGE_ADDRESS_AWARE=1
 # msquic= : stops .NET 8 crashing in its QUIC networking stack (README, Key Discovery #6)
@@ -44,7 +43,19 @@ rm -rf -- "$IDSDK_IPC_ROOT"
 mkdir -p "$IDSDK_IPC_ROOT/01000000"
 
 info "[1/4] starting wineserver"
-wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
+# Update the prefix only when the Wine version changed (auto-update is disabled
+# by the isolation setup), then re-apply isolation in case the update re-created
+# Z: or the $HOME links.
+WINE_NOW="$(wine --version 2>/dev/null)"
+if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ]; then
+    info "    Wine changed ($WINE_NOW) - updating prefix"
+    wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
+    wineserver -w
+    sandbox_reg
+    echo "$WINE_NOW" > "$WINEPREFIX/.inventor-wine-version"
+fi
+wineboot >>"$LOGDIR/inventor-$TS.log" 2>&1
+sandbox_fs   # after wineboot, so nothing it does can bring Z: or the $HOME links back
 
 info "[2/4] starting Identity Manager"
 # Only look at log lines written after this point, not a previous session's "ready".

@@ -9,7 +9,7 @@ the differences are packages, mounting, and Wayland/XWayland details.
 ## Order of operations
 
 ```bash
-bash scripts/phase0-setup.sh                 # packages (asks for sudo), DXVK from AUR
+bash scripts/phase0-setup.sh                 # packages from official repos only (asks for sudo)
 sudo mount -t ntfs3 -o ro /dev/sdXN /mnt/windows   # see "Mounting Windows" below
 bash scripts/check-system.sh                 # read-only; fix anything it marks ERROR
 bash scripts/export-registry.sh              # registry/autodesk-full.reg (gitignored)
@@ -134,7 +134,9 @@ Please report which one was needed.
 | Logs | `~/Projects/Inventor on linux/logs` | `logs/` in the checkout |
 | IPC cleanup | only `interprocess/01000000` | whole `interprocess/` (Open Problem #4) |
 | `msquic=` override | documented, not set | set in `launch-inventor.sh` |
-| Packages | `dxvk-mingw-git` via pacman (not in Arch repos) | official repos + `dxvk-bin` from AUR |
+| Packages | `dxvk-mingw-git` via pacman (not in Arch repos) | official repos only, no AUR |
+| DXVK | `setup_dxvk` from a system package | release 2.7.1 from github.com/doitsujin/dxvk, SHA-256 pinned (same hash as winetricks `dxvk2071`); `INV_DXVK=system` to use `setup_dxvk` |
+| File access | `Z:` = whole filesystem, Documents/Desktop/... linked into `$HOME` | only `C:` (prefix) and `D:` = `~/Inventor`; `--no-sandbox` restores Wine defaults |
 
 ## Experiment: is the OGSFactory.dll patch still needed?
 
@@ -159,3 +161,47 @@ bash scripts/ogs-patch.sh apply     # back, if it crashes
 
 If it works, that resolves Open Problems #1 and the Realistic Visual Style
 entry, and makes the wbemprox upstream patch the only fix needed.
+
+## DXVK and isolation
+
+### DXVK without the AUR
+
+`rebuild-prefix.sh` downloads `dxvk-2.7.1.tar.gz` from the official DXVK GitHub
+releases (cached in `downloads/`) and refuses it unless its SHA-256 is
+`d85ce7c7...13ce87` - the hash winetricks pins for its `dxvk2071` verb, and the
+version the original project was tested with. The DLLs are copied into the
+prefix only; nothing is installed system-wide and nothing runs as root.
+
+To use a system package instead: `INV_DXVK=system` (needs `setup_dxvk`, e.g.
+AUR `dxvk-bin`). Another version: set both `DXVK_VER` and `DXVK_SHA256`.
+
+### What the isolation does
+
+By default Wine gives Windows programs drive `Z:` = `/` and links the Windows
+Desktop/Documents/Downloads/... folders straight into your `$HOME`. With
+isolation on (default, `INV_SANDBOX=1`):
+
+| Drive / folder | Points to |
+|---|---|
+| `C:` | `~/.wine-inventor2026/drive_c` (the prefix) |
+| `D:` | `~/Inventor` - your projects and exports (`INV_DATA_DIR`) |
+| `Z:`, other letters, raw devices | removed |
+| Desktop, Documents, Downloads, ... | real folders inside the prefix |
+| "/" entry in file dialogs | removed (registry) |
+
+It is applied at the end of `rebuild-prefix.sh` and again on every launch
+(after any `wineboot`), so a Wine update can't silently bring `Z:` back. Wine's
+automatic prefix update is turned off; `launch-inventor.sh` runs it itself when
+`wine --version` changes and re-applies the isolation.
+
+Nothing in the setup depends on `Z:`: the registry import and the WebView2
+installer are copied to `C:\windows\temp` first.
+
+**Limits - read this.** This controls what Windows programs *see*, not what
+they *can* do. Wine is not a sandbox: processes run as your Linux user and a
+program that wants to can still open Unix paths directly (Wine supports
+`\\?\unix\...` paths). It protects against accidents - file dialogs, add-ins
+scanning drives, default save locations in `$HOME` - not against malicious
+code. A real boundary needs a namespace sandbox such as `bubblewrap`, which is
+harder here because the browser login (`adskidmgr://` handler) and the
+wineserver socket must cross it. Not done yet.

@@ -37,7 +37,7 @@ fi
 
 hdr "Packages"
 if grep -qE '^\[multilib\]' /etc/pacman.conf 2>/dev/null; then ok "multilib enabled"; else warn "[multilib] not enabled in /etc/pacman.conf"; fi
-for p in wine wine-staging wine-mono wine-gecko winetricks dxvk-bin dxvk-mingw-git hivex rsync imagemagick mingw-w64-gcc xdg-utils vulkan-icd-loader lib32-vulkan-icd-loader; do
+for p in wine wine-staging wine-mono wine-gecko winetricks hivex rsync imagemagick mingw-w64-gcc xdg-utils vulkan-icd-loader lib32-vulkan-icd-loader; do
     v="$(pacman -Q "$p" 2>/dev/null)" && info "$v" || info "($p not installed)"
 done
 
@@ -59,7 +59,12 @@ else
     bad "wine not installed"
 fi
 have winetricks && ok "winetricks" || bad "winetricks missing"
-have setup_dxvk && ok "setup_dxvk ($(command -v setup_dxvk))" || bad "setup_dxvk missing (AUR: dxvk-bin)"
+if [ "$INV_DXVK" = system ]; then
+    have setup_dxvk && ok "setup_dxvk ($(command -v setup_dxvk))" || bad "INV_DXVK=system but setup_dxvk is missing"
+else
+    info "DXVK: pinned $DXVK_VER from GitHub (sha256 ${DXVK_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/dxvk-$DXVK_VER.tar.gz" ] && echo ', already downloaded')"
+fi
+info "Isolation: INV_SANDBOX=$INV_SANDBOX, data folder (D:) = ${INV_DATA_DIR:-<none>}"
 
 hdr "Windows partition ($WIN_ROOT)"
 if findmnt -n "$WIN_ROOT" >/dev/null 2>&1; then
@@ -105,11 +110,17 @@ fi
 hdr "Disk space"
 NEED_GB=30
 FREE_GB=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
-info "Free in \$HOME: ${FREE_GB} GB (need ~20 GB, +7 GB with Content Center)"
+info "Free in \$HOME: ${FREE_GB} GB (prefix ~20 GB, +7 GB Content Center, warning below $NEED_GB GB)"
 [ "${FREE_GB:-0}" -ge "$NEED_GB" ] || warn "less than $NEED_GB GB free"
 
 hdr "Prefix"
-if [ -d "$WINEPREFIX" ]; then info "exists: $WINEPREFIX ($(du -sh "$WINEPREFIX" 2>/dev/null | cut -f1))"; else info "not built yet: $WINEPREFIX"; fi
+if [ -d "$WINEPREFIX" ]; then
+    info "exists: $WINEPREFIX ($(du -sh "$WINEPREFIX" 2>/dev/null | cut -f1))"
+    info "drives: $(cd "$WINEPREFIX/dosdevices" 2>/dev/null && for d in ?:; do [ -e "$d" ] || [ -L "$d" ] && printf '%s->%s  ' "$d" "$(readlink "$d")"; done)"
+    [ -L "$WINEPREFIX/dosdevices/z:" ] && warn "Z: maps the whole filesystem (isolation not applied)"
+else
+    info "not built yet: $WINEPREFIX"
+fi
 
 hdr "Result"
 if [ "$PROBLEMS" -eq 0 ]; then ok "no blocking problems"; else err "$PROBLEMS blocking problem(s) above"; fi
