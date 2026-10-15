@@ -1,0 +1,276 @@
+diff --git a/dlls/shell32/shellitem.c b/dlls/shell32/shellitem.c
+index 93a60d63..9bee3e79 100644
+--- a/dlls/shell32/shellitem.c
++++ b/dlls/shell32/shellitem.c
+@@ -26,6 +26,9 @@
+ #include "winbase.h"
+ #include "wine/debug.h"
+ 
++#include "propsys.h"
++#include "thumbcache.h"
++
+ #include "pidl.h"
+ #include "shell32_main.h"
+ #include "debughlp.h"
+@@ -563,30 +566,194 @@ static ULONG WINAPI ShellItem_IShellItemImageFactory_Release(IShellItemImageFact
+     return IShellItem2_Release(&This->IShellItem2_iface);
+ }
+ 
++static HBITMAP create_dib32(LONG width, LONG height, DWORD **bits)
++{
++    BITMAPINFO info = {{ sizeof(BITMAPINFOHEADER) }};
++
++    info.bmiHeader.biWidth = width;
++    info.bmiHeader.biHeight = height;
++    info.bmiHeader.biPlanes = 1;
++    info.bmiHeader.biBitCount = 32;
++    info.bmiHeader.biCompression = BI_RGB;
++    return CreateDIBSection(NULL, &info, DIB_RGB_COLORS, (void **)bits, NULL, 0);
++}
++
++/* Draw an icon centered into a new 32-bpp DIB with an alpha channel. */
++static HBITMAP bitmap_from_icon(HICON icon, SIZE size)
++{
++    LONG side = min(size.cx, size.cy), x = (size.cx - side) / 2, y = (size.cy - side) / 2;
++    LONG i, count = size.cx * size.cy;
++    DWORD *bits, *mask_bits;
++    BOOL has_alpha = FALSE;
++    HBITMAP bitmap, mask;
++    HDC hdc;
++
++    if (!(bitmap = create_dib32(size.cx, size.cy, &bits))) return NULL;
++    if (!(hdc = CreateCompatibleDC(NULL)))
++    {
++        DeleteObject(bitmap);
++        return NULL;
++    }
++    SelectObject(hdc, bitmap);
++    DrawIconEx(hdc, x, y, icon, side, side, 0, NULL, DI_NORMAL);
++    GdiFlush();
++    for (i = 0; i < count; i++)
++        if (bits[i] >> 24) { has_alpha = TRUE; break; }
++
++    /* An icon without alpha channel is opaque where its AND mask is black. */
++    if (!has_alpha && (mask = create_dib32(size.cx, size.cy, &mask_bits)))
++    {
++        memset(mask_bits, 0xff, count * sizeof(DWORD));
++        SelectObject(hdc, mask);
++        DrawIconEx(hdc, x, y, icon, side, side, 0, NULL, DI_MASK);
++        GdiFlush();
++        for (i = 0; i < count; i++)
++            if (!(mask_bits[i] & 0xffffff)) bits[i] |= 0xff000000;
++        SelectObject(hdc, bitmap);
++        DeleteObject(mask);
++    }
++    DeleteDC(hdc);
++    return bitmap;
++}
++
++static HRESULT get_icon_image(struct shell_item *item, SIZE size, HBITMAP *bitmap)
++{
++    UINT icon_size = max(size.cx, size.cy), gil_flags = 0;
++    WCHAR location[MAX_PATH];
++    IExtractIconW *extract;
++    IShellFolder *folder;
++    LPCITEMIDLIST child;
++    SHFILEINFOW info;
++    HICON icon = NULL;
++    int index = 0;
++    HRESULT hr;
++
++    hr = SHBindToParent(item->pidl, &IID_IShellFolder, (void **)&folder, &child);
++    if (SUCCEEDED(hr))
++    {
++        hr = IShellFolder_GetUIObjectOf(folder, NULL, 1, &child, &IID_IExtractIconW, NULL, (void **)&extract);
++        IShellFolder_Release(folder);
++    }
++    if (SUCCEEDED(hr))
++    {
++        hr = IExtractIconW_GetIconLocation(extract, GIL_FORSHELL, location, ARRAY_SIZE(location),
++                                           &index, &gil_flags);
++        if (hr == S_OK)
++        {
++            hr = IExtractIconW_Extract(extract, location, index, &icon, NULL, MAKELONG(icon_size, 16));
++            /* S_FALSE asks the caller to extract the icon itself. */
++            if (hr != S_OK || !icon)
++                hr = SHDefExtractIconW(location, index, gil_flags, &icon, NULL, MAKELONG(icon_size, 16));
++        }
++        IExtractIconW_Release(extract);
++    }
++    if (hr != S_OK || !icon)
++    {
++        TRACE("no icon for %p (%#lx), using the system image list\n", item, hr);
++        if (!SHGetFileInfoW((const WCHAR *)item->pidl, 0, &info, sizeof(info),
++                            SHGFI_PIDL | SHGFI_ICON | SHGFI_LARGEICON))
++            return E_FAIL;
++        icon = info.hIcon;
++    }
++
++    *bitmap = bitmap_from_icon(icon, size);
++    DestroyIcon(icon);
++    return *bitmap ? S_OK : E_OUTOFMEMORY;
++}
++
++/* CLSID of the IThumbnailProvider registered for the file's extension or its ProgID. */
++static BOOL get_thumbnail_handler(const WCHAR *path, CLSID *clsid)
++{
++    static const WCHAR handler[] = L"ShellEx\\{e357fccd-a995-4576-b01f-234630154e96}";
++    const WCHAR *ext = PathFindExtensionW(path);
++    WCHAR key[MAX_PATH + ARRAY_SIZE(handler)], progid[MAX_PATH], value[40];
++    DWORD len;
++
++    if (!*ext) return FALSE;
++
++    swprintf(key, ARRAY_SIZE(key), L"%s\\%s", ext, handler);
++    len = sizeof(value);
++    if (!RegGetValueW(HKEY_CLASSES_ROOT, key, NULL, RRF_RT_REG_SZ, NULL, value, &len))
++        return SUCCEEDED(CLSIDFromString(value, clsid));
++
++    len = sizeof(progid);
++    if (RegGetValueW(HKEY_CLASSES_ROOT, ext, NULL, RRF_RT_REG_SZ, NULL, progid, &len)) return FALSE;
++    swprintf(key, ARRAY_SIZE(key), L"%s\\%s", progid, handler);
++    len = sizeof(value);
++    if (RegGetValueW(HKEY_CLASSES_ROOT, key, NULL, RRF_RT_REG_SZ, NULL, value, &len)) return FALSE;
++    return SUCCEEDED(CLSIDFromString(value, clsid));
++}
++
++static HRESULT get_thumbnail_image(struct shell_item *item, SIZE size, HBITMAP *bitmap)
++{
++    IInitializeWithStream *init_stream;
++    IInitializeWithFile *init_file;
++    IThumbnailProvider *provider;
++    WCHAR path[MAX_PATH];
++    WTS_ALPHATYPE alpha;
++    IStream *stream;
++    CLSID clsid;
++    HRESULT hr;
++
++    if (!SHGetPathFromIDListW(item->pidl, path) || !get_thumbnail_handler(path, &clsid))
++        return E_FAIL;
++
++    hr = CoCreateInstance(&clsid, NULL, CLSCTX_INPROC_SERVER, &IID_IThumbnailProvider, (void **)&provider);
++    if (FAILED(hr))
++    {
++        WARN("thumbnail handler %s for %s not created: %#lx\n", debugstr_guid(&clsid), debugstr_w(path), hr);
++        return hr;
++    }
++
++    if (SUCCEEDED(IThumbnailProvider_QueryInterface(provider, &IID_IInitializeWithStream, (void **)&init_stream)))
++    {
++        hr = SHCreateStreamOnFileEx(path, STGM_READ | STGM_SHARE_DENY_NONE, 0, FALSE, NULL, &stream);
++        if (SUCCEEDED(hr))
++        {
++            hr = IInitializeWithStream_Initialize(init_stream, stream, STGM_READ);
++            IStream_Release(stream);
++        }
++        IInitializeWithStream_Release(init_stream);
++    }
++    else if (SUCCEEDED(IThumbnailProvider_QueryInterface(provider, &IID_IInitializeWithFile, (void **)&init_file)))
++    {
++        hr = IInitializeWithFile_Initialize(init_file, path, STGM_READ);
++        IInitializeWithFile_Release(init_file);
++    }
++    else
++    {
++        FIXME("thumbnail handler %s supports neither IInitializeWithStream nor IInitializeWithFile\n",
++              debugstr_guid(&clsid));
++        hr = E_NOTIMPL;
++    }
++
++    if (SUCCEEDED(hr))
++        hr = IThumbnailProvider_GetThumbnail(provider, max(size.cx, size.cy), bitmap, &alpha);
++    IThumbnailProvider_Release(provider);
++    TRACE("thumbnail for %s: %#lx\n", debugstr_w(path), hr);
++    return hr;
++}
++
+ static HRESULT WINAPI ShellItem_IShellItemImageFactory_GetImage(IShellItemImageFactory *iface,
+     SIZE size, SIIGBF flags, HBITMAP *phbm)
+ {
+     struct shell_item *This = impl_from_IShellItemImageFactory(iface);
+-    static const BITMAPINFOHEADER dummy_bmi_header = {
+-        .biSize = sizeof(dummy_bmi_header),
+-        .biWidth = 1,
+-        .biHeight = 1,
+-        .biPlanes = 1,
+-        .biBitCount = 32,
+-        .biCompression = BI_RGB
+-    };
+-    static int once;
+-
+-    if (!once++)
+-        FIXME("%p ({%lu, %lu} %d %p): stub\n", This, size.cx, size.cy, flags, phbm);
+-
+-    if (!(*phbm = CreateDIBSection(NULL, (const BITMAPINFO *)&dummy_bmi_header,
+-                                   DIB_RGB_COLORS, NULL, NULL, 0)))
++    HRESULT hr;
++
++    TRACE("%p ({%ld, %ld} %#x %p)\n", This, size.cx, size.cy, flags, phbm);
++
++    if (!phbm) return E_INVALIDARG;
++    *phbm = NULL;
++    if (size.cx <= 0 || size.cy <= 0) return E_INVALIDARG;
++
++    if (!(flags & SIIGBF_ICONONLY))
+     {
+-        return E_OUTOFMEMORY;
++        /* There is no thumbnail cache. */
++        hr = (flags & SIIGBF_INCACHEONLY) ? E_PENDING : get_thumbnail_image(This, size, phbm);
++        if (SUCCEEDED(hr) || (flags & SIIGBF_THUMBNAILONLY)) return hr;
+     }
+ 
+-    return S_OK;
++    return get_icon_image(This, size, phbm);
+ }
+ 
+ static const IShellItemImageFactoryVtbl ShellItem_IShellItemImageFactory_Vtbl = {
+diff --git a/dlls/shell32/tests/shlfolder.c b/dlls/shell32/tests/shlfolder.c
+index 08c8c73d..e27dc827 100644
+--- a/dlls/shell32/tests/shlfolder.c
++++ b/dlls/shell32/tests/shlfolder.c
+@@ -4764,7 +4764,6 @@ static void test_IShellItemImageFactory(void)
+         SIZE size = {32, 32};
+ 
+         ret = IShellItemImageFactory_GetImage(siif, size, SIIGBF_BIGGERSIZEOK, &hbm);
+-        IShellItemImageFactory_Release(siif);
+         ok(ret == S_OK, "GetImage returned %lx\n", ret);
+         ok(FAILED(ret) == !hbm, "result = %lx but bitmap = %p\n", ret, hbm);
+ 
+@@ -4787,6 +4786,37 @@ static void test_IShellItemImageFactory(void)
+ 
+             DeleteObject(hbm);
+         }
++
++        /* The icon is scaled to the requested size and has an alpha channel. */
++        size.cx = size.cy = 48;
++        hbm = NULL;
++        ret = IShellItemImageFactory_GetImage(siif, size, SIIGBF_ICONONLY, &hbm);
++        ok(ret == S_OK, "GetImage returned %lx\n", ret);
++        if (SUCCEEDED(ret) && hbm)
++        {
++            BITMAPINFO info = {{ sizeof(BITMAPINFOHEADER) }};
++            DWORD *bits;
++            BOOL opaque = FALSE;
++            HDC hdc;
++            int i;
++
++            hdc = CreateCompatibleDC(NULL);
++            ok(GetDIBits(hdc, hbm, 0, 0, NULL, &info, DIB_RGB_COLORS), "GetDIBits failed\n");
++            ok(info.bmiHeader.biWidth == 48, "got width %ld\n", info.bmiHeader.biWidth);
++            ok(abs(info.bmiHeader.biHeight) == 48, "got height %ld\n", info.bmiHeader.biHeight);
++            ok(info.bmiHeader.biBitCount == 32, "got %u bpp\n", info.bmiHeader.biBitCount);
++
++            info.bmiHeader.biHeight = -48;
++            info.bmiHeader.biCompression = BI_RGB;
++            bits = malloc(48 * 48 * sizeof(*bits));
++            ok(GetDIBits(hdc, hbm, 0, 48, bits, &info, DIB_RGB_COLORS) == 48, "GetDIBits failed\n");
++            for (i = 0; i < 48 * 48; i++) if (bits[i] >> 24) { opaque = TRUE; break; }
++            ok(opaque, "icon bitmap is fully transparent\n");
++            free(bits);
++            DeleteDC(hdc);
++            DeleteObject(hbm);
++        }
++        IShellItemImageFactory_Release(siif);
+     }
+ }
+ 

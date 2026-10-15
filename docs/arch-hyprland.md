@@ -293,6 +293,27 @@ Content Center unless `--content-center`).
 To see what a WebView2 page loads: add `--remote-debugging-port=9222` to the
 policy value and `curl -s http://127.0.0.1:9222/json` (localhost only).
 
+## File icons and thumbnails
+
+Inventor registers its file types per user (`UsrClass.dat`), so the
+NTUSER.DAT export misses them. `scripts/import-file-types.sh` (also run by
+`rebuild-prefix.sh`) imports the icons (`DefaultIcon` -> `SrvRes.dll`) and the
+shell-extension classes for thumbnails; shell verbs with Windows 8.3 paths are
+skipped. Inventor keeps the imported icon on its next start.
+
+The big icons in New/Open and the preview pane still stayed empty: Inventor asks
+for them through `IShellItemImageFactory::GetImage`, which in Wine is a stub that
+returns an empty 1x1 bitmap. `patches/shell32-getimage.patch` implements it -
+the registered thumbnail handler (`IThumbnailProvider`, initialised with a
+stream or the file path) and the file's icon at the requested size as fallback -
+with a Wine test. Build and install like the wbemprox patch:
+
+```bash
+bash scripts/build-wine-dll.sh shell32 --install --hook
+bash scripts/build-wine-dll.sh shell32 --test      # Wine's shell32 shlfolder tests
+bash scripts/build-wine-dll.sh shell32 --restore   # back to the original
+```
+
 ## Result log
 
 **2026-10-15 - Inventor 2026 build 30.40.43500 (.NET 10), Wine 11.19, Arch + Hyprland, RX 580 (RADV):**

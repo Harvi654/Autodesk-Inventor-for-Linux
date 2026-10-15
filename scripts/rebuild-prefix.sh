@@ -302,6 +302,9 @@ rm -f "$P_C/windows/temp/$(basename "$WEBVIEW2_INSTALLER")"
 webview2_reg
 ok "WebView2 set up for Wine (Windows 7 + wined3d for msedgewebview2.exe, policy switches)"
 
+step "Inventor file types (icons, thumbnail/property shell extensions)..."
+bash "$SCRIPTS_DIR/import-file-types.sh" || warn "file types not imported - dialogs show the old 'I' icon"
+
 step "Windows fonts (WPF needs Segoe UI/Arial/Tahoma)..."
 # After the WebView2 wait: windows-fonts.sh stops wineserver to import the registry.
 bash "$SCRIPTS_DIR/windows-fonts.sh" || warn "Windows fonts not copied - WPF may FailFast in TypefaceMap.MapUnresolvedCharacters"
