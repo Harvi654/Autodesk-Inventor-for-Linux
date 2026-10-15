@@ -185,6 +185,7 @@ isolation on (default, `INV_SANDBOX=1`):
 |---|---|
 | `C:` | `~/.wine-inventor2026/drive_c` (the prefix) |
 | `D:` | `~/Inventor` - your projects and exports (`INV_DATA_DIR`) |
+| `T:` `U:` ... | font folders only (`/usr/share/fonts`, `~/.local/share/fonts`, Wine's fonts) |
 | `Z:`, other letters, raw devices | removed |
 | Desktop, Documents, Downloads, ... | real folders inside the prefix |
 | "/" entry in file dialogs | removed (registry) |
@@ -194,7 +195,14 @@ It is applied at the end of `rebuild-prefix.sh` and again on every launch
 automatic prefix update is turned off; `launch-inventor.sh` runs it itself when
 `wine --version` changes and re-applies the isolation.
 
-Nothing in the setup depends on `Z:`: the registry import and the WebView2
+**Why the font drives:** Wine gives every Linux font a Windows path through
+some drive letter. With no drive covering `/usr/share/fonts`, the path becomes
+`\\?\unix\usr\share\fonts\...`; WPF passes it to `new Uri(...)` and Inventor dies
+while drawing the ribbon (`System.UriFormatException` in
+`MS.Internal.FontCache.Util.CombineUriWithFaceIndex`). Found on the first run
+with isolation; the original setup never hit it because it had `Z:` = `/`.
+
+Nothing else in the setup depends on `Z:`: the registry import and the WebView2
 installer are copied to `C:\windows\temp` first.
 
 **Limits - read this.** This controls what Windows programs *see*, not what

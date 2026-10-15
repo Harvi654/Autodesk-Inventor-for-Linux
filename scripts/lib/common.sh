@@ -42,6 +42,14 @@ DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
 INV_SANDBOX="${INV_SANDBOX:-1}"
 # Your files for Inventor (projects, exports). Mapped as D:. Empty = no D:.
 INV_DATA_DIR="${INV_DATA_DIR-$HOME/Inventor}"
+# Font folders exposed to Wine, one drive letter each (t: u: v: w: x:).
+# Required with isolation: a font outside every drive gets the path
+# "\\?\unix\..." and WPF (Inventor's ribbon) crashes on it with
+# UriFormatException. Fonts only - nothing else of the system is exposed.
+if [ -z "${INV_FONT_DIRS+x}" ]; then
+    INV_FONT_DIRS=(/usr/share/fonts /usr/local/share/fonts "$HOME/.local/share/fonts" "$HOME/.fonts" /usr/share/wine/fonts)
+fi
+INV_FONT_LETTERS=(t u v w x)
 
 # DXVK: pinned release from the official GitHub project, verified by SHA-256.
 # Same version and hash as winetricks' "dxvk2071" verb and the original setup.
@@ -252,6 +260,13 @@ sandbox_fs() {
         mkdir -p "$INV_DATA_DIR"
         ln -sfn "$INV_DATA_DIR" "$dd/d:"
     fi
+    local i=0 f
+    for f in "${INV_FONT_DIRS[@]}"; do
+        [ -d "$f" ] || continue
+        [ "$i" -lt "${#INV_FONT_LETTERS[@]}" ] || break
+        ln -sfn "$f" "$dd/${INV_FONT_LETTERS[$i]}:"
+        i=$((i + 1))
+    done
     # Desktop, Documents, Downloads, ... are symlinks into $HOME by default:
     # replace every directory symlink that leaves the prefix with a real directory.
     local prefix_real; prefix_real="$(readlink -f "$WINEPREFIX")"
