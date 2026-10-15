@@ -257,11 +257,17 @@ else
     fi
 fi
 
-step "Copying Design Data, Templates, Textures, Backgrounds..."
+step "Copying public Inventor documents (Design Data, Templates, Default.ipj, ...)..."
+# The whole folder, not a list of subfolders: Default.ipj lives at its top level
+# and without an active project Inventor loads no material/appearance libraries
+# (empty lists, unlit flat-grey parts, iLogic E_FAIL on get_ActiveDesignProject).
 mkdir -p "$P_PUBDOCS"
-for d in "Design Data" Templates Textures Backgrounds; do
-    if [ -d "$WIN_PUBDOCS/$d" ]; then copy "$WIN_PUBDOCS/$d" "$P_PUBDOCS/"; else warn "$d not found"; fi
+[ -d "$WIN_PUBDOCS" ] || die "not found: $WIN_PUBDOCS"
+copy "$WIN_PUBDOCS/" "$P_PUBDOCS/"
+for d in "Design Data" Templates; do
+    [ -d "$P_PUBDOCS/$d" ] || warn "$d not found"
 done
+[ -f "$P_PUBDOCS/Default.ipj" ] && ok "Default.ipj" || warn "Default.ipj not found - create a project in Inventor (Get Started > Projects)"
 
 step "Content Center..."
 WIN_CC="$WIN_PROGDATA/Inventor $INV_YEAR/Content Center"
