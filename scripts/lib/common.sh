@@ -83,9 +83,9 @@ INV_DEFAULT_DISABLED_ADDINS=(
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
 INV_VDESKTOP="${INV_VDESKTOP:-}"
-# Extra Chromium switches for WebView2 (Inventor's home page, login, InfoCenter),
-# e.g. "--no-sandbox". Passed as WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS.
-INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:-}"
+# Chromium switches for WebView2 (Inventor's home page, licensing dialog, ...).
+# Written to the HKLM WebView2 policy by webview2_reg (rebuild-prefix.sh, webview2-fix.sh).
+INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:---no-sandbox --enable-unsafe-swiftshader --use-angle=swiftshader}"
 
 export WINEPREFIX="$INV_PREFIX"
 export WINEARCH=win64
@@ -346,6 +346,26 @@ fix_font_registry() {
 sandbox_reg() {
     [ "$INV_SANDBOX" = 1 ] || return 0
     wine_q reg delete 'HKLM\Software\Microsoft\Windows\CurrentVersion\Explorer\Desktop\Namespace\{9D20AAE8-0625-44B0-9CA7-71889C2254D9}' /f || true
+}
+
+# WebView2 (App Home page, licensing dialog, notifications) under Wine.
+# Runtime 15x's GPU process dies on a CHECK three times and the browser exits
+# ("GPU process isn't usable. Goodbye.") -> white windows. What made it render:
+#   - msedgewebview2.exe reported as Windows 7 (Wine AppDefaults), so Chromium
+#     avoids the Windows 10 presentation paths Wine lacks;
+#   - wined3d instead of DXVK for msedgewebview2.exe only (wined3d accepts a
+#     D3D_DRIVER_TYPE_WARP device, DXVK rejects it);
+#   - switches via the HKLM WebView2 policy - the WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
+#     environment variable does not reach the browsers started by
+#     AdskLicensingAgent / Inventor.
+webview2_reg() {
+    local k='HKCU\Software\Wine\AppDefaults\msedgewebview2.exe' d app
+    wine_reg_add "$k" /v Version /t REG_SZ /d win7
+    for d in d3d11 dxgi d3d10core d3d9; do wine_reg_add "$k\\DllOverrides" /v "$d" /t REG_SZ /d builtin; done
+    k='HKLM\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
+    for app in '*' Inventor.exe AdskLicensingAgent.exe AdskIdentityManager.exe; do
+        wine_reg_add "$k" /v "$app" /t REG_SZ /d "$INV_WEBVIEW2_ARGS"
+    done
 }
 
 # Copy a Linux file into C:\windows\temp and print its Windows path, so Wine

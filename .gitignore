@@ -5,3 +5,4 @@ backtrace*.txt
 registry/*.reg
 config.env
 downloads/
+__pycache__/

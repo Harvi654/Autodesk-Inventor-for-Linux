@@ -269,13 +269,22 @@ for d in "Design Data" Templates; do
 done
 [ -f "$P_PUBDOCS/Default.ipj" ] && ok "Default.ipj" || warn "Default.ipj not found - create a project in Inventor (Get Started > Projects)"
 
-step "Content Center..."
-WIN_CC="$WIN_PROGDATA/Inventor $INV_YEAR/Content Center"
-if [ "$WITH_CC" -eq 1 ] && [ -d "$WIN_CC" ]; then
-    mkdir -p "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR"
-    copy "$WIN_CC" "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/"
+step "Copying ProgramData\\Autodesk\\Inventor $INV_YEAR (App Home page in WebBrowser\\, ...)..."
+# The App Home page is file:///C:/ProgramData/Autodesk/Inventor <year>/WebBrowser/index.html;
+# without it the Home tab shows ERR_FILE_NOT_FOUND. Content Center (~7 GB) only on request.
+WIN_INVDATA="$WIN_PROGDATA/Inventor $INV_YEAR"
+mkdir -p "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR"
+if [ -d "$WIN_INVDATA" ]; then
+    if [ "$WITH_CC" -eq 1 ]; then
+        copy "$WIN_INVDATA/" "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/"
+    else
+        copy --exclude='/Content Center/' "$WIN_INVDATA/" "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/"
+        info "Content Center skipped (use --content-center to copy ~7 GB)"
+    fi
+    [ -f "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/WebBrowser/index.html" ] && ok "App Home page" \
+        || warn "WebBrowser/index.html not found - the Home tab will stay empty"
 else
-    info "skipped (use --content-center to copy ~7 GB)"
+    warn "not found: $WIN_INVDATA"
 fi
 
 # -----------------------------------------------------------------------------
@@ -290,6 +299,8 @@ step "Waiting for the WebView2 installer..."
 for _ in $(seq 1 180); do kill -0 "$WEBVIEW2_PID" 2>/dev/null || break; sleep 1; done
 if kill -0 "$WEBVIEW2_PID" 2>/dev/null; then warn "WebView2 installer still running after 3 min - leaving it"; else ok "done"; fi
 rm -f "$P_C/windows/temp/$(basename "$WEBVIEW2_INSTALLER")"
+webview2_reg
+ok "WebView2 set up for Wine (Windows 7 + wined3d for msedgewebview2.exe, policy switches)"
 
 step "Windows fonts (WPF needs Segoe UI/Arial/Tahoma)..."
 # After the WebView2 wait: windows-fonts.sh stops wineserver to import the registry.

@@ -263,6 +263,38 @@ rsync -rlt "/mnt/windows/Users/Public/Documents/Autodesk/Inventor 2026/" \
   "$HOME/.wine-inventor2026/drive_c/users/Public/Documents/Autodesk/Inventor 2026/"
 ```
 
+## WebView2: white licensing window, empty Home tab
+
+The licensing dialog (`AdskLicensingAgent.exe`, e.g. "Access expiring soon")
+and Inventor's Home tab are WebView2 pages. With runtime 155 they stayed white:
+the WebView2 GPU process hit a `CHECK` three times and the browser quit with
+`GPU process isn't usable. Goodbye.` (read from the Crashpad dumps with
+`scripts/minidump-info.py`). Inventor waits for the licensing dialog, so the
+UI was blocked until the white window was closed by hand.
+
+What fixed it (`webview2_reg` in `lib/common.sh`, run by `rebuild-prefix.sh`;
+`scripts/webview2-fix.sh` for an existing prefix, `--revert` to undo):
+
+- `msedgewebview2.exe` reported as **Windows 7** (Wine AppDefaults) - the key
+  change, same trick the Lutris BYOND installer uses;
+- wined3d instead of DXVK for `msedgewebview2.exe` only (wined3d turns a WARP
+  device request into a hardware device, DXVK refuses WARP);
+- `--no-sandbox --enable-unsafe-swiftshader --use-angle=swiftshader` through the
+  **HKLM** policy `Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments`.
+  The `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS` environment variable does not reach
+  these browsers; HKCU did not work either.
+
+Background: [WebView2Feedback #5720](https://github.com/MicrosoftEdge/WebView2Feedback/issues/5720).
+Not yet tested which of the three are strictly needed.
+
+The Home tab then showed `ERR_FILE_NOT_FOUND`: it is
+`file:///C:/ProgramData/Autodesk/Inventor 2026/WebBrowser/index.html`, so
+`rebuild-prefix.sh` now copies `ProgramData\Autodesk\Inventor <year>` (without
+Content Center unless `--content-center`).
+
+To see what a WebView2 page loads: add `--remote-debugging-port=9222` to the
+policy value and `curl -s http://127.0.0.1:9222/json` (localhost only).
+
 ## Result log
 
 **2026-10-15 - Inventor 2026 build 30.40.43500 (.NET 10), Wine 11.19, Arch + Hyprland, RX 580 (RADV):**

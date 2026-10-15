@@ -11,7 +11,6 @@ export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-info}"
 export DXVK_ASYNC=1
 export WINE_LARGE_ADDRESS_AWARE=1
 [ -n "$INV_GPU" ] && export DXVK_FILTER_DEVICE_NAME="$INV_GPU"
-[ -n "$INV_WEBVIEW2_ARGS" ] && export WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS="$INV_WEBVIEW2_ARGS"
 # msquic= : stops .NET 8 crashing in its QUIC networking stack (README, Key Discovery #6)
 export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}msquic="
 
