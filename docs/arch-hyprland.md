@@ -238,3 +238,14 @@ TrueType/OpenType fonts from your own Windows installation into
 `C:\windows\Fonts` and registers them under
 `HKLM\...\Windows NT\CurrentVersion\Fonts` - DirectWrite (and so WPF) only sees
 registered fonts. `rebuild-prefix.sh` runs it automatically.
+
+## Result log
+
+**2026-10-15 - Inventor 2026 build 30.40.43500 (.NET 10), Wine 11.19, Arch + Hyprland, RX 580 (RADV):**
+UI starts, Autodesk sign-in works, Part created, sketch + Extrude rendered in the
+3D viewport through DXVK - **without the OGSFactory.dll binary patch**, with only
+the Win32_TimeZone wbemprox patch. Fixes needed on the way (all in these scripts):
+font folders as drive letters (isolation), registry import as UTF-16, disabled
+add-ins outside `Bin\Addins`, Windows fonts copied and registered, `Backgrounds`
+copied. Open: App Home page blank and File menu closes (WebView2), iLogic,
+Realistic visual style not tested yet.

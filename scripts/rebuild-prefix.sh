@@ -257,9 +257,9 @@ else
     fi
 fi
 
-step "Copying Design Data, Templates, Textures..."
+step "Copying Design Data, Templates, Textures, Backgrounds..."
 mkdir -p "$P_PUBDOCS"
-for d in "Design Data" Templates Textures; do
+for d in "Design Data" Templates Textures Backgrounds; do
     if [ -d "$WIN_PUBDOCS/$d" ]; then copy "$WIN_PUBDOCS/$d" "$P_PUBDOCS/"; else warn "$d not found"; fi
 done
 
