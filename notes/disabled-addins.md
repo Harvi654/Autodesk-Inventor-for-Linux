@@ -26,3 +26,13 @@ Priority order for re-enabling:
 2. Simulation addins (may work once core is stable)
 3. Translator/Publisher addins
 4. Anark (needs CEF/libcef.dll - 205MB, excluded from initial copy)
+
+## Confirmed on Inventor 2026 build 30.40 (.NET 10), Wine 11.19
+- Inventor itself runs on CoreCLR (.NET 10), but some add-ins are still loaded
+  through wine-mono. `Autodesk.SharedViews.Inventor.addin` re-enabled ->
+  wine-mono assertion in `mono_runtime_object_init` (SharedViews.dll needs
+  `System.Runtime 10.0`) -> `Environment.Exit` -> Inventor closes. Keep disabled.
+- iLogic still shows the `DesignProjectManager.get_ActiveDesignProject` E_FAIL
+  dialog at startup even with its .addin moved to `disabled/` (it is also
+  registered elsewhere). Clicking OK continues.
+- `scripts/addins.sh reset` restores this default set.

@@ -225,11 +225,7 @@ fi
 step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."
 ADDINS="$P_INV/Bin/Addins"
 mkdir -p "$ADDINS/disabled/libs"
-for f in Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin \
-         Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin \
-         Autodesk.Publisher.Inventor.addin autodesk.dynamicsimulation.inventor.addin \
-         autodesk.frameanalysis.inventor.addin autodesk.simulationstressanalysis.inventor.addin \
-         autodesk.translatorfusion.inventor.addin autodesk.ilogic.inventor.addin; do
+for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
     if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$ADDINS/disabled/"; else info "(not present: $f)"; fi
 done
 

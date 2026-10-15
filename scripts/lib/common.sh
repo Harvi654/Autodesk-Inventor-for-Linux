@@ -70,6 +70,16 @@ DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
+# Add-ins rebuild-prefix.sh disables (notes/disabled-addins.md). Some of them
+# are loaded through wine-mono instead of CoreCLR and abort Inventor
+# (SharedViews confirmed: mono assertion -> Environment.Exit).
+INV_DEFAULT_DISABLED_ADDINS=(
+    Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
+    Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
+    Autodesk.Publisher.Inventor.addin autodesk.dynamicsimulation.inventor.addin
+    autodesk.frameanalysis.inventor.addin autodesk.simulationstressanalysis.inventor.addin
+    autodesk.translatorfusion.inventor.addin autodesk.ilogic.inventor.addin
+)
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
 INV_VDESKTOP="${INV_VDESKTOP:-}"

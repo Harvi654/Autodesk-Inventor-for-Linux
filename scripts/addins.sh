@@ -9,6 +9,9 @@
 #   bash scripts/addins.sh disable <name-or-part>
 #   bash scripts/addins.sh enable-safe     everything except iLogic and Anark
 #                                          (also restores InteractiveTutorial.dll)
+#                                          WARNING: SharedViews then crashes Inventor
+#                                          (it is loaded by wine-mono) - use reset
+#   bash scripts/addins.sh reset           back to the rebuild-prefix.sh defaults
 
 set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
@@ -56,5 +59,14 @@ case "${1:-list}" in
         done < <(find "$OFF" -maxdepth 1 -iname '*.addin' -printf '%f\n' | sort)
         restore_tutorial_libs
         ;;
-    *) die "usage: $0 list | enable NAME | disable NAME | enable-safe" ;;
+    reset)
+        for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
+            if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$OFF/"; ok "disabled $f"; fi
+        done
+        mkdir -p "$LIBS"
+        for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
+            if [ -f "$f" ]; then mv "$f" "$LIBS/"; info "moved away $(basename "$f")"; fi
+        done
+        ;;
+    *) die "usage: $0 list | enable NAME | disable NAME | enable-safe | reset" ;;
 esac
