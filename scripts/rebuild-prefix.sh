@@ -30,7 +30,7 @@ done
 WEBVIEW2_URL="https://go.microsoft.com/fwlink/?linkid=2124701"   # Evergreen Standalone x64
 WEBVIEW2_INSTALLER="${WEBVIEW2_INSTALLER:-$DOWNLOAD_DIR/MicrosoftEdgeWebView2RuntimeInstallerX64.exe}"
 : > "$LOGDIR/setup-wine.log"
-_STEPS=22
+_STEPS=23
 
 # rsync wrapper: archive mode, no ownership/permissions from NTFS
 copy() { rsync -rlt --info=progress2 --no-inc-recursive "$@"; }
@@ -284,6 +284,10 @@ step "Waiting for the WebView2 installer..."
 for _ in $(seq 1 180); do kill -0 "$WEBVIEW2_PID" 2>/dev/null || break; sleep 1; done
 if kill -0 "$WEBVIEW2_PID" 2>/dev/null; then warn "WebView2 installer still running after 3 min - leaving it"; else ok "done"; fi
 rm -f "$P_C/windows/temp/$(basename "$WEBVIEW2_INSTALLER")"
+
+step "Windows fonts (WPF needs Segoe UI/Arial/Tahoma)..."
+# After the WebView2 wait: windows-fonts.sh stops wineserver to import the registry.
+bash "$SCRIPTS_DIR/windows-fonts.sh" || warn "Windows fonts not copied - WPF may FailFast in TypefaceMap.MapUnresolvedCharacters"
 
 step "Isolation (drives, home folders)..."
 if [ "$INV_SANDBOX" = 1 ]; then

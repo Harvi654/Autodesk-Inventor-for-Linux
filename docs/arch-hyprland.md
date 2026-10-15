@@ -227,3 +227,14 @@ recognized as a valid Boolean*) and Inventor dies at startup with
 
 `import_reg_file` converts the export to UTF-16LE with a BOM before importing.
 To repair an older prefix: `bash scripts/import-registry.sh`.
+
+## Windows fonts are required
+
+With no Windows fonts in the prefix, WPF's font fallback finds no font for some
+characters and terminates Inventor on purpose (`Environment.FailFast
+"Unrecoverable system error"` in `TypefaceMap.MapUnresolvedCharacters`, first seen
+when the App Home page is drawn). `scripts/windows-fonts.sh` copies the
+TrueType/OpenType fonts from your own Windows installation into
+`C:\windows\Fonts` and registers them under
+`HKLM\...\Windows NT\CurrentVersion\Fonts` - DirectWrite (and so WPF) only sees
+registered fonts. `rebuild-prefix.sh` runs it automatically.
