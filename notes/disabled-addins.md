@@ -1,7 +1,10 @@
 # Disabled Inventor Addins
 
-These addins were moved to `Bin/Addins/disabled/` to reduce failure surface area.
-To re-enable, move them back to `Bin/Addins/`.
+These addins are moved to `Inventor 2026/Addins.disabled/` (outside `Bin/Addins`) to reduce failure surface area.
+To re-enable: `bash scripts/addins.sh enable NAME` (or move them back to `Bin/Addins/`).
+
+**Note:** the original location `Bin/Addins/disabled/` does not work on Inventor 2026 builds
+that scan subfolders of `Bin/Addins` - the add-ins were still loaded from there.
 
 ## Non-essential (disabled in Phase 7 to reduce crash surface)
 - `Anark.Core.addin` - 3D PDF/Anark (requires CEF, which we excluded)
@@ -32,7 +35,6 @@ Priority order for re-enabling:
   through wine-mono. `Autodesk.SharedViews.Inventor.addin` re-enabled ->
   wine-mono assertion in `mono_runtime_object_init` (SharedViews.dll needs
   `System.Runtime 10.0`) -> `Environment.Exit` -> Inventor closes. Keep disabled.
-- iLogic still shows the `DesignProjectManager.get_ActiveDesignProject` E_FAIL
-  dialog at startup even with its .addin moved to `disabled/` (it is also
-  registered elsewhere). Clicking OK continues.
+- iLogic and SharedViews were still loaded with their .addin in `Bin/Addins/disabled/`:
+  Inventor scans subfolders. Fixed by moving disabled add-ins outside `Bin/Addins`.
 - `scripts/addins.sh reset` restores this default set.

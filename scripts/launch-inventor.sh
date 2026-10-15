@@ -44,6 +44,8 @@ info "[0/4] cleaning IDSDK IPC state"
 rm -rf -- "$IDSDK_IPC_ROOT"
 mkdir -p "$IDSDK_IPC_ROOT/01000000"
 
+migrate_disabled_addins
+
 info "[1/4] starting wineserver"
 # Drives first: Wine records font paths in the registry when it starts, and a
 # font folder without a drive letter gets a "\\??\\unix\\..." path that WPF

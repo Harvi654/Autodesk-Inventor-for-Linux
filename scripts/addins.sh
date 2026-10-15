@@ -16,11 +16,12 @@
 set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
-ADDINS="$P_INV/Bin/Addins"
-OFF="$ADDINS/disabled"
+ADDINS="$P_ADDINS"
+OFF="$P_ADDINS_OFF"
 LIBS="$OFF/libs"
 [ -d "$ADDINS" ] || die "no add-in folder: $ADDINS (build the prefix first)"
 mkdir -p "$OFF"
+migrate_disabled_addins
 
 pick() {  # pick <dir> <pattern> -> one matching .addin file name
     local m

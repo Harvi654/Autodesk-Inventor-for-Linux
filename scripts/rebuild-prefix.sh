@@ -224,14 +224,14 @@ fi
 # -----------------------------------------------------------------------------
 step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."
 ADDINS="$P_INV/Bin/Addins"
-mkdir -p "$ADDINS/disabled/libs"
+mkdir -p "$P_ADDINS_OFF/libs"
 for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
-    if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$ADDINS/disabled/"; else info "(not present: $f)"; fi
+    if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$P_ADDINS_OFF/"; else info "(not present: $f)"; fi
 done
 
 step "Removing known crash sources (InteractiveTutorial, CER reporter, bcp47langs)..."
 for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
-    [ -f "$f" ] && mv "$f" "$ADDINS/disabled/libs/"
+    [ -f "$f" ] && mv "$f" "$P_ADDINS_OFF/libs/"
 done
 [ -f "$P_INV/Bin/CER/senddmp.exe" ] && mv "$P_INV/Bin/CER/senddmp.exe" "$P_INV/Bin/CER/senddmp.exe.disabled"
 for f in "$P_C/windows/system32/bcp47langs.dll" "$P_C/windows/syswow64/bcp47langs.dll"; do

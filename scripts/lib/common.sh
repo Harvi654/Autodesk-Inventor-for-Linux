@@ -106,6 +106,10 @@ P_LIC_BASE="$P_C/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
 P_IDMGR_BASE="$P_C/Program Files/Autodesk/AdskIdentityManager"
 P_USER="$P_C/users/$USER"
 P_PUBDOCS="$P_C/users/Public/Documents/Autodesk/Inventor $INV_YEAR"
+P_ADDINS="$P_INV/Bin/Addins"
+# Disabled add-ins live OUTSIDE Bin\Addins: Inventor 2026 also scans its
+# subfolders, so the old Bin\Addins\disabled\ did not disable anything.
+P_ADDINS_OFF="$P_INV/Addins.disabled"
 
 # --- output helpers ----------------------------------------------------------
 if [ -t 1 ]; then
@@ -225,6 +229,23 @@ wine_pe_dir() {
         /usr/local/lib/wine/x86_64-windows; do
         [ -n "$d" ] && [ -f "$d/wbemprox.dll" ] && { readlink -f "$d"; return; }
     done
+}
+
+# Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)
+# to P_ADDINS_OFF. Safe to call any time.
+migrate_disabled_addins() {
+    local old="$P_ADDINS/disabled" f
+    [ -d "$old" ] || return 0
+    mkdir -p "$P_ADDINS_OFF/libs"
+    for f in "$old"/*.addin "$old"/*.Addin "$old"/*.ADDIN; do
+        [ -f "$f" ] && mv -f "$f" "$P_ADDINS_OFF/"
+    done
+    if [ -d "$old/libs" ]; then
+        for f in "$old/libs"/*; do [ -f "$f" ] && mv -f "$f" "$P_ADDINS_OFF/libs/"; done
+        rmdir "$old/libs" 2>/dev/null || true
+    fi
+    rmdir "$old" 2>/dev/null || warn "could not remove $old (not empty?)"
+    info "moved disabled add-ins out of Bin\\Addins (Inventor scans its subfolders)"
 }
 
 # --- DXVK --------------------------------------------------------------------
