@@ -126,7 +126,7 @@ Please report which one was needed.
 | Area | Original | Here |
 |------|----------|------|
 | Component versions | hard-coded (Licensing 15.4.2.4, Components 1.8.0, IdMgr 1.16.5.1/1.14.0.3, build 30.0.17500) | detected from `/mnt/windows` and the registry export |
-| Registry export | generated but never imported | imported with `regedit` before setting keys |
+| Registry export | generated but never imported | imported with `regedit` **as UTF-16** before setting keys (see below) |
 | `rebuild-prefix.sh` | under `set -e`, any failing `cp`/`mv ... 2>/dev/null` of an optional file (license cache, Design Data dir that doesn't exist yet, `wineserver -k` with nothing running) can abort the run | optional steps warn and continue |
 | OGSFactory.dll patch | written blindly at fixed offsets | original bytes verified first; skipped on a different build; `scripts/ogs-patch.sh status|apply|revert` |
 | WebView2 installer | expected in `/tmp`, never downloaded | downloaded to `downloads/` |
@@ -213,3 +213,17 @@ scanning drives, default save locations in `$HOME` - not against malicious
 code. A real boundary needs a namespace sandbox such as `bubblewrap`, which is
 harder here because the browser login (`adskidmgr://` handler) and the
 wineserver socket must cross it. Not done yet.
+
+## Registry import must be UTF-16
+
+`hivexregedit` writes strings as `hex(1):` UTF-16LE bytes into a plain-text
+file. Wine's `regedit` reads a file without a UTF-16 byte-order mark as ANSI and
+widens each byte of `hex(1)` data separately, so `"False"` is stored as
+`F\0a\0l\0s\0e\0`. It looks normal in logs, but .NET rejects it. Inventor's
+InfoCenter then fails silently (`InfoCenter.log` in
+`%LOCALAPPDATA%\Autodesk\Inventor 2026\ENU\`: *String 'False' was not
+recognized as a valid Boolean*) and Inventor dies at startup with
+`NullReferenceException` in `InforCenterUtil.GetInfoCenterHwnd()`.
+
+`import_reg_file` converts the export to UTF-16LE with a BOM before importing.
+To repair an older prefix: `bash scripts/import-registry.sh`.

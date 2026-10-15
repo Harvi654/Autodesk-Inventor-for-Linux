@@ -327,4 +327,21 @@ to_wine_temp() {
     printf 'C:\\windows\\temp\\%s\n' "$(basename "$1")"
 }
 
+# Import a .reg file into the prefix.
+# Wine's regedit treats a file WITHOUT a UTF-16 byte-order mark as ANSI and
+# widens every byte of hex(1)/hex(2)/hex(7) data to its own character. The
+# hivexregedit export stores strings as UTF-16LE bytes, so "False" (46,00,61,00,...)
+# would become "F\0a\0l\0s\0e\0" - which is how InfoCenter crashed Inventor
+# (FormatException: 'False' is not a valid Boolean). Converting the whole file
+# to UTF-16LE with a BOM makes regedit take the bytes as they are.
+import_reg_file() {
+    local src="$1" name tmp
+    name="$(basename "$src" .reg)-utf16.reg"
+    tmp="$P_C/windows/temp/$name"
+    mkdir -p "$P_C/windows/temp"
+    { printf '\xff\xfe'; iconv -f UTF-8 -t UTF-16LE "$src"; } > "$tmp" || die "iconv failed for $src"
+    wine_q regedit /S "C:\\windows\\temp\\$name"
+    rm -f "$tmp"
+}
+
 mkdir -p "$LOGDIR"

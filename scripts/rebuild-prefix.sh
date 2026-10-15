@@ -169,9 +169,8 @@ fi
 step "Importing registry..."
 if [ -f "$REG_FILE" ]; then
     # Full export from Windows first; the explicit keys below then fix paths/versions.
-    wine_q regedit /S "$(to_wine_temp "$REG_FILE")"
-    rm -f "$P_C/windows/temp/$(basename "$REG_FILE")"
-    ok "imported $(basename "$REG_FILE")"
+    import_reg_file "$REG_FILE"
+    ok "imported $(basename "$REG_FILE") (as UTF-16)"
 fi
 K="HKLM\\SOFTWARE\\Autodesk\\Inventor\\RegistryVersion$INV_REGMAJOR.0"
 wine_reg_add "$K" /v ProductVersionMajor /t REG_DWORD /d "$INV_REGMAJOR"
