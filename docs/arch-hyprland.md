@@ -71,21 +71,19 @@ what works.
 
 ### Window rules
 
-Inventor opens many dialogs and tool windows. In tiling mode they get tiled,
-which is unusable. Float everything except the main window. Find the class with
-`hyprctl clients` while Inventor runs (expected: `inventor.exe`).
+Ready-made rules: `config/hyprland-inventor.lua` (Hyprland 0.55+, Lua config)
+and `config/hyprland-inventor.conf` (0.53/0.54, hyprlang). They:
 
-Syntax below is for Hyprland 0.48+ (`windowrule` with `class:`/`title:`); check
-`hyprctl version` and the Hyprland wiki if your version differs.
+- turn off Hyprland's border, shadow, rounding, blur and **animations** for the
+  Autodesk windows. Inventor's WPF panels draw their own frame and shadow
+  (separate shadow windows); Hyprland decorating those gives doubled grey
+  outlines around the property panels, and the move animation makes windows
+  that follow the cursor (coordinate input next to the sketch cursor) lag;
+- float dialogs and panels, tile the main window (`Autodesk Inventor...` title).
 
-```ini
-windowrule = float, class:^(inventor\.exe)$
-windowrule = tile, class:^(inventor\.exe)$, title:^(Autodesk Inventor Professional.*)$
-# Identity Manager / licensing popups
-windowrule = float, class:^(adskidentitymanager\.exe|adsklicensingservice\.exe)$
-# Wine tooltips/menus sometimes steal focus
-windowrule = nofocus, class:^(inventor\.exe)$, title:^$
-```
+Classes seen with `hyprctl clients`: `inventor.exe`, `adsklicensingagent.exe`,
+`adskidentitymanager.exe`. Wine's menus and tooltips are override-redirect
+X11 windows that Hyprland does not manage, so no rule touches them.
 
 ### Browser login (adskidmgr://)
 
