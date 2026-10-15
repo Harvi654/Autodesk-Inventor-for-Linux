@@ -65,7 +65,7 @@ wine "$IDMGR_EXE" >"$LOGDIR/idmgr-$TS.log" 2>&1 &
 READY=0
 for i in $(seq 1 45); do
     sleep 1
-    if tail -c +"$((LOG_OFFSET + 1))" "$IDSERVICES_LOG" 2>/dev/null | grep -q "SSO Server is ready"; then
+    if tail -c +"$((LOG_OFFSET + 1))" "$IDSERVICES_LOG" 2>/dev/null | grep -c "SSO Server is ready" >/dev/null; then
         READY=1; ok "Identity Manager ready after ${i}s"; break
     fi
     if ! pgrep -if '(^|[\\/])adskidentitymanager\.exe( |$)' >/dev/null; then

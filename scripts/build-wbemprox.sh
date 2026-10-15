@@ -50,7 +50,7 @@ if [ ! -d "$SRC" ]; then
     fi
 fi
 ok "$SRC"
-if wine --version | grep -qi staging; then
+if wine --version | grep -ci staging >/dev/null; then
     warn "you run wine-staging; building wbemprox from vanilla $WV source (staging rarely touches wbemprox)"
 fi
 
@@ -78,7 +78,7 @@ step "Building dlls/wbemprox..."
 make -j"$(nproc)" -C dlls/wbemprox > "$LOGDIR/wbemprox-build.log" 2>&1 \
     || die "build failed, see $LOGDIR/wbemprox-build.log"
 BUILT="$SRC/dlls/wbemprox/x86_64-windows/wbemprox.dll"
-strings -el "$BUILT" | grep -qx Win32_TimeZone || die "built DLL has no Win32_TimeZone?!"
+strings -el "$BUILT" | grep -cx Win32_TimeZone >/dev/null || die "built DLL has no Win32_TimeZone?!"
 ok "$BUILT"
 
 step "Install..."

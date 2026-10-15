@@ -49,7 +49,7 @@ if have wine; then
     info "wine --version: $WV"
     PE="$(wine_pe_dir)"
     info "PE DLL dir:     ${PE:-<not found>}"
-    if [ -n "$PE" ] && strings -el "$PE/wbemprox.dll" 2>/dev/null | grep -qx Win32_TimeZone; then
+    if [ -n "$PE" ] && strings -el "$PE/wbemprox.dll" 2>/dev/null | grep -cx Win32_TimeZone >/dev/null; then
         ok "wbemprox.dll already has Win32_TimeZone"
     else
         warn "wbemprox.dll is unpatched (run scripts/build-wbemprox.sh later)"

@@ -30,7 +30,7 @@ state() {
 
 wbemprox_ok() {
     local pe; pe="$(wine_pe_dir)"
-    [ -n "$pe" ] && strings -el "$pe/wbemprox.dll" 2>/dev/null | grep -qx Win32_TimeZone
+    [ -n "$pe" ] && strings -el "$pe/wbemprox.dll" 2>/dev/null | grep -cx Win32_TimeZone >/dev/null
 }
 
 case "${1:-status}" in
