@@ -31,6 +31,8 @@ hdr "GPU / Vulkan"
 lspci 2>/dev/null | grep -Ei 'vga|3d|display' | sed 's/^/    /'
 if have vulkaninfo; then
     vulkaninfo --summary 2>/dev/null | grep -E 'deviceName|driverName|apiVersion' | sed 's/^ */    /'
+    NDEV=$(vulkaninfo --summary 2>/dev/null | grep -c 'deviceType.*PHYSICAL_DEVICE_TYPE_\(DISCRETE\|INTEGRATED\)_GPU')
+    [ "$NDEV" -gt 1 ] && info "$NDEV GPUs: DXVK picks one itself; to choose, set INV_GPU=\"<part of deviceName>\" in config.env (current: ${INV_GPU:-auto})"
 else
     warn "vulkaninfo not installed (pacman -S vulkan-tools) - can't verify Vulkan"
 fi

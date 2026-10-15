@@ -50,6 +50,9 @@ INV_DXVK="${INV_DXVK:-pinned}"
 DXVK_VER="${DXVK_VER:-2.7.1}"
 DXVK_SHA256="${DXVK_SHA256:-d85ce7c79f57ecd765aaa1b9e7007cb875e6fde9f6d331df799bce73d513ce87}"
 DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
+# With several GPUs: part of the Vulkan device name DXVK should use
+# (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
+INV_GPU="${INV_GPU:-}"
 
 export WINEPREFIX="$INV_PREFIX"
 export WINEARCH=win64

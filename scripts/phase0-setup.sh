@@ -37,7 +37,7 @@ PKGS=(
 # Vulkan driver for the GPU(s) present. Skipped for NVIDIA if any nvidia utils
 # package is already installed (nvidia-open / -beta / -470xx setups differ).
 GPU="$(lspci 2>/dev/null | grep -Ei 'vga|3d|display' || true)"
-info "GPU: ${GPU:-unknown}"
+if [ -n "$GPU" ]; then while IFS= read -r g; do info "GPU: ${g#*: }"; done <<<"$GPU"; else info "GPU: unknown"; fi
 if grep -qi nvidia <<<"$GPU" && ! pacman -Qq 2>/dev/null | grep -qE '^nvidia.*utils'; then
     PKGS+=(nvidia-utils lib32-nvidia-utils)
 fi
