@@ -7,7 +7,7 @@ output is safe to share (dumps themselves may contain tokens - do not share them
 
 Usage: python3 -I scripts/minidump-info.py FILE.dmp [...]
 """
-import re
+
 import struct
 import sys
 
@@ -39,6 +39,49 @@ def mdstring(b, rva):
     return b[rva + 4: rva + 4 + n].decode("utf-16-le", "replace")
 
 
+# Chromium crash keys worth showing. "switch-N" = command-line switches,
+# "LOG_FATAL" = the message of a failed CHECK/NOTREACHED/LOG(FATAL).
+# Keys that could identify the user (URLs, user names) are not printed.
+SHOW_KEYS = {"ptype", "num-switches", "gpu-gl-renderer", "gpu-gl-vendor", "gpu-vsver", "gpu-psver",
+             "gpu_gl_context_is_virtual", "gpu-generation-intel", "egl-display-type", "osarch", "ver", "prod"}
+
+
+def utf8(b, rva):
+    n = u32(b, rva)
+    return b[rva + 4: rva + 4 + n].decode("utf-8", "replace").rstrip("\0")
+
+
+def crashpad_annotations(b, streams):
+    """Yield (key, value) from Crashpad's info stream: simple annotations of the
+    process and of every module, and the module annotation objects (crash keys)."""
+    if 0x43500001 not in streams:
+        return
+    _, rva = streams[0x43500001]
+
+    def simple(loc_rva):
+        if not loc_rva:
+            return
+        for i in range(u32(b, loc_rva)):
+            k, v = struct.unpack_from("<II", b, loc_rva + 4 + 8 * i)
+            yield utf8(b, k), utf8(b, v)
+
+    yield from simple(u32(b, rva + 40))
+    mods = u32(b, rva + 48)
+    if not mods:
+        return
+    for i in range(u32(b, mods)):
+        _, _, mrva = struct.unpack_from("<III", b, mods + 4 + 12 * i)
+        yield from simple(u32(b, mrva + 16))
+        objs = u32(b, mrva + 24)
+        if not objs:
+            continue
+        for j in range(u32(b, objs)):
+            name, typ, _, val = struct.unpack_from("<IHHI", b, objs + 4 + 12 * j)
+            if typ == 1:  # string
+                n = u32(b, val)
+                yield utf8(b, name), b[val + 4: val + 4 + n].decode("utf-8", "replace").rstrip("\0")
+
+
 def info(path):
     b = open(path, "rb").read()
     print(f"== {path.split('/')[-1]}")
@@ -65,11 +108,9 @@ def info(path):
                 return f"{name}+0x{addr - base:x}"
         return "?"
 
-    # Crashpad annotations are stored as plain strings; ptype = process type.
-    text = re.findall(rb"[\x20-\x7e]{3,200}", b)
-    for i, s in enumerate(text[:-1]):
-        if s in (b"ptype", b"reason", b"crash_reason", b"exit_reason"):
-            print(f"   {s.decode()}: {text[i + 1].decode('ascii', 'replace')[:120]}")
+    for k, v in crashpad_annotations(b, streams):
+        if k in SHOW_KEYS or k.startswith("switch-") or "LOG" in k or "fatal" in k.lower():
+            print(f"   {k}: {v[:300]}")
 
     if 6 not in streams:
         print("   no exception stream (dump taken without a crash, e.g. a hang report)")
