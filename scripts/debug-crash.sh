@@ -39,7 +39,9 @@ function module_of(pid, a,    i, best, bb) {
     best = ""; bb = -1
     for (i = 1; i <= nmod[pid]; i++)
         if (mbase[pid, i] <= a && mbase[pid, i] > bb) { bb = mbase[pid, i]; best = mname[pid, i] }
-    if (best == "") return sprintf("%016x (no module)", a)
+    # No size info in the log: an RVA above 256 MB means the address is not in
+    # that module - usually code generated at runtime (.NET JIT).
+    if (best == "" || a - bb > 268435456) return sprintf("%x (no module - .NET JIT code?)", a)
     return sprintf("%s+0x%x", best, a - bb)
 }
 {
@@ -53,7 +55,7 @@ function module_of(pid, a,    i, best, bb) {
     i = ++nmod[pid]; mbase[pid, i] = hex(base); mname[pid, i] = short
     next
 }
-/trace:seh:.* code=c0000005 / {
+/trace:seh:dispatch_exception code=c0000005 .* addr=/ {
     addr = $0; sub(/.* addr=/, "", addr); sub(/ .*/, "", addr)
     where = module_of(pid, hex(addr))
     pending = where; pline = NR; access = ""; target = ""
@@ -84,6 +86,7 @@ END {
 }' "$LOG"
 
 echo
-info "Most useful for the next step: the module+RVA on the line marked 'Swallowed'."
-info "Many 'read of 0000000000000000' AVs inside Wine/.NET are normal (handled null checks);"
-info "the one that matters is the last AV before the swallowed one."
+info "How to read it: an AV in '.NET JIT code' reading 0000000000000000 followed by an"
+info "unhandled NullReferenceException is a managed null dereference (the .NET stack trace"
+info "is the real location). An AV inside a native DLL (module+RVA) is a native crash."
+info "kernelbase.dll+0x4e95c is RaiseException - an exception re-thrown, not a new crash."

@@ -50,7 +50,9 @@ INV_DATA_DIR="${INV_DATA_DIR-$HOME/Inventor}"
 # whose Windows path Wine computes once per process - so the drive must point
 # at the data folder itself (/usr/share/wine), not at its fonts/ subfolder.
 _wine_bin="$(command -v wine 2>/dev/null || true)"
-WINE_DATA_DIR="${WINE_DATA_DIR:-$( [ -n "$_wine_bin" ] && readlink -f "$(dirname "$(readlink -f "$_wine_bin")")/../share/wine" 2>/dev/null)}"
+if [ -z "${WINE_DATA_DIR:-}" ] && [ -n "$_wine_bin" ]; then
+    WINE_DATA_DIR="$(readlink -f "$(dirname "$(readlink -f "$_wine_bin")")/../share/wine" 2>/dev/null || true)"
+fi
 [ -d "${WINE_DATA_DIR:-}" ] || WINE_DATA_DIR=/usr/share/wine
 unset _wine_bin
 if [ -z "${INV_FONT_DIRS+x}" ]; then
