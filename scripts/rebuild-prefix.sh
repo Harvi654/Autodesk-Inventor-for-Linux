@@ -51,9 +51,14 @@ mapfile -t IDMGR_VERS < <(reg_idmgr_versions)
 info "Wine $(wine_version) | prefix $WINEPREFIX"
 info "Windows user: $WU | Components $ASC_VER | Licensing $LIC_VER"
 info "Inventor ClientVersion: ${INV_CLIENT_VER:-<from registry export: none, using 30.0.17500.0000>}"
-info "IdentityManager versions in registry: ${IDMGR_VERS[*]:-<none, using 1.16.5.1 1.14.0.3>}"
+# Fallback: the version folders that actually exist on Windows (not the
+# original author's 1.16.5.1/1.14.0.3, which don't exist on newer installs)
+if [ ${#IDMGR_VERS[@]} -eq 0 ]; then
+    mapfile -t IDMGR_VERS < <(find "$WIN_IDMGR_BASE" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null \
+        | grep -E '^[0-9]+(\.[0-9]+)+$' | sort -V)
+fi
+info "IdentityManager versions: ${IDMGR_VERS[*]:-<none>}"
 [ -f "$REG_FILE" ] || warn "no registry export - run scripts/export-registry.sh first for a complete setup"
-[ ${#IDMGR_VERS[@]} -gt 0 ] || IDMGR_VERS=(1.16.5.1 1.14.0.3)
 INV_CLIENT_VER="${INV_CLIENT_VER:-30.0.17500.0000}"
 FREE_GB=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
 [ "$FREE_GB" -ge 25 ] || die "only ${FREE_GB} GB free in \$HOME, need ~25 GB"
