@@ -309,3 +309,7 @@ Realistic visual style not tested yet.
 **2026-10-15, later:** with `Default.ipj` in place, materials and appearances
 are listed and applied, parts are shaded and lit (Default IBL), shadows and
 selection highlight work, Visual Style list complete.
+
+**2026-10-15, evening:** WebView2 renders (Windows 7 + wined3d + HKLM policy):
+licensing dialog shows and closes normally, Home tab works (project picker,
+Open/New, Recent, Help links) after copying `ProgramData\Autodesk\Inventor 2026`.
