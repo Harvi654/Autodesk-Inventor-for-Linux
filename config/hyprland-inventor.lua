@@ -18,6 +18,10 @@ hl.window_rule({
   border_size = 0,
   rounding = 0,
   no_follow_mouse = true,
+  -- Wine asks for fullscreen on any caption-less window covering the monitor;
+  -- the right-click marking menu overlay is one. Fullscreened, Hyprland stops
+  -- drawing Inventor under it. Super+F still works (not an app request).
+  suppress_event = "fullscreen maximize fullscreenoutput",
 })
 
 -- Dialogs and tool panels float; tiling them breaks their layout.
