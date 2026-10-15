@@ -239,6 +239,30 @@ TrueType/OpenType fonts from your own Windows installation into
 `HKLM\...\Windows NT\CurrentVersion\Fonts` - DirectWrite (and so WPF) only sees
 registered fonts. `rebuild-prefix.sh` runs it automatically.
 
+## Default.ipj is required (materials, appearances, shading)
+
+The active project file decides which material and appearance libraries
+Inventor loads. `Default.ipj` sits at the top level of
+`C:\Users\Public\Documents\Autodesk\Inventor 2026\`, not in one of its
+subfolders, so copying only `Design Data`/`Templates`/... leaves the prefix
+without a project. Symptoms:
+
+- material and appearance lists are empty,
+- parts are drawn as one flat unlit grey; Shaded and Realistic look the same,
+- iLogic fails with `E_FAIL` on `get_ActiveDesignProject`.
+
+It looks like a graphics bug and is not one: Quality/Performance, tone mapping,
+feature level 10_1 and DXVK's "Class linkage not supported" warning were all
+ruled out first (that warning appears whenever a program passes a class-linkage
+object, which the D3D Effects framework always does). `rebuild-prefix.sh` now
+copies the whole folder (~380 MB) and Inventor picks `Default.ipj` up by itself.
+For an existing prefix:
+
+```bash
+rsync -rlt "/mnt/windows/Users/Public/Documents/Autodesk/Inventor 2026/" \
+  "$HOME/.wine-inventor2026/drive_c/users/Public/Documents/Autodesk/Inventor 2026/"
+```
+
 ## Result log
 
 **2026-10-15 - Inventor 2026 build 30.40.43500 (.NET 10), Wine 11.19, Arch + Hyprland, RX 580 (RADV):**
@@ -249,3 +273,7 @@ font folders as drive letters (isolation), registry import as UTF-16, disabled
 add-ins outside `Bin\Addins`, Windows fonts copied and registered, `Backgrounds`
 copied. Open: App Home page blank and File menu closes (WebView2), iLogic,
 Realistic visual style not tested yet.
+
+**2026-10-15, later:** with `Default.ipj` in place, materials and appearances
+are listed and applied, parts are shaded and lit (Default IBL), shadows and
+selection highlight work, Visual Style list complete.
