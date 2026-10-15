@@ -46,8 +46,15 @@ INV_DATA_DIR="${INV_DATA_DIR-$HOME/Inventor}"
 # Required with isolation: a font outside every drive gets the path
 # "\\?\unix\..." and WPF (Inventor's ribbon) crashes on it with
 # UriFormatException. Fonts only - nothing else of the system is exposed.
+# Wine's own fonts (Tahoma, Marlett, ...) are found through Wine's DATA folder,
+# whose Windows path Wine computes once per process - so the drive must point
+# at the data folder itself (/usr/share/wine), not at its fonts/ subfolder.
+_wine_bin="$(command -v wine 2>/dev/null || true)"
+WINE_DATA_DIR="${WINE_DATA_DIR:-$( [ -n "$_wine_bin" ] && readlink -f "$(dirname "$(readlink -f "$_wine_bin")")/../share/wine" 2>/dev/null)}"
+[ -d "${WINE_DATA_DIR:-}" ] || WINE_DATA_DIR=/usr/share/wine
+unset _wine_bin
 if [ -z "${INV_FONT_DIRS+x}" ]; then
-    INV_FONT_DIRS=(/usr/share/fonts /usr/local/share/fonts "$HOME/.local/share/fonts" "$HOME/.fonts" /usr/share/wine/fonts)
+    INV_FONT_DIRS=(/usr/share/fonts /usr/local/share/fonts "$HOME/.local/share/fonts" "$HOME/.fonts" "$WINE_DATA_DIR")
 fi
 INV_FONT_LETTERS=(t u v w x)
 

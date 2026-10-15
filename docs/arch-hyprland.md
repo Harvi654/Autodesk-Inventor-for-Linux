@@ -185,7 +185,7 @@ isolation on (default, `INV_SANDBOX=1`):
 |---|---|
 | `C:` | `~/.wine-inventor2026/drive_c` (the prefix) |
 | `D:` | `~/Inventor` - your projects and exports (`INV_DATA_DIR`) |
-| `T:` `U:` ... | font folders only (`/usr/share/fonts`, `~/.local/share/fonts`, Wine's fonts) |
+| `T:` `U:` ... | font folders only (`/usr/share/fonts`, `~/.local/share/fonts`) and Wine's read-only data folder `/usr/share/wine` (its own fonts are found through it) |
 | `Z:`, other letters, raw devices | removed |
 | Desktop, Documents, Downloads, ... | real folders inside the prefix |
 | "/" entry in file dialogs | removed (registry) |
