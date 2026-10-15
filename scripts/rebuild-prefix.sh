@@ -262,24 +262,10 @@ fi
 
 # -----------------------------------------------------------------------------
 step "Patching OGSFactory.dll (null-pointer guard for the 3D viewport)..."
-OGSDLL="$P_INV/Bin/OGSFactory.dll"
-hexat() { od -v -An -tx1 -j "$1" -N "$2" "$OGSDLL" | tr -d ' \n'; }
-# Bytes the patch replaces: mov rcx,[rsp+0x70] / mov rdx,[rcx]
-EXPECT_SITE="488b4c2470488b11"
-if [ "$(hexat $((0x56E5B)) 8)" = "$EXPECT_SITE" ] && [ "$(hexat $((0x56EA8)) 8)" = "$EXPECT_SITE" ] \
-   && [[ "$(hexat $((0x110A60)) 44)" =~ ^(00|cc)+$ ]]; then
-    cp "$OGSDLL" "$OGSDLL.original"
-    patch_bytes() { printf "$2" | dd of="$OGSDLL" bs=1 seek="$1" conv=notrunc status=none; }
-    patch_bytes $((0x56E5B))  '\xe9\x00\x9c\x0b\x00\x90\x90\x90'
-    patch_bytes $((0x110A60)) '\x48\x8b\x4c\x24\x70\x48\x85\xc9\x0f\x84\x11\x64\xf4\xff\x48\x8b\x11\xe9\xed\x63\xf4\xff'
-    patch_bytes $((0x56EA8))  '\xe9\xc9\x9b\x0b\x00\x90\x90\x90'
-    patch_bytes $((0x110A76)) '\x48\x8b\x4c\x24\x70\x48\x85\xc9\x0f\x84\x48\x64\xf4\xff\x48\x8b\x11\xe9\x24\x64\xf4\xff'
-    ok "patched (original saved as OGSFactory.dll.original)"
-elif [ "$(hexat $((0x56E5B)) 1)" = "e9" ]; then
-    info "already patched"
+if [ "${INV_OGS_PATCH:-1}" = 1 ]; then
+    bash "$SCRIPTS_DIR/ogs-patch.sh" apply || warn "OGSFactory.dll not patched - please report its sha256 in an issue"
 else
-    warn "OGSFactory.dll does not match the known build - NOT patched (offsets would corrupt it)."
-    warn "sha256: $(sha256sum "$OGSDLL" | cut -d' ' -f1)  - please report this in an issue."
+    info "skipped (INV_OGS_PATCH=0) - experiment: does Inventor work unpatched with the wbemprox patch?"
 fi
 
 step "Drive mappings..."

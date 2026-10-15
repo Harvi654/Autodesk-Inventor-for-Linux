@@ -127,11 +127,35 @@ Please report which one was needed.
 |------|----------|------|
 | Component versions | hard-coded (Licensing 15.4.2.4, Components 1.8.0, IdMgr 1.16.5.1/1.14.0.3, build 30.0.17500) | detected from `/mnt/windows` and the registry export |
 | Registry export | generated but never imported | imported with `regedit` before setting keys |
-| `rebuild-prefix.sh` | aborts at step 1 when no wineserver runs (`set -e`), and on any missing optional file | optional steps warn and continue |
-| OGSFactory.dll patch | written blindly at fixed offsets | original bytes verified first; skipped on a different build |
+| `rebuild-prefix.sh` | under `set -e`, any failing `cp`/`mv ... 2>/dev/null` of an optional file (license cache, Design Data dir that doesn't exist yet, `wineserver -k` with nothing running) can abort the run | optional steps warn and continue |
+| OGSFactory.dll patch | written blindly at fixed offsets | original bytes verified first; skipped on a different build; `scripts/ogs-patch.sh status|apply|revert` |
 | WebView2 installer | expected in `/tmp`, never downloaded | downloaded to `downloads/` |
 | Wine patch | `patch -p1` fails (absolute `/tmp/...` paths in header) | regenerated as a proper `a/ b/` patch |
 | Logs | `~/Projects/Inventor on linux/logs` | `logs/` in the checkout |
 | IPC cleanup | only `interprocess/01000000` | whole `interprocess/` (Open Problem #4) |
 | `msquic=` override | documented, not set | set in `launch-inventor.sh` |
 | Packages | `dxvk-mingw-git` via pacman (not in Arch repos) | official repos + `dxvk-bin` from AUR |
+
+## Experiment: is the OGSFactory.dll patch still needed?
+
+Wine's `IEnumWbemClassObject::Next()` (`dlls/wbemprox/class.c`) cannot return
+`S_OK` with a NULL object: on an empty result it returns `WBEM_S_FALSE` (1)
+with `*puReturned = 0`. `S_FALSE` is a success code, so OGS most likely only
+checks `FAILED(hr)` and then dereferences the NULL object. The result was empty
+because `Win32_TimeZone` did not exist in Wine.
+
+The binary patch was made in session 2, the wbemprox patch in session 3. If
+this reasoning is right, **with the patched wbemprox.dll installed, the
+unmodified OGSFactory.dll should not crash**, and the patch's side effects
+(darker materials, "Material Library not available" in Realistic style) would go
+away.
+
+```bash
+bash scripts/ogs-patch.sh status    # expects: wbemprox has Win32_TimeZone
+bash scripts/ogs-patch.sh revert    # original DLL
+bash scripts/launch-inventor.sh     # create a Part, switch to Realistic style
+bash scripts/ogs-patch.sh apply     # back, if it crashes
+```
+
+If it works, that resolves Open Problems #1 and the Realistic Visual Style
+entry, and makes the wbemprox upstream patch the only fix needed.
