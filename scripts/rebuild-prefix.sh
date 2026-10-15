@@ -50,7 +50,7 @@ INV_CLIENT_VER="$(reg_value "Inventor\\RegistryVersion$INV_REGMAJOR.0" ClientVer
 mapfile -t IDMGR_VERS < <(reg_idmgr_versions)
 info "Wine $(wine_version) | prefix $WINEPREFIX"
 info "Windows user: $WU | Components $ASC_VER | Licensing $LIC_VER"
-info "Inventor ClientVersion: ${INV_CLIENT_VER:-<from registry export: none, using 30.0.17500.0000>}"
+info "Inventor ClientVersion (registry): ${INV_CLIENT_VER:-<none - will use Inventor.exe FileVersion>}"
 # Fallback: the version folders that actually exist on Windows (not the
 # original author's 1.16.5.1/1.14.0.3, which don't exist on newer installs)
 if [ ${#IDMGR_VERS[@]} -eq 0 ]; then
@@ -59,6 +59,7 @@ if [ ${#IDMGR_VERS[@]} -eq 0 ]; then
 fi
 info "IdentityManager versions: ${IDMGR_VERS[*]:-<none>}"
 [ -f "$REG_FILE" ] || warn "no registry export - run scripts/export-registry.sh first for a complete setup"
+INV_CLIENT_VER="${INV_CLIENT_VER:-$(inv_file_version "$WIN_INV/Bin/Inventor.exe")}"
 INV_CLIENT_VER="${INV_CLIENT_VER:-30.0.17500.0000}"
 FREE_GB=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
 [ "$FREE_GB" -ge 25 ] || die "only ${FREE_GB} GB free in \$HOME, need ~25 GB"
@@ -141,8 +142,12 @@ done
 
 step "Copying Licensing $LIC_VER and license cache..."
 mkdir -p "$P_LIC_BASE"
-copy "$WIN_LIC_BASE/$LIC_VER" "$P_LIC_BASE/"
-[ -d "$WIN_LIC_BASE/Current" ] && copy "$WIN_LIC_BASE/Current" "$P_LIC_BASE/"
+# Whole folder: newer installs have Current/CurrentSDK as NTFS junctions, which
+# ntfs3 shows as RELATIVE symlinks - they stay valid inside drive_c.
+copy --exclude='uninstall.exe' "$WIN_LIC_BASE/" "$P_LIC_BASE/"
+for l in "$P_LIC_BASE"/* "$P_IDMGR_BASE"/*; do
+    if [ -L "$l" ] && [ ! -e "$l" ]; then warn "broken link after copy: $l -> $(readlink "$l")"; fi
+done
 mkdir -p "$P_C/ProgramData/Autodesk/Adlm/ASR" "$P_C/ProgramData/Autodesk/AdskLicensingService"
 shopt -s nullglob
 for f in "$WIN_PROGDATA/Adlm/ASR/"*.asr; do cp "$f" "$P_C/ProgramData/Autodesk/Adlm/ASR/"; done
@@ -194,8 +199,13 @@ step "Installing IdSDK SSO plugin into the Licensing Agent..."
 AGENTDIR="$P_LIC_BASE/$LIC_VER/AdskLicensingAgent"
 AGENT_WIN="C:\\\\Program Files (x86)\\\\Common Files\\\\Autodesk Shared\\\\AdskLicensing\\\\$LIC_VER\\\\AdskLicensingAgent\\\\SSOPlugin\\\\Current"
 mkdir -p "$AGENTDIR/SSOPlugin/Current"
-cp "$P_IDMGR_BASE/Current/SSOPlugin/Current/"*.dll "$AGENTDIR/SSOPlugin/Current/"
-cat > "$AGENTDIR/IDSDKVersionCompatibility.config" <<EOF
+for f in "$P_IDMGR_BASE/Current/SSOPlugin/Current/"*.dll; do
+    [ -e "$AGENTDIR/SSOPlugin/Current/$(basename "$f")" ] || cp "$f" "$AGENTDIR/SSOPlugin/Current/"
+done
+if [ -f "$AGENTDIR/IDSDKVersionCompatibility.config" ]; then
+    info "Licensing Agent already ships IDSDKVersionCompatibility.config - keeping Autodesk's file"
+else
+    cat > "$AGENTDIR/IDSDKVersionCompatibility.config" <<EOF
 {
     "comment": "Version compatibility file",
     "ssoClientPlugin": [
@@ -209,6 +219,8 @@ cat > "$AGENTDIR/IDSDKVersionCompatibility.config" <<EOF
     ]
 }
 EOF
+    ok "created IDSDKVersionCompatibility.config (original project's workaround)"
+fi
 
 # -----------------------------------------------------------------------------
 step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."

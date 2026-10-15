@@ -174,6 +174,12 @@ reg_idmgr_versions() {
         | grep -oE '[0-9]+(\.[0-9]+)+' | sort -uV
 }
 
+# FileVersion from a PE file's version resource, e.g. 30.40.43500.0000
+inv_file_version() {
+    [ -f "$1" ] || return 0
+    strings -el "$1" 2>/dev/null | grep -A1 -m1 -x FileVersion | tail -1 | grep -E '^[0-9]+(\.[0-9]+)+$' || true
+}
+
 wine_version() { wine --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1; }
 
 # Directory holding the system's 64-bit PE builtin DLLs (where wbemprox.dll lives)
