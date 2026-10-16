@@ -65,7 +65,7 @@ QUIRKS = {
     # installer exits with 69009748, which the shell sees as 84 (& 0xFF).
     # Inventor's launcher starts the service itself, so this is harmless.
     "adsklicensing": ((84,), r"C:\Program Files (x86)\Common Files\Autodesk Shared"
-                             r"\AdskLicensing\Current\AdskLicensingService\AdskLicensingService.exe"),
+                             r"\AdskLicensing\*\AdskLicensingService\AdskLicensingService.exe"),
 }
 
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
