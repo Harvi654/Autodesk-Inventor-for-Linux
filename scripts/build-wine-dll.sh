@@ -79,6 +79,16 @@ fi
 step "Applying patches/$DLL-*.patch..."
 cd "$SRC"
 shopt -s nullglob
+# Without --diag, take diagnostic patches from an earlier --diag build out
+# again (newest first; they sit on top of the real patches).
+if [ "$DO_DIAG" -eq 0 ]; then
+    DIAG=("$PROJECT_DIR/patches/debug/$DLL-"*.patch)
+    for ((k = ${#DIAG[@]} - 1; k >= 0; k--)); do
+        if patch -p1 -R --dry-run -s -f < "${DIAG[k]}" >/dev/null 2>&1; then
+            patch -p1 -R -s < "${DIAG[k]}" && ok "removed diagnostic $(basename "${DIAG[k]}")"
+        fi
+    done
+fi
 PATCHES=("$PROJECT_DIR/patches/$DLL-"*.patch)
 [ "$DO_DIAG" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/debug/$DLL-"*.patch)
 shopt -u nullglob

@@ -335,6 +335,36 @@ system hands back a generic document icon. Next: find which shell call returns
 the generic icon for `.ipt`/`.iam` (trace limited to the moment the dialog opens).
 The shell32 GetImage patch is still worth upstreaming for other programs.
 
+## Design Accelerator (Shaft, gears, ...): "Failed to create shaft"
+
+Two separate causes, both needed:
+
+1. **Wine bug, oleaut32** (`patches/oleaut32-typedesc-*.patch`): in an MSFT
+   typelib the pointee of a `VT_PTR` typedesc is an offset into the typedesc
+   table stored in two 16-bit words. Wine used only the low word as a signed
+   value; Inventor's API typelib is larger than 32 KB, so the offset turned
+   negative and Wine read memory before the table. Visible as
+   `ITypeInfo_fnInvoke failed to convert param 5 to vt(invalid ...)` for
+   `ApplicationAddInSite::CreateDocumentSubTypeHandler`; Design Accelerator's
+   add-in could not register itself. Fix: use the full 32-bit offset, with a
+   range check.
+2. **Missing files**: the generators open templates from
+   `Inventor 2026\Design Accelerator\models\` (`Documents.Add(...FD-Shaftmm.ipt)`
+   returned `E_INVALIDARG`). `rebuild-prefix.sh` now copies the whole install
+   folder instead of only `Bin`, `Configuration`, `Preferences`.
+
+```bash
+bash scripts/build-wine-dll.sh oleaut32 --install --hook
+```
+
+How it was found - tools that are useful for any "Unexpected failure" message:
+
+- `scripts/dotnet-exceptions.sh`: .NET exceptions Inventor catches itself, with
+  the catching method (runtime EventPipe tracing, nothing to install);
+- `scripts/build-wine-dll.sh oleaut32 --diag --install`: logs every failing
+  late-bound (IDispatch) call into Inventor's API with method name and
+  arguments. Build without `--diag` afterwards; that removes it again.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
