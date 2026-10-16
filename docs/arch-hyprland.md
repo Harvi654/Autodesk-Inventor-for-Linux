@@ -70,7 +70,10 @@ INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh
 | a failed patch leaves the product unregistered (1605) | Wine's rollback | keep a copy of the prefix before updating |
 
 Result: 2026.4 installed from Autodesk's packages differs from the Windows
-install only in Inventor.ini and the optional Electrical add-in.
+install only in Inventor.ini/InvRO.ini and the optional Electrical add-in
+(31 lines of `rsync` diff), with no Windows DLLs in the prefix. Verified:
+the updated prefix starts, signs in and models (extrude, hole, circular
+pattern) as 2026.4.
 
 Still open: fonts without a Windows partition,
 one-command/GUI installer, a bundled patched Wine.
