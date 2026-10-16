@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""Install Inventor into a Wine prefix straight from Autodesk's install image.
+
+Does what Autodesk's installer (ODIS) would do, without its UI: reads the
+image's manifests (scripts/lib/odis.py), then installs every package in
+dependency order - MSI via msiexec /qn, EXE with the silent parameters from
+the manifest, ZIP/7Z/ADIX archives unpacked to their target folders.
+
+Usage:
+  install-from-image.py IMAGE [--prefix DIR] [--lang en-US]
+                        [--from N] [--only N,M] [--redo] [--dry-run]
+
+  IMAGE     the unpacked image (folder with Setup.exe and manifest/)
+  --prefix  Wine prefix to install into (default ~/.wine-invtest - a TEST
+            prefix, so your working one is never touched)
+  --from N  start at step N;  --only N,M  run just these steps
+  --redo    run steps again even if they finished before
+  --dry-run print what would run
+
+Finished steps are remembered in PREFIX/.odis-install-state.json, so after a
+failure you can fix things and simply rerun - it continues where it stopped.
+Logs: logs/odis-install-<time>/
+"""
+import argparse
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+import urllib.parse
+import zipfile
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(HERE, "lib"))
+import odis  # noqa: E402
+
+PROJECT = os.path.dirname(HERE)
+USER = os.environ.get("USER") or "user"
+MEDIA_DRIVE = "m:"   # the image is mapped to this drive letter
+
+# MSIX/ADIX "VFS" folder names -> folder below drive_c
+VFS = {
+    "programfilesx64": "Program Files",
+    "programfilesx86": "Program Files (x86)",
+    "programfilescommonx64": "Program Files/Common Files",
+    "programfilescommonx86": "Program Files (x86)/Common Files",
+    "common appdata": "ProgramData",
+    "appdata": "users/%s/AppData/Roaming" % USER,
+    "local appdata": "users/%s/AppData/Local" % USER,
+    "fonts": "windows/Fonts",
+    "systemx64": "windows/system32",
+    "systemx86": "windows/syswow64",
+    "windows": "windows",
+}
+ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
+             "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
+
+
+class Installer:
+    def __init__(self, a):
+        self.a = a
+        self.image = os.path.abspath(a.image)
+        self.prefix = os.path.abspath(os.path.expanduser(a.prefix))
+        self.c = os.path.join(self.prefix, "drive_c")
+        self.logdir = os.path.join(PROJECT, "logs", time.strftime("odis-install-%Y%m%d-%H%M%S"))
+        self.state_file = os.path.join(self.prefix, ".odis-install-state.json")
+        self.env = dict(os.environ, WINEPREFIX=self.prefix,
+                        WINEDEBUG=os.environ.get("WINEDEBUG", "-all"))
+        self.vars = {
+            "commonprogramfiles": r"C:\Program Files\Common Files",
+            "commonprogramfiles(x86)": r"C:\Program Files (x86)\Common Files",
+            "programfiles": r"C:\Program Files",
+            "programfiles(x86)": r"C:\Program Files (x86)",
+            "programdata": r"C:\ProgramData",
+            "install_dest": r"C:\Program Files\Autodesk",
+            "adsk_odis_metadata_base_location": r"C:\ProgramData\Autodesk\ODIS",
+            "temp": r"C:\users\%s\AppData\Local\Temp" % USER,
+            "tmp": r"C:\users\%s\AppData\Local\Temp" % USER,
+            "inv_locale": a.lang,
+            "media_root": MEDIA_DRIVE.upper(),
+            "install_source": MEDIA_DRIVE.upper(),
+        }
+
+    # --- helpers ------------------------------------------------------------
+    def expand(self, s, extra=None, step=None):
+        """Replace %VAR% (case-insensitive), including the step's manifest
+        properties (which may refer to other variables). Unknown ones stay."""
+        if not s:
+            return s
+        v = dict(self.vars, **(extra or {}))
+        for k, val in ((step or {}).get("properties") or {}).items():
+            v[k.lower()] = val
+        for _ in range(5):
+            new = self._sub(s, v)
+            if new == s:
+                break
+            s = new
+        return s
+
+    @staticmethod
+    def _sub(s, v):
+        out, i = [], 0
+        while i < len(s):
+            j = s.find("%", i)
+            k = s.find("%", j + 1) if j >= 0 else -1
+            if j < 0 or k < 0:
+                out.append(s[i:]); break
+            name = s[j + 1:k].lower()
+            if name in v:
+                out.append(s[i:j] + v[name]); i = k + 1
+            else:
+                out.append(s[i:k]); i = k
+        return "".join(out)
+
+    def unix(self, winpath):
+        """C:\\Foo\\Bar -> PREFIX/drive_c/Foo/Bar"""
+        p = winpath.replace("\\", "/")
+        if p[:2].lower() == "c:":
+            return os.path.join(self.c, p[2:].lstrip("/"))
+        if p[:2].lower() == MEDIA_DRIVE:
+            return os.path.join(self.image, p[2:].lstrip("/"))
+        raise ValueError("not a C: or %s path: %s" % (MEDIA_DRIVE, winpath))
+
+    def media(self, rel):
+        return MEDIA_DRIVE.upper() + "\\" + rel.replace("/", "\\")
+
+    def log(self, msg):
+        print(msg, flush=True)
+        with open(os.path.join(self.logdir, "install.log"), "a") as f:
+            f.write(msg + "\n")
+
+    def run(self, argv, logname):
+        self.log("      $ " + " ".join(shlex.quote(x) for x in argv))
+        if self.a.dry_run:
+            return 0
+        with open(os.path.join(self.logdir, logname), "ab") as out:
+            return subprocess.call(argv, env=self.env, stdout=out, stderr=subprocess.STDOUT)
+
+    # --- prefix -------------------------------------------------------------
+    def prepare(self):
+        os.makedirs(self.logdir, exist_ok=True)
+        if self.a.dry_run:
+            return
+        if not os.path.isdir(self.c):
+            self.log("creating Wine prefix %s" % self.prefix)
+            subprocess.check_call(["wineboot", "-i"], env=self.env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.check_call(["wineserver", "-w"], env=self.env)
+        subprocess.call(["wine", "reg", "add", r"HKCU\Software\Wine", "/v", "Version",
+                         "/d", "win10", "/f"], env=self.env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        link = os.path.join(self.prefix, "dosdevices", MEDIA_DRIVE)
+        if os.path.islink(link) or os.path.exists(link):
+            os.remove(link)
+        os.symlink(self.image, link)
+
+    def state(self):
+        try:
+            with open(self.state_file) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return {}
+
+    def mark_done(self, key):
+        if self.a.dry_run:
+            return
+        st = self.state()
+        st[key] = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(self.state_file, "w") as f:
+            json.dump(st, f, indent=1)
+
+    # --- package types ------------------------------------------------------
+    def do_msi(self, s, logname, media=None):
+        winlog = r"C:\odis-logs\%s.msi.log" % os.path.splitext(logname)[0]
+        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        extra = {"media_root": media} if media else None
+        argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
+                if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
+        argv += shlex.split(self.expand(s["params"], extra, s))
+        for k, v in s["msiProperties"].items():
+            v = self.expand(v, extra, s)
+            if "%" not in v:          # leave out ones only ODIS can fill in
+                argv.append("%s=%s" % (k, v))
+        rc = self.run(argv, logname)
+        return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
+
+    def do_exe(self, s, logname, media=None):
+        exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
+        extra = {"media_root": media} if media else None
+        rc = self.run(["wine", exe] + shlex.split(self.expand(s["params"], extra, s)), logname)
+        return rc in (0, 1641, 3010)
+
+    def target_dir(self, s):
+        loc = self.expand(s.get("installLocation") or "", step=s)
+        if not loc or "%" in loc:
+            raise RuntimeError("no usable installLocation (%r) for %s" % (s.get("installLocation"), s["name"]))
+        return self.unix(loc)
+
+    def do_zip(self, s, logname, path):
+        dest = self.target_dir(s)
+        self.log("      unzip -> %s" % dest)
+        if not self.a.dry_run:
+            os.makedirs(dest, exist_ok=True)
+            with zipfile.ZipFile(path) as z:
+                z.extractall(dest)
+        return self.do_actions(s, logname)
+
+    def do_7z(self, s, logname, path):
+        dest = self.target_dir(s)
+        sevenzip = shutil.which("7z") or shutil.which("7za")
+        if not sevenzip:
+            raise RuntimeError("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
+        return self.run([sevenzip, "x", "-y", "-o" + dest, path], logname) == 0
+
+    def do_adix(self, s, logname, path):
+        """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
+        written, regs = 0, []
+        def place(name, read):
+            nonlocal written
+            parts = urllib.parse.unquote(name).replace("\\", "/").split("/")
+            if len(parts) == 1 and parts[0].lower() in ADIX_META:
+                if parts[0].lower().endswith(".dat"):
+                    regs.append(parts[0])
+                    if not self.a.dry_run:
+                        with open(os.path.join(self.logdir, "%s-%s" % (s["name"], parts[0])), "wb") as f:
+                            f.write(read())
+                return
+            if parts[0] != "VFS" or len(parts) < 3 or not parts[-1]:
+                return
+            base = VFS.get(parts[1].lower())
+            if base is None:
+                self.log("      WARN unknown VFS folder %r - skipped %s" % (parts[1], name))
+                return
+            dst = os.path.join(self.c, base, *parts[2:])
+            if not self.a.dry_run:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                with open(dst, "wb") as f:
+                    f.write(read())
+            written += 1
+        if os.path.isdir(path):
+            for d, _, files in os.walk(path):
+                for fn in files:
+                    full = os.path.join(d, fn)
+                    place(os.path.relpath(full, path), lambda full=full: open(full, "rb").read())
+        else:
+            with zipfile.ZipFile(path) as z:
+                for info in z.infolist():
+                    if not info.is_dir():
+                        place(info.filename, lambda info=info: z.read(info))
+        self.log("      %d files placed" % written)
+        if regs:
+            self.log("      NOTE registry hive(s) %s saved to the log folder - not imported yet" % ", ".join(regs))
+        return written > 0
+
+    def do_actions(self, s, logname, media=None):
+        ok = True
+        for act in s["actions"]:
+            if act["type"] not in ("preInstall", "postInstall"):
+                continue
+            path = act["path"] or ""
+            if "%INSTALLERPATH%" in path or "Installer.exe" in path:
+                self.nested_bundle(act, logname, s)
+                continue
+            exe = self.expand(path, {"install_source": media} if media else None, s)
+            if "%" in exe:
+                self.log("      skip action %s %s (unknown variable)" % (act["type"], path))
+                continue
+            rc = self.run(["wine", exe.replace("/", "\\")] + shlex.split(self.expand(act["params"], step=s)), logname)
+            if rc != 0:
+                self.log("      WARN %s action returned %d" % (act["type"], rc))
+        return ok
+
+    def nested_bundle(self, act, logname, step):
+        """ODIS action that installs another bundle (e.g. Shared Components)."""
+        args = shlex.split(self.expand(act["params"], step=step))
+        opt = {args[i]: args[i + 1] for i in range(len(args) - 1) if args[i].startswith("--")}
+        if opt.get("--install_mode") != "install" or "--mount_point" not in opt:
+            return
+        mount = opt["--mount_point"]
+        self.log("      nested bundle in %s" % mount)
+        if self.a.dry_run:
+            return
+        img = odis.Image(self.unix(mount))
+        manifest = os.path.relpath(self.unix(opt["--manifest"]), img.root)
+        steps, skipped, missing = odis.plan_bundle(img, manifest, self.a.lang)
+        for n, why in skipped:
+            self.log("        skip %s: %s" % (n, why))
+        for n, rel, chain in missing:
+            self.log("        MISSING manifest %s (%s)" % (rel, chain))
+        for i, sub in enumerate(steps, 1):
+            self.install_step(sub, "%s-sub%02d" % (os.path.splitext(logname)[0], i), img, mount)
+
+    # --- driver -------------------------------------------------------------
+    def install_step(self, s, tag, img, media=None):
+        self.log("  -> %s %s %s" % (s["type"], s["display"], s["version"]))
+        path = img.find(s["file"])
+        if not path:
+            self.log("     ERROR %s not in image" % s["file"]); return False
+        logname = tag + ".log"
+        try:
+            return self._install(s, logname, path, media)
+        except Exception as e:  # noqa: BLE001 - report and stop cleanly
+            self.log("     ERROR %s: %s" % (type(e).__name__, e))
+            return False
+
+    def _install(self, s, logname, path, media):
+        t = s["type"]
+        if self.a.dry_run and t in ("ZIP", "7Z", "ADIX"):
+            self.log("      unpack %s (%s)" % (s["file"], t))
+            return self.do_actions(s, logname, media)
+        if t == "MSI":
+            ok = self.do_msi(s, logname, media)
+        elif t == "EXE":
+            ok = self.do_exe(s, logname, media) and self.do_actions(s, logname, media)
+        elif t == "ZIP":
+            ok = self.do_zip(s, logname, path)
+        elif t == "7Z":
+            ok = self.do_7z(s, logname, path)
+        elif t == "ADIX":
+            ok = self.do_adix(s, logname, path)
+        else:
+            self.log("     WARN don't know how to install type %s - skipped" % t); return True
+        if not ok:
+            self.log("     FAILED - see %s" % os.path.join(self.logdir, logname))
+        return ok
+
+    def main(self):
+        img = odis.Image(self.image)
+        steps, skipped, missing = odis.plan(img, ["inventor"], self.a.lang)
+        if missing:
+            for n, rel, chain in missing:
+                print("missing manifest %s (needed by %s)" % (rel, chain))
+            sys.exit(1)
+        self.prepare()
+        only = {int(x) for x in self.a.only.split(",")} if self.a.only else None
+        done = self.state()
+        self.log("image  %s\nprefix %s\nlogs   %s" % (self.image, self.prefix, self.logdir))
+        for n, why in skipped:
+            self.log("skip   %s: %s" % (n, why))
+        for i, s in enumerate(steps, 1):
+            if (only and i not in only) or i < self.a.start:
+                continue
+            key = s["manifest"]
+            if key in done and not self.a.redo:
+                self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"])); continue
+            self.log("[%2d/%d] %s" % (i, len(steps), s["display"]))
+            t0 = time.time()
+            ok = self.install_step(s, "%02d-%s" % (i, s["name"]), img)
+            if ok:
+                self.mark_done(key)
+                self.log("     done in %ds" % (time.time() - t0))
+            elif s["ignoreFailure"]:
+                self.log("     failed, but the manifest allows that - continuing")
+            else:
+                self.log("\nStopped at step %d. Fix it and rerun the same command to continue." % i)
+                sys.exit(1)
+        self.log("\nAll steps finished.")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("image")
+    ap.add_argument("--prefix", default="~/.wine-invtest")
+    ap.add_argument("--lang", default="en-US")
+    ap.add_argument("--from", dest="start", type=int, default=1)
+    ap.add_argument("--only")
+    ap.add_argument("--redo", action="store_true")
+    ap.add_argument("--dry-run", action="store_true")
+    a = ap.parse_args()
+    if not os.path.isfile(os.path.join(a.image, "Setup.exe")):
+        sys.exit("%s does not look like an install image (no Setup.exe)" % a.image)
+    if os.path.realpath(os.path.expanduser(a.prefix)) == os.path.realpath(
+            os.path.expanduser("~/.wine-inventor2026")) and not a.dry_run:
+        sys.exit("refusing to install into your working prefix - use a test prefix")
+    Installer(a).main()
+
+
+if __name__ == "__main__":
+    main()
