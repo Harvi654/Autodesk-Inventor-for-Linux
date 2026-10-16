@@ -196,6 +196,9 @@ class Installer:
         argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
                 if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
         argv += shlex.split(self.expand(s["params"], extra, s))
+        # Autodesk MSIs have the launch condition "ADSK_ODIS_SETUP OR Installed"
+        # ("needs to be run from Setup.exe"); ODIS sets this property.
+        argv.append("ADSK_ODIS_SETUP=1")
         for k, v in s["msiProperties"].items():
             v = self.expand(v, extra, s)
             if "%" not in v:          # leave out ones only ODIS can fill in
