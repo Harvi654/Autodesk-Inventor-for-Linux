@@ -45,22 +45,36 @@ SKIP = {
 LOCALE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
 
 
+def bundle_manifest(root):
+    """Name of the Bundle manifest at the top of an image: bundleManifest.xml
+    (ODIS metadata copy) or setup.xml (a downloaded update), or None."""
+    for name in ("bundleManifest.xml", "setup.xml"):
+        p = os.path.join(root, name)
+        if os.path.isfile(p):
+            try:
+                if ET.parse(p).getroot().tag == "{%s}Bundle" % NS["m"]:
+                    return name
+            except ET.ParseError:
+                pass
+    return None
+
+
 def image_kind(root):
     """'product' (full install image), 'update' (update bundle) or None."""
-    if os.path.isdir(os.path.join(root, "manifest")) and \
-            any(f.startswith("app.") for f in os.listdir(os.path.join(root, "manifest"))):
+    mdir = os.path.join(root, "manifest")
+    if os.path.isdir(mdir) and any(f.startswith("app.") for f in os.listdir(mdir)):
         return "product"
-    if os.path.isfile(os.path.join(root, "bundleManifest.xml")):
+    if bundle_manifest(root):
         return "update"
     return None
 
 
 def bundle_id(root):
-    """UPI2 + display name of an image's bundleManifest.xml (or None)."""
-    p = os.path.join(root, "bundleManifest.xml")
-    if not os.path.isfile(p):
+    """UPI2 + display name of an image's Bundle manifest (or None, None)."""
+    name = bundle_manifest(root)
+    if not name:
         return None, None
-    r = ET.parse(p).getroot()
+    r = ET.parse(os.path.join(root, name)).getroot()
     return _text(r, "m:Identity/m:UPI2"), _text(r, "m:Identity/m:DisplayName")
 
 

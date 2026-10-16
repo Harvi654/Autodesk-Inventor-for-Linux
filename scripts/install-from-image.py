@@ -432,7 +432,7 @@ class Installer:
         if kind == "update":
             upi, name = odis.bundle_id(self.image)
             self.key_prefix = "update%s:" % upi
-            steps, skipped, missing = odis.plan_bundle(img, "bundleManifest.xml", self.a.lang)
+            steps, skipped, missing = odis.plan_bundle(img, odis.bundle_manifest(self.image), self.a.lang)
             if not os.path.isfile(os.path.join(self.prefix, ".odis-install-state.json")):
                 sys.exit("no Inventor installed in %s yet - install the product image first" % self.prefix)
         else:
@@ -542,7 +542,7 @@ def main():
     if os.path.isfile(a.image):
         a.image = unpack_exe(a.image, a.dry_run)
     if odis.image_kind(a.image) is None:
-        sys.exit("%s is neither an install image (manifest/app.*.xml) nor an update (bundleManifest.xml)" % a.image)
+        sys.exit("%s is neither an install image (manifest/app.*.xml) nor an update (Bundle setup.xml)" % a.image)
     if os.path.realpath(os.path.expanduser(a.prefix)) == os.path.realpath(
             os.path.expanduser("~/.wine-inventor2026")) and not a.dry_run:
         sys.exit("refusing to install into your working prefix - use a test prefix")
