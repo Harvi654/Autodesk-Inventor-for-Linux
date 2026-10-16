@@ -1,0 +1,20 @@
+diff --git a/dlls/msi/table.c b/dlls/msi/table.c
+index 089f2027..cf04690a 100644
+--- a/dlls/msi/table.c
++++ b/dlls/msi/table.c
+@@ -3053,9 +3053,13 @@ static MSIRECORD *get_transform_record( const struct table_view *tv, const strin
+             r = IStorage_OpenStream( stg, encname, NULL, STGM_READ | STGM_SHARE_EXCLUSIVE, 0, &stm );
+             if ( r != ERROR_SUCCESS )
+             {
+-                msiobj_release( &rec->hdr );
++                /* A NULL binary field has no stream in the transform, e.g. a
++                 * Patch table row whose header is in MsiPatchHeaders
++                 * (StreamRef_) instead of the Header column. Keep the row
++                 * with the field left NULL instead of dropping it. */
++                TRACE(" field %d [%s] no stream, NULL\n", i+1, debugstr_w(encname));
+                 free( encname );
+-                return NULL;
++                continue;
+             }
+ 
+             MSI_RecordSetStream( rec, i+1, stm );

@@ -13,6 +13,10 @@
 #                           parameter type, IDispatch calls fail with E_INVALIDARG
 #                           (Design Accelerator shaft, patches/oleaut32-typedesc-pointee.patch);
 #                           --diag adds detail when ITypeInfo::Invoke can't convert a parameter
+#               msi       - transforms: a row whose binary (stream) field is NULL
+#                           was dropped; MSP updates lose their Patch rows that
+#                           use MsiPatchHeaders -> files not updated
+#                           (patches/msi-transform-null-stream.patch)
 #               All patches/DLL-*.patch are applied; with --diag also
 #               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
@@ -34,7 +38,8 @@ case "$DLL" in
     oleaut32) CHECK='pointee index %lu out of range'; TEST=typelib ;;
     kernelbase) CHECK=''; TEST=security; TESTDLL=advapi32 ;;
     riched20) CHECK='paragraph needs rewrap'; TEST=editor ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20 [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    msi)      CHECK='no stream, NULL'; TEST=patch ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
