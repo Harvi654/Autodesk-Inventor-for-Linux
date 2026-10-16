@@ -31,7 +31,12 @@ if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
     exit 0
 fi
 
-cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; }
+# The adskidmgr:// login callback (adskidmgr-callback.sh, started by the
+# browser) must reach THIS prefix - tell it which one is running.
+ACTIVE_PREFIX_FILE="${XDG_RUNTIME_DIR:-/tmp}/inventor-on-linux.prefix"
+echo "$WINEPREFIX" > "$ACTIVE_PREFIX_FILE"
+
+cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; rm -f "$ACTIVE_PREFIX_FILE"; }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 

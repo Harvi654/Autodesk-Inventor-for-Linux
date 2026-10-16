@@ -3,8 +3,15 @@
 # Passes the OAuth2 code to the RUNNING Identity Manager by starting a short-lived
 # client instance. Never kill wineserver here: that would end the Inventor session.
 
+# The browser starts this without any of our environment: use the prefix
+# launch-inventor.sh recorded for the running session (e.g. a test prefix).
+ACTIVE="${XDG_RUNTIME_DIR:-/tmp}/inventor-on-linux.prefix"
+if [ -z "${INV_PREFIX:-}" ] && [ -s "$ACTIVE" ]; then
+    INV_PREFIX="$(cat "$ACTIVE")"
+    export INV_PREFIX
+fi
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
-echo "$(date '+%F %T') callback: ${1%%\?*}?..." >>"$LOGDIR/adskidmgr-callback.log"
+echo "$(date '+%F %T') callback (prefix $WINEPREFIX): ${1%%\?*}?..." >>"$LOGDIR/adskidmgr-callback.log"
 
 # Make sure the AdOAuth2Code event file exists for every running server instance
 shopt -s nullglob

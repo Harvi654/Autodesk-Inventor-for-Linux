@@ -64,7 +64,9 @@ ok "registry keys set"
 step "Licensing service: manual start (launch-inventor.sh runs it as a process)..."
 # Under Wine it never reports "running" as a Windows service (1053/1077);
 # left on automatic start, Wine would try - and time out - on every boot.
-wine_q sc config AdskLicensingService start= demand || warn "could not change the service start type"
+# (Wine's sc.exe has no "config" command - set the start type directly: 3 = demand)
+wine_reg_add 'HKLM\SYSTEM\CurrentControlSet\Services\AdskLicensingService' /v Start /t REG_DWORD /d 3 \
+    && ok "AdskLicensingService: manual start" || warn "could not change the service start type"
 
 step "Installing IdSDK SSO plugin into the Licensing Agent..."
 cfg_sso_plugin
