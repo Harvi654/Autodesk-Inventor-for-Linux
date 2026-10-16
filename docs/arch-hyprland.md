@@ -365,6 +365,23 @@ How it was found - tools that are useful for any "Unexpected failure" message:
   late-bound (IDispatch) call into Inventor's API with method name and
   arguments. Build without `--diag` afterwards; that removes it again.
 
+## Content Center
+
+Libraries (`*.idcl`, SQLite) come from `ProgramData\Autodesk\Inventor 2026\Content
+Center\Libraries` (`rebuild-prefix.sh --content-center`, ~7 GB). They stayed
+empty and a refresh crashed Inventor: before opening a library,
+`Connectivity.Core.Util.IOUtil.HasWritePermission` walks the file's ACL and calls
+`SecurityIdentifier.IsAccountSid()`, which relies on `GetWindowsAccountDomainSid`
+failing with `ERROR_NON_ACCOUNT_SID` for well-known SIDs. Wine returned
+`ERROR_INVALID_SID`, .NET threw `Win32Exception: Invalid SID`.
+`patches/kernelbase-account-domain-sid.patch` (with a Wine test) fixes it:
+
+```bash
+bash scripts/build-wine-dll.sh kernelbase --install --hook
+```
+
+Confirmed: Place from Content Center lists and places parts (ISO screws).
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
