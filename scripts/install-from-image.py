@@ -67,7 +67,7 @@ class Installer:
         self.logdir = os.path.join(PROJECT, "logs", time.strftime("odis-install-%Y%m%d-%H%M%S"))
         self.state_file = os.path.join(self.prefix, ".odis-install-state.json")
         self.env = dict(os.environ, WINEPREFIX=self.prefix,
-                        WINEDEBUG=os.environ.get("WINEDEBUG", "-all"))
+                        WINEDEBUG=os.environ.get("WINEDEBUG", "fixme-all"))
         self.vars = {
             "commonprogramfiles": r"C:\Program Files\Common Files",
             "commonprogramfiles(x86)": r"C:\Program Files (x86)\Common Files",
@@ -136,7 +136,10 @@ class Installer:
         if self.a.dry_run:
             return 0
         with open(os.path.join(self.logdir, logname), "ab") as out:
-            return subprocess.call(argv, env=self.env, stdout=out, stderr=subprocess.STDOUT)
+            t0 = time.time()
+            rc = subprocess.call(argv, env=self.env, stdout=out, stderr=subprocess.STDOUT)
+        self.log("        exit code %d after %.1fs" % (rc, time.time() - t0))
+        return rc
 
     # --- prefix -------------------------------------------------------------
     def prepare(self):
