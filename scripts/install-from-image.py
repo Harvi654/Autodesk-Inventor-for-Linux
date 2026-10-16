@@ -54,6 +54,18 @@ VFS = {
     "systemx86": "windows/syswow64",
     "windows": "windows",
 }
+# Installers that end with an error under Wine although everything they
+# install is in place. name -> (exit codes to accept, file that must exist)
+QUIRKS = {
+    # Installs fine, then starts AdskLicensingService as a Windows service.
+    # The service does start (its log shows "HTTP server running") but never
+    # reports "running" to Wine's service manager in time -> error 1053 ->
+    # installer exits with 69009748, which the shell sees as 84 (& 0xFF).
+    # Inventor's launcher starts the service itself, so this is harmless.
+    "adsklicensing": ((84,), r"C:\Program Files (x86)\Common Files\Autodesk Shared"
+                             r"\AdskLicensing\Current\AdskLicensingService\AdskLicensingService.exe"),
+}
+
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
              "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
 
@@ -193,7 +205,13 @@ class Installer:
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
         rc = self.run(["wine", exe] + shlex.split(self.expand(s["params"], extra, s)), logname)
-        return rc in (0, 1641, 3010)
+        if rc in (0, 1641, 3010):
+            return True
+        q = QUIRKS.get(s["name"].lower())
+        if q and rc in q[0] and os.path.exists(self.unix(q[1])):
+            self.log("        known Wine quirk for %s, files are installed - OK" % s["name"])
+            return True
+        return False
 
     def target_dir(self, s):
         loc = self.expand(s.get("installLocation") or "", step=s)
