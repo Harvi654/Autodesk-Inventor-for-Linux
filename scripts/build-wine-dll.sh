@@ -5,7 +5,10 @@
 # Usage: bash scripts/build-wine-dll.sh DLL [--install] [--hook] [--restore] [--test]
 #   DLL         wbemprox  - Win32_TimeZone class (patches/wbemprox-timezone.patch)
 #               shell32   - IShellItemImageFactory::GetImage: file icons and thumbnails
-#                           instead of an empty 1x1 bitmap (patches/shell32-getimage.patch)
+#                           instead of an empty 1x1 bitmap (patches/shell32-getimage.patch);
+#                           IFolderView2 selection methods, double-click in Inventor's
+#                           Open/Place dialog (patches/shell32-folderview-selection.patch)
+#               All patches/DLL-*.patch are applied.
 #   --install   copy the built DLL over the system one (sudo, original backed up)
 #   --hook      add a pacman hook that reminds you to rerun this after Wine updates
 #   --restore   put the original system DLL back
@@ -19,8 +22,8 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 DLL="${1:-}"; shift || true
 case "$DLL" in
-    wbemprox) PATCH="$PROJECT_DIR/patches/wbemprox-timezone.patch"; CHECK=Win32_TimeZone;  TEST=query ;;
-    shell32)  PATCH="$PROJECT_DIR/patches/shell32-getimage.patch";  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
+    wbemprox) CHECK=Win32_TimeZone;  TEST=query ;;
+    shell32)  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
     *) die "usage: $0 wbemprox|shell32 [--install] [--hook] [--restore] [--test]" ;;
 esac
 
@@ -65,14 +68,16 @@ if wine --version | grep -ci staging >/dev/null; then
     warn "you run wine-staging; building $DLL from vanilla $WV source"
 fi
 
-step "Applying $(basename "$PATCH")..."
+step "Applying patches/$DLL-*.patch..."
 cd "$SRC"
-if patch -p1 -R --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
-    ok "already applied"
-else
-    patch -p1 -s < "$PATCH" || die "patch does not apply to Wine $WV - please open an issue"
-    ok "applied"
-fi
+for PATCH in "$PROJECT_DIR/patches/$DLL-"*.patch; do
+    if patch -p1 -R --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
+        ok "$(basename "$PATCH") already applied"
+    else
+        patch -p1 -s < "$PATCH" || die "$(basename "$PATCH") does not apply to Wine $WV - please open an issue"
+        ok "$(basename "$PATCH") applied"
+    fi
+done
 
 step "Configuring (minimal, PE x86_64 only)..."
 if [ ! -f Makefile ]; then

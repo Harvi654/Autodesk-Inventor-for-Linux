@@ -1,0 +1,172 @@
+diff --git a/dlls/shell32/shlview.c b/dlls/shell32/shlview.c
+index f85c3526..82758269 100644
+--- a/dlls/shell32/shlview.c
++++ b/dlls/shell32/shlview.c
+@@ -2787,21 +2787,49 @@ static HRESULT WINAPI FolderView_ItemCount(IFolderView2 *iface, UINT flags, int
+ 
+     TRACE("(%p)->(%u %p)\n", This, flags, items);
+ 
+-    if (flags != SVGIO_ALLVIEW)
+-        FIXME("some flags unsupported, %x\n", flags & ~SVGIO_ALLVIEW);
+-
+-    *items = SendMessageW(This->hWndList, LVM_GETITEMCOUNT, 0, 0);
++    switch (flags & SVGIO_TYPE_MASK)
++    {
++    case SVGIO_SELECTION:
++        *items = SendMessageW(This->hWndList, LVM_GETSELECTEDCOUNT, 0, 0);
++        break;
++    default:
++        if ((flags & SVGIO_TYPE_MASK) != SVGIO_ALLVIEW)
++            FIXME("some flags unsupported, %x\n", flags & ~SVGIO_ALLVIEW);
++        *items = SendMessageW(This->hWndList, LVM_GETITEMCOUNT, 0, 0);
++        break;
++    }
+ 
+     return S_OK;
+ }
+ 
++/* Child pidls of the items in the view, all of them or only the selected ones. */
++static int shellview_collect_items(IShellViewImpl *This, BOOL selected, ITEMIDLIST ***pidls)
++{
++    int count, index = -1, i = 0;
++    LVITEMW item;
++
++    count = SendMessageW(This->hWndList, selected ? LVM_GETSELECTEDCOUNT : LVM_GETITEMCOUNT, 0, 0);
++    if (count <= 0 || !(*pidls = malloc(count * sizeof(**pidls)))) return 0;
++
++    while (i < count && (index = SendMessageW(This->hWndList, LVM_GETNEXTITEM, index,
++                                              selected ? LVNI_SELECTED : LVNI_ALL)) != -1)
++    {
++        item.mask = LVIF_PARAM;
++        item.iItem = index;
++        item.iSubItem = 0;
++        if (!SendMessageW(This->hWndList, LVM_GETITEMW, 0, (LPARAM)&item)) break;
++        (*pidls)[i++] = (ITEMIDLIST *)item.lParam;
++    }
++    if (!i) free(*pidls);
++    return i;
++}
++
+ static HRESULT WINAPI FolderView_Items(IFolderView2 *iface, UINT flags, REFIID riid, void **ppv)
+ {
+     IShellViewImpl *This = impl_from_IFolderView2(iface);
+-    int count, i;
+     ITEMIDLIST **pidl;
+-    LVITEMW item;
+     HRESULT hr;
++    int count;
+ 
+     if (!IsEqualIID(riid, &IID_IShellItemArray))
+     {
+@@ -2809,36 +2837,19 @@ static HRESULT WINAPI FolderView_Items(IFolderView2 *iface, UINT flags, REFIID r
+         return E_NOINTERFACE;
+     }
+ 
+-    if (flags != SVGIO_ALLVIEW)
++    if ((flags & SVGIO_TYPE_MASK) != SVGIO_ALLVIEW && (flags & SVGIO_TYPE_MASK) != SVGIO_SELECTION)
+         FIXME("some flags unsupported, %x\n", flags & ~SVGIO_ALLVIEW);
+ 
+-    count = SendMessageW(This->hWndList, LVM_GETITEMCOUNT, 0, 0);
++    count = shellview_collect_items(This, (flags & SVGIO_TYPE_MASK) == SVGIO_SELECTION, &pidl);
+     if (!count)
+     {
+-        FIXME("Folder is empty\n");
++        TRACE("no items\n");
+         return E_FAIL;
+     }
+ 
+-    pidl = HeapAlloc(GetProcessHeap(), 0, count * sizeof(*pidl));
+-    if (!pidl) return E_OUTOFMEMORY;
+-
+-    for (i = 0; i < count; i++)
+-    {
+-        item.mask = LVIF_PARAM;
+-        item.iItem = i;
+-        if (!SendMessageW(This->hWndList, LVM_GETITEMW, 0, (LPARAM)&item))
+-        {
+-            FIXME("LVM_GETITEMW(%d) failed\n" ,i);
+-            HeapFree(GetProcessHeap(), 0, pidl);
+-            return E_FAIL;
+-        }
+-
+-        pidl[i] = (ITEMIDLIST *)item.lParam;
+-    }
+-
+     hr = SHCreateShellItemArray(NULL, This->pSFParent, count, (LPCITEMIDLIST *)pidl, (IShellItemArray **)ppv);
+ 
+-    HeapFree(GetProcessHeap(), 0, pidl);
++    free(pidl);
+ 
+     return hr;
+ }
+@@ -3064,24 +3075,64 @@ static HRESULT WINAPI FolderView2_GetVisibleItem(IFolderView2 *iface, int start,
+ static HRESULT WINAPI FolderView2_GetSelectedItem(IFolderView2 *iface, int start, int *item)
+ {
+     IShellViewImpl *This = impl_from_IFolderView2(iface);
+-    FIXME("(%p)->(%d %p), stub\n", This, start, item);
+-    return E_NOTIMPL;
++
++    TRACE("(%p)->(%d %p)\n", This, start, item);
++
++    if (!item) return E_POINTER;
++    *item = SendMessageW(This->hWndList, LVM_GETNEXTITEM, start, LVNI_SELECTED);
++    return *item == -1 ? S_FALSE : S_OK;
+ }
+ 
+ static HRESULT WINAPI FolderView2_GetSelection(IFolderView2 *iface, BOOL none_implies_folder,
+     IShellItemArray **array)
+ {
+     IShellViewImpl *This = impl_from_IFolderView2(iface);
+-    FIXME("(%p)->(%d %p), stub\n", This, none_implies_folder, array);
+-    return E_NOTIMPL;
++    IPersistFolder2 *persist;
++    ITEMIDLIST **pidls, *folder;
++    HRESULT hr;
++    int count;
++
++    TRACE("(%p)->(%d %p)\n", This, none_implies_folder, array);
++
++    if (!array) return E_POINTER;
++    *array = NULL;
++
++    if ((count = shellview_collect_items(This, TRUE, &pidls)))
++    {
++        hr = SHCreateShellItemArray(NULL, This->pSFParent, count, (LPCITEMIDLIST *)pidls, array);
++        free(pidls);
++        return hr;
++    }
++
++    if (!none_implies_folder) return E_FAIL;
++
++    hr = IShellFolder_QueryInterface(This->pSFParent, &IID_IPersistFolder2, (void **)&persist);
++    if (FAILED(hr)) return hr;
++    hr = IPersistFolder2_GetCurFolder(persist, &folder);
++    IPersistFolder2_Release(persist);
++    if (FAILED(hr)) return hr;
++    hr = SHCreateShellItemArrayFromIDLists(1, (LPCITEMIDLIST *)&folder, array);
++    ILFree(folder);
++    return hr;
+ }
+ 
+ static HRESULT WINAPI FolderView2_GetSelectionState(IFolderView2 *iface, PCUITEMID_CHILD pidl,
+     DWORD *flags)
+ {
+     IShellViewImpl *This = impl_from_IFolderView2(iface);
+-    FIXME("(%p)->(%p %p), stub\n", This, pidl, flags);
+-    return E_NOTIMPL;
++    UINT state;
++    int index;
++
++    TRACE("(%p)->(%p %p)\n", This, pidl, flags);
++
++    if (!flags) return E_POINTER;
++    *flags = SVSI_DESELECT;
++    if ((index = LV_FindItemByPidl(This, pidl)) == -1) return E_INVALIDARG;
++
++    state = SendMessageW(This->hWndList, LVM_GETITEMSTATE, index, LVIS_SELECTED | LVIS_FOCUSED);
++    if (state & LVIS_SELECTED) *flags |= SVSI_SELECT;
++    if (state & LVIS_FOCUSED) *flags |= SVSI_FOCUSED;
++    return S_OK;
+ }
+ 
+ static HRESULT WINAPI FolderView2_InvokeVerbOnSelection(IFolderView2 *iface, LPCSTR verb)
