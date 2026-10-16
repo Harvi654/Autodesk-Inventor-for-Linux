@@ -32,7 +32,8 @@ case "$DLL" in
     wbemprox) CHECK=Win32_TimeZone;  TEST=query ;;
     shell32)  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
     oleaut32) CHECK='pointee index %lu out of range'; TEST=typelib ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    kernelbase) CHECK=''; TEST=security; TESTDLL=advapi32 ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
@@ -117,7 +118,7 @@ step "Building dlls/$DLL..."
 make -j"$(nproc)" -C "dlls/$DLL" > "$LOGDIR/$DLL-build.log" 2>&1 \
     || die "build failed, see $LOGDIR/$DLL-build.log"
 BUILT="$SRC/dlls/$DLL/x86_64-windows/$DLL.dll"
-{ strings -a "$BUILT"; strings -a -el "$BUILT"; } | grep -cF "$CHECK" >/dev/null || die "built DLL lacks the patch?!"
+[ -z "$CHECK" ] || { strings -a "$BUILT"; strings -a -el "$BUILT"; } | grep -cF "$CHECK" >/dev/null || die "built DLL lacks the patch?!"
 ok "$BUILT"
 
 step "Install..."
@@ -132,11 +133,11 @@ fi
 
 if [ "$DO_TEST" -eq 1 ]; then
     info "building and running Wine's $DLL:$TEST tests in a throw-away prefix..."
-    make -j"$(nproc)" -C "dlls/$DLL/tests" > "$LOGDIR/$DLL-tests-build.log" 2>&1 \
+    make -j"$(nproc)" -C "dlls/${TESTDLL:-$DLL}/tests" > "$LOGDIR/$DLL-tests-build.log" 2>&1 \
         || die "test build failed, see $LOGDIR/$DLL-tests-build.log"
     TP="$(mktemp -d)"
     WINEPREFIX="$TP" WINEDEBUG=-all wineboot -i >/dev/null 2>&1 || true
-    WINEPREFIX="$TP" WINEDEBUG=-all wine "dlls/$DLL/tests/x86_64-windows/${DLL}_test.exe" "$TEST" \
+    WINEPREFIX="$TP" WINEDEBUG=-all wine "dlls/${TESTDLL:-$DLL}/tests/x86_64-windows/${TESTDLL:-$DLL}_test.exe" "$TEST" \
         > "$LOGDIR/$DLL-test.log" 2>&1 || true
     WINEPREFIX="$TP" wineserver -k 2>/dev/null || true
     rm -rf "$TP"

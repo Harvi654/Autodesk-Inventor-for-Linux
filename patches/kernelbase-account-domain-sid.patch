@@ -1,0 +1,52 @@
+diff --git a/dlls/advapi32/tests/security.c b/dlls/advapi32/tests/security.c
+index 571842b6..eff602b7 100644
+--- a/dlls/advapi32/tests/security.c
++++ b/dlls/advapi32/tests/security.c
+@@ -6892,6 +6892,27 @@ static void test_GetWindowsAccountDomainSid(void)
+     ok(!bret, "GetWindowsAccountDomainSid succeeded\n");
+     ok(GetLastError() == ERROR_INVALID_SID, "expected ERROR_INVALID_SID, got %ld\n", GetLastError());
+ 
++    /* well-known SIDs are valid, but have no account domain */
++    {
++        static const WELL_KNOWN_SID_TYPE types[] = { WinWorldSid, WinBuiltinAdministratorsSid, WinLocalSystemSid };
++        char buffer3[SECURITY_MAX_SID_SIZE];
++        DWORD size;
++        int j;
++
++        for (j = 0; j < ARRAY_SIZE(types); j++)
++        {
++            size = sizeof(buffer3);
++            bret = CreateWellKnownSid(types[j], NULL, buffer3, &size);
++            ok(bret, "CreateWellKnownSid(%d) failed %ld\n", types[j], GetLastError());
++            sid_size = SECURITY_MAX_SID_SIZE;
++            SetLastError(0xdeadbeef);
++            bret = GetWindowsAccountDomainSid(buffer3, domain_sid, &sid_size);
++            ok(!bret, "GetWindowsAccountDomainSid succeeded for well-known SID %d\n", types[j]);
++            ok(GetLastError() == ERROR_NON_ACCOUNT_SID, "%d: expected ERROR_NON_ACCOUNT_SID, got %ld\n",
++               types[j], GetLastError());
++        }
++    }
++
+     SetLastError(0xdeadbeef);
+     bret = GetWindowsAccountDomainSid(user_sid, 0, 0);
+     ok(!bret, "GetWindowsAccountDomainSid succeeded\n");
+diff --git a/dlls/kernelbase/security.c b/dlls/kernelbase/security.c
+index 6231c48d..3ddde4e2 100644
+--- a/dlls/kernelbase/security.c
++++ b/dlls/kernelbase/security.c
+@@ -379,9 +379,13 @@ BOOL WINAPI GetWindowsAccountDomainSid( PSID sid, PSID domain_sid, DWORD *size )
+         return FALSE;
+     }
+ 
+-    if (*GetSidSubAuthorityCount( sid ) < 4)
++    /* Only account SIDs (S-1-5-21-a-b-c-...) have a domain; well-known SIDs such as
++     * Everyone or BUILTIN\Administrators are valid but not account SIDs. */
++    if (*GetSidSubAuthorityCount( sid ) < 4
++            || memcmp( GetSidIdentifierAuthority( sid ), &domain_ident, sizeof(domain_ident) )
++            || *GetSidSubAuthority( sid, 0 ) != SECURITY_NT_NON_UNIQUE)
+     {
+-        SetLastError( ERROR_INVALID_SID );
++        SetLastError( ERROR_NON_ACCOUNT_SID );
+         return FALSE;
+     }
+ 
