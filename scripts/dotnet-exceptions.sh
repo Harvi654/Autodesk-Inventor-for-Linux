@@ -41,5 +41,9 @@ for f in "${files[@]}"; do
         END { if (t != "") print t " | " }' \
         | sort | uniq -c | sort -rn | head -40
 done
-info "in order of occurrence (last 30):"
-strings -el -n 6 "${files[@]}" | grep -n -A1 -E 'Exception$' | grep -v '^--$' | tail -60 | cut -c1-220
+info "in order of occurrence, with the method that caught each one (last ${TAIL:-80} lines):"
+# ExceptionThrown events carry type + message; the ExceptionCatchStart event
+# that follows carries the name of the method whose catch block handled it -
+# that tells which component swallowed the error.
+strings -el -n 6 "${files[@]}" | grep -v -E '^(Microsoft-Windows-DotNETRuntime|EventPipe|Exception(Thrown|Catch|Filter|Finally)[A-Za-z_]*|ClrInstanceID|ExceptionType|ExceptionMessage|ExceptionEIP|ExceptionHRESULT|ExceptionFlags|EntryEIP|MethodID|MethodName)$' \
+    | tail -"${TAIL:-80}" | cut -c1-220
