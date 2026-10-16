@@ -22,6 +22,7 @@ failure you can fix things and simply rerun - it continues where it stopped.
 Logs: logs/odis-install-<time>/
 """
 import argparse
+import glob
 import json
 import os
 import shlex
@@ -55,7 +56,8 @@ VFS = {
     "windows": "windows",
 }
 # Installers that end with an error under Wine although everything they
-# install is in place. name -> (exit codes to accept, file that must exist)
+# install is in place. name -> (exit codes to accept, file that must exist;
+# glob pattern - "Current" junctions are Wine reparse points Linux can't follow)
 QUIRKS = {
     # Installs fine, then starts AdskLicensingService as a Windows service.
     # The service does start (its log shows "HTTP server running") but never
@@ -208,7 +210,7 @@ class Installer:
         if rc in (0, 1641, 3010):
             return True
         q = QUIRKS.get(s["name"].lower())
-        if q and rc in q[0] and os.path.exists(self.unix(q[1])):
+        if q and rc in q[0] and glob.glob(self.unix(q[1])):
             self.log("        known Wine quirk for %s, files are installed - OK" % s["name"])
             return True
         return False
