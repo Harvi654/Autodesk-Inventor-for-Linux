@@ -232,8 +232,13 @@ class Installer:
         winlog = r"C:\odis-logs\%s.msp.log" % os.path.splitext(logname)[0]
         os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
         patch = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
+        # Windows Installer reinstalls the features a patch touches on its
+        # own; Wine's MsiApplyPatch only adds PATCH=... - without REINSTALL
+        # every component stays "no change", nearly all files are skipped
+        # and the old DLLs remain next to the new Inventor.exe (it then dies
+        # at start with 0xc06d007f, a missing delay-load import).
         rc = self.run(["wine", "msiexec", "/p", patch, "/qn", "/norestart", "/l*v", winlog,
-                       "ADSK_ODIS_SETUP=1"], logname)
+                       "REINSTALL=ALL", "REINSTALLMODE=omus", "ADSK_ODIS_SETUP=1"], logname)
         return rc in (0, 1641, 3010)
 
     def do_exe(self, s, logname, media=None):
