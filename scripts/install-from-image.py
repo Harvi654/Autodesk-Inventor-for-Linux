@@ -10,7 +10,11 @@ Usage:
   install-from-image.py IMAGE [--prefix DIR] [--lang en-US]
                         [--from N] [--only N,M] [--redo] [--dry-run]
 
-  IMAGE     the unpacked image (folder with Setup.exe and manifest/)
+  IMAGE     the unpacked image (folder with Setup.exe and manifest/), or an
+            update: its .exe as downloaded from Autodesk (e.g.
+            Inventor_2026.4_Update.exe - unpacked with 7z into
+            ~/.cache/inventor-on-linux/media/) or the unpacked folder
+            (with bundleManifest.xml). Updates go into the same prefix.
   --prefix  Wine prefix to install into (default ~/.wine-invtest - a TEST
             prefix, so your working one is never touched)
   --from N  start at step N;  --only N,M  run just these steps
@@ -210,6 +214,15 @@ class Installer:
         rc = self.run(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
 
+    def do_msp(self, s, logname, media=None):
+        """Update patch for an installed product (msiexec finds the target)."""
+        winlog = r"C:\odis-logs\%s.msp.log" % os.path.splitext(logname)[0]
+        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        patch = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
+        rc = self.run(["wine", "msiexec", "/p", patch, "/qn", "/norestart", "/l*v", winlog,
+                       "ADSK_ODIS_SETUP=1"], logname)
+        return rc in (0, 1641, 3010)
+
     def do_exe(self, s, logname, media=None):
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
@@ -394,6 +407,8 @@ class Installer:
             return self.do_actions(s, logname, media)
         if t == "MSI":
             ok = self.do_msi(s, logname, media)
+        elif t == "MSP":
+            ok = self.do_msp(s, logname, media)
         elif t == "EXE":
             ok = self.do_exe(s, logname, media) and self.do_actions(s, logname, media)
         elif t == "ZIP":
@@ -413,7 +428,16 @@ class Installer:
 
     def main(self):
         img = odis.Image(self.image)
-        steps, skipped, missing = odis.plan(img, ["inventor"], self.a.lang)
+        kind = odis.image_kind(self.image)
+        if kind == "update":
+            upi, name = odis.bundle_id(self.image)
+            self.key_prefix = "update%s:" % upi
+            steps, skipped, missing = odis.plan_bundle(img, "bundleManifest.xml", self.a.lang)
+            if not os.path.isfile(os.path.join(self.prefix, ".odis-install-state.json")):
+                sys.exit("no Inventor installed in %s yet - install the product image first" % self.prefix)
+        else:
+            self.key_prefix = ""
+            steps, skipped, missing = odis.plan(img, ["inventor"], self.a.lang)
         if missing:
             for n, rel, chain in missing:
                 print("missing manifest %s (needed by %s)" % (rel, chain))
@@ -427,7 +451,7 @@ class Installer:
         for i, s in enumerate(steps, 1):
             if (only and i not in only) or i < self.a.start:
                 continue
-            key = s["manifest"]
+            key = self.key_prefix + s["manifest"]
             if key in done and not self.a.redo:
                 self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"])); continue
             self.log("[%2d/%d] %s" % (i, len(steps), s["display"]))
@@ -478,6 +502,33 @@ class Installer:
         self._lic_proc = None
 
 
+def unpack_exe(exe, dry_run=False):
+    """Autodesk's downloaded .exe files are 7-Zip self-extractors."""
+    name = os.path.splitext(os.path.basename(exe))[0]
+    dest = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
+                        "inventor-on-linux", "media", name)
+    marker = os.path.join(dest, ".unpacked")
+    if os.path.isfile(marker):
+        return dest
+    sevenzip = shutil.which("7z") or shutil.which("7za")
+    if not sevenzip:
+        sys.exit("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
+    print("unpacking %s -> %s" % (exe, dest), flush=True)
+    if dry_run:
+        return dest
+    os.makedirs(dest, exist_ok=True)
+    if subprocess.call([sevenzip, "x", "-y", "-o" + dest, exe], stdout=subprocess.DEVNULL) != 0:
+        sys.exit("could not unpack %s with 7z" % exe)
+    # some packages put the image one folder deeper
+    if odis.image_kind(dest) is None:
+        subs = [os.path.join(dest, d) for d in os.listdir(dest) if os.path.isdir(os.path.join(dest, d))]
+        hits = [d for d in subs if odis.image_kind(d)]
+        if len(hits) == 1:
+            dest = hits[0]
+    open(os.path.join(dest, ".unpacked"), "w").close()
+    return dest
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("image")
@@ -488,8 +539,10 @@ def main():
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
-    if not os.path.isfile(os.path.join(a.image, "Setup.exe")):
-        sys.exit("%s does not look like an install image (no Setup.exe)" % a.image)
+    if os.path.isfile(a.image):
+        a.image = unpack_exe(a.image, a.dry_run)
+    if odis.image_kind(a.image) is None:
+        sys.exit("%s is neither an install image (manifest/app.*.xml) nor an update (bundleManifest.xml)" % a.image)
     if os.path.realpath(os.path.expanduser(a.prefix)) == os.path.realpath(
             os.path.expanduser("~/.wine-inventor2026")) and not a.dry_run:
         sys.exit("refusing to install into your working prefix - use a test prefix")

@@ -23,6 +23,7 @@ Run directly to print the plan:
 import argparse
 import json
 import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 
@@ -39,6 +40,28 @@ SKIP = {
     "accessconnector": "Autodesk Access connector",
     "odis": "Autodesk installer (ODIS) itself",
 }
+
+
+LOCALE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
+
+
+def image_kind(root):
+    """'product' (full install image), 'update' (update bundle) or None."""
+    if os.path.isdir(os.path.join(root, "manifest")) and \
+            any(f.startswith("app.") for f in os.listdir(os.path.join(root, "manifest"))):
+        return "product"
+    if os.path.isfile(os.path.join(root, "bundleManifest.xml")):
+        return "update"
+    return None
+
+
+def bundle_id(root):
+    """UPI2 + display name of an image's bundleManifest.xml (or None)."""
+    p = os.path.join(root, "bundleManifest.xml")
+    if not os.path.isfile(p):
+        return None, None
+    r = ET.parse(p).getroot()
+    return _text(r, "m:Identity/m:UPI2"), _text(r, "m:Identity/m:DisplayName")
 
 
 class Image:
@@ -137,6 +160,11 @@ def _plan(img, roots, lang, include_all):
         seen.add(key)
         if not include_all and name.lower() in SKIP:
             skipped.append((name, SKIP[name.lower()]))
+            return
+        # language-specific packages (x64/de-DE/...) only for the chosen language
+        other = [p for p in rel.replace("\\", "/").split("/") if LOCALE.match(p) and p != lang]
+        if other:
+            skipped.append((name, "language %s" % other[0]))
             return
         mpath = img.find(rel)
         if not mpath:
