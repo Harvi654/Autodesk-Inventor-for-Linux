@@ -19,6 +19,42 @@ bash scripts/install-desktop-integration.sh  # adskidmgr:// handler + launcher e
 bash scripts/launch-inventor.sh              # first run opens the browser for SSO
 ```
 
+## Installing from Autodesk's install image (no Windows needed)
+
+Work in progress, but it gets to a working Inventor. Instead of copying a
+Windows installation, Autodesk's own packages are installed under Wine:
+
+```bash
+# IMAGE = the unpacked "Browser download" (folder with Setup.exe, manifest/, x64/ ...)
+python3 scripts/odis-plan.py "$IMAGE"                        # what will be installed, in which order
+python3 scripts/install-from-image.py "$IMAGE"               # into ~/.wine-invtest (test prefix)
+INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh   # DXVK, WebView2, isolation, ...
+INV_PREFIX=~/.wine-invtest bash scripts/launch-inventor.sh  # first start: Autodesk login in the browser
+```
+
+How it works: the image's manifests (`manifest/app.inventor.xml`, `pkg.*.xml`)
+list every package with its file, silent-install parameters and dependencies.
+`scripts/lib/odis.py` walks them in Autodesk's order; `install-from-image.py`
+runs MSIs with `msiexec /qn`, EXEs with their silent switches, and unpacks
+ZIP/7Z/ADIX archives (ADIX = MSIX-style, `VFS\<folder>\...` plus a
+`Registry.dat` hive that `scripts/lib/regf.py` converts to .reg). Telemetry,
+Genuine Service, Autodesk Access and the ODIS installer are skipped.
+
+What had to be worked around (all handled by the scripts):
+
+| Problem | Cause | Fix |
+|---|---|---|
+| AdskLicensing installer exits 84 | the service starts but never reports "running" to Wine's service manager (1053) | accept it, write the skipped `version.ini` and `Current`/`CurrentSDK` links |
+| `Inventor.msi`: LaunchConditions 1603 | "needs to be run from Setup.exe" | `ADSK_ODIS_SETUP=1` |
+| `Inventor.msi`: licIsSvcUpgraded 1603 | its licensing actions need the running service | run `AdskLicensingService.exe` as a plain process during MSI steps |
+| Shared Components not installed | nested bundle; `%ASC_BASE_PATH%` defined by the outer package | nested plan inherits the outer properties |
+| `Current?` folders | Wine stores Autodesk's junctions in a form Linux can't follow | replaced by relative symlinks (`cfg_current_link`) |
+| "Failed to initialize a component for accessing AutoCAD files. Error 82" | no `RealDWGSettings.xml` in the profile | `finish-install.sh` writes it |
+| Login never returns to Inventor | `adskidmgr://` callback went to the default prefix | `launch-inventor.sh` records the running prefix for the callback |
+
+Still open: the 2026.x update (`Inventor_2026.4_Update.exe`), fonts without a
+Windows partition, one-command/GUI installer, a bundled patched Wine.
+
 ## Mounting Windows
 
 Mount **read-only**. The scripts only read from it, and if Windows Fast Startup
