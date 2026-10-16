@@ -16,6 +16,7 @@ Run directly to print the plan:
              ProgramData/Autodesk/ODIS/metadata also works for planning:
              manifests are then looked up across its {GUID} folders.
   --app      application manifest(s) to install (default: inventor)
+  --with N   also install optional package N (see "skipped"; repeatable)
   --all      include packages this project skips (telemetry, Genuine
              Service, Autodesk Access, the ODIS installer itself)
   --json     machine-readable plan
@@ -147,9 +148,11 @@ def _step(root, name, install_as, rel, img, lang):
     }
 
 
-def plan(img, apps=("inventor",), lang="en-US", include_all=False):
-    """Return (steps, skipped, missing) for the given application manifests."""
-    return _plan(img, ["manifest/app.%s.xml" % a for a in apps], lang, include_all)
+def plan(img, apps=("inventor",), lang="en-US", include_all=False, extra=()):
+    """Return (steps, skipped, missing) for the given application manifests.
+    extra: names of optional packages to install too (e.g. Content Center
+    libraries)."""
+    return _plan(img, ["manifest/app.%s.xml" % a for a in apps], lang, include_all, extra)
 
 
 def plan_bundle(img, manifest, lang="en-US", include_all=False):
@@ -164,8 +167,9 @@ def plan_bundle(img, manifest, lang="en-US", include_all=False):
     return _plan(img, roots, lang, include_all)
 
 
-def _plan(img, roots, lang, include_all):
+def _plan(img, roots, lang, include_all, extra=()):
     steps, seen, skipped, missing = [], set(), [], []
+    extra = {e.lower() for e in extra}
 
     def visit(name, rel, install_as, chain):
         key = rel.lower()
@@ -198,7 +202,8 @@ def _plan(img, roots, lang, include_all):
         for pkg in ET.parse(apath).getroot().iter("{%s}Package" % NS["m"]):
             if not pkg.get("path"):
                 continue
-            if pkg.get("installAs") == "optional" and not include_all:
+            if (pkg.get("installAs") == "optional" and not include_all
+                    and pkg.get("name", "").lower() not in extra):
                 skipped.append((pkg.get("name"), "optional in %s" % rel))
                 seen.add(pkg.get("path").lower())
                 continue
@@ -212,9 +217,11 @@ def main():
     ap.add_argument("--app", action="append")
     ap.add_argument("--lang", default="en-US")
     ap.add_argument("--all", action="store_true")
+    ap.add_argument("--with", dest="extra", action="append", default=[],
+                    help="also install this optional package (name as listed under skipped)")
     ap.add_argument("--json", action="store_true")
     a = ap.parse_args()
-    steps, skipped, missing = plan(Image(a.image), a.app or ["inventor"], a.lang, a.all)
+    steps, skipped, missing = plan(Image(a.image), a.app or ["inventor"], a.lang, a.all, a.extra)
     if a.json:
         json.dump({"steps": steps, "skipped": skipped, "missing": missing}, sys.stdout, indent=1)
         return
