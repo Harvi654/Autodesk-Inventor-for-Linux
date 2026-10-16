@@ -23,7 +23,7 @@ while [ $# -gt 0 ]; do
     shift
 done
 : > "$LOGDIR/setup-wine.log"
-_STEPS=12
+_STEPS=13
 
 step "Checking the installation in $WINEPREFIX..."
 [ -f "$P_INV/Bin/Inventor.exe" ] || die "no Inventor in $P_INV - run install-from-image.py first"
@@ -75,6 +75,24 @@ step "Disabling non-essential and Wine-broken add-ins, known crash sources..."
 cfg_disable_addins
 cfg_crash_sources
 cfg_wpf_stubs
+
+step "RealDWG settings (Inventor's access to AutoCAD files)..."
+# Without it Inventor stops at the splash screen: "Failed to initialize a
+# component for accessing AutoCAD files. Error 82". On Windows the file is
+# in the user profile; Inventor normally writes it itself (a copy of what a
+# working Windows install has - UTF-16 with BOM, CRLF).
+RDWG_DIR="C:\\Program Files\\Common Files\\Autodesk Shared\\RealDWG Shared $INV_YEAR"
+RDWG_XML="$P_USER/AppData/Roaming/Autodesk/Inventor $INV_YEAR/RealDWGSettings.xml"
+if [ -d "$P_C/Program Files/Common Files/Autodesk Shared/RealDWG Shared $INV_YEAR" ]; then
+    mkdir -p "$(dirname "$RDWG_XML")"
+    if [ ! -f "$RDWG_XML" ]; then
+        { printf '\xff\xfe'; printf '<?xml version="1.0" encoding="utf-16" standalone="no" ?>\r\n<RealDWGSettings InstallDirectory="%s"></RealDWGSettings>\r\n' \
+            "$RDWG_DIR" | iconv -f UTF-8 -t UTF-16LE; } > "$RDWG_XML"
+    fi
+    ok "RealDWGSettings.xml -> $RDWG_DIR"
+else
+    warn "RealDWG Shared $INV_YEAR not installed - DWG import/export will not work"
+fi
 
 step "Checking project and Home page files..."
 [ -f "$P_PUBDOCS/Default.ipj" ] && ok "Default.ipj" \
