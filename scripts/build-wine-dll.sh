@@ -17,6 +17,9 @@
 #                           was dropped; MSP updates lose their Patch rows that
 #                           use MsiPatchHeaders -> files not updated
 #                           (patches/msi-transform-null-stream.patch)
+#               mspatcha  - delta patches of files larger than the LZXD window
+#                           (8 MB) failed: "interleaved LZXD decompression is not
+#                           supported" (patches/mspatcha-large-old-file.patch)
 #               All patches/DLL-*.patch are applied; with --diag also
 #               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
@@ -39,7 +42,8 @@ case "$DLL" in
     kernelbase) CHECK=''; TEST=security; TESTDLL=advapi32 ;;
     riched20) CHECK='paragraph needs rewrap'; TEST=editor ;;
     msi)      CHECK='no stream, NULL'; TEST=patch ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    mspatcha) CHECK='old file larger than the window'; TEST=apply_patch ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0

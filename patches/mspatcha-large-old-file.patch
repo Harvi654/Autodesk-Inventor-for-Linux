@@ -1,0 +1,63 @@
+diff --git a/dlls/mspatcha/pa19.c b/dlls/mspatcha/pa19.c
+index 4b21b199..4d9ed213 100644
+--- a/dlls/mspatcha/pa19.c
++++ b/dlls/mspatcha/pa19.c
+@@ -627,6 +627,7 @@ DWORD apply_patch_to_file_by_buffers(const BYTE *patch_file_view, const ULONG pa
+     struct input_file_info *file_info;
+     struct patch_file_header ph;
+     size_t buf_size;
++    size_t ref_size;
+     BYTE *new_file_buf = NULL;
+     BYTE *decode_buf = NULL;
+ 
+@@ -674,13 +675,19 @@ DWORD apply_patch_to_file_by_buffers(const BYTE *patch_file_view, const ULONG pa
+         err = ERROR_PATCH_NOT_NECESSARY;
+         goto free_patch_header;
+     }
+-    if (file_info->stream_size != 0
+-        && file_info->input_size > ((ph.flags & PATCH_OPTION_USE_LZX_LARGE) ? MAX_LARGE_WINDOW : MAX_NORMAL_WINDOW))
++    /* An old file larger than the LZXD window: only its first window-size
++     * bytes are the reference data, the new file follows them. Found by
++     * black-box testing against patches created by Windows (old files of
++     * 8.5-9.5 MB, 8 MB window, new files larger than the window too). */
++    ref_size = file_info->input_size;
++    if (file_info->stream_size != 0)
+     {
+-        /* interleaved by default but not the same as PATCH_OPTION_INTERLEAVE_FILES */
+-        FIXME("interleaved LZXD decompression is not supported.\n");
+-        err = ERROR_PATCH_PACKAGE_UNSUPPORTED;
+-        goto free_patch_header;
++        size_t max_window = (ph.flags & PATCH_OPTION_USE_LZX_LARGE) ? MAX_LARGE_WINDOW : MAX_NORMAL_WINDOW;
++        if (ref_size > max_window)
++        {
++            TRACE("old file larger than the window, using its first %u bytes\n", (unsigned)max_window);
++            ref_size = max_window;
++        }
+     }
+ 
+     if (test_header_only)
+@@ -713,7 +720,23 @@ DWORD apply_patch_to_file_by_buffers(const BYTE *patch_file_view, const ULONG pa
+     zero_fill_ignored_ranges(decode_buf, file_info);
+     zero_fill_retained_ranges(decode_buf, decode_buf + file_info->input_size, file_info);
+ 
+-    if (file_info->stream_size != 0)
++    if (file_info->stream_size != 0 && ref_size < file_info->input_size)
++    {
++        BYTE *ref_buf = VirtualAlloc(NULL, ref_size + ph.patched_size, MEM_COMMIT, PAGE_READWRITE);
++        if (ref_buf == NULL)
++        {
++            err = GetLastError();
++            goto free_decode_buf;
++        }
++        memcpy(ref_buf, decode_buf, ref_size);
++        err = decode_lzxd_stream(file_info->stream_start, file_info->stream_size,
++            ref_buf, ph.patched_size, ref_size,
++            ph.flags & PATCH_OPTION_USE_LZX_LARGE,
++            progress_fn, progress_ctx);
++        memcpy(decode_buf + file_info->input_size, ref_buf + ref_size, ph.patched_size);
++        VirtualFree(ref_buf, 0, MEM_RELEASE);
++    }
++    else if (file_info->stream_size != 0)
+     {
+         err = decode_lzxd_stream(file_info->stream_start, file_info->stream_size,
+             decode_buf, ph.patched_size, file_info->input_size,
