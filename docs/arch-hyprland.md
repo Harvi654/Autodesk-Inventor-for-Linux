@@ -314,6 +314,17 @@ bash scripts/build-wine-dll.sh shell32 --test      # Wine's shell32 shlfolder te
 bash scripts/build-wine-dll.sh shell32 --restore   # back to the original
 ```
 
+### Open/Place: click and double-click
+
+Clicking a file did not put its name into "File name", double-click did
+nothing; only typing the name worked. The dialog asks the shell view for the
+selection, and Wine's `IFolderView2::GetSelection`/`GetSelectedItem`/
+`GetSelectionState` were stubs while `IFolderView::Items`/`ItemCount` ignored
+`SVGIO_SELECTION`. `patches/shell32-folderview-selection.patch` implements them;
+`build-wine-dll.sh shell32 --install` applies it together with the GetImage
+patch. Confirmed: click fills the name, double-click opens files and folders.
+(Upstream still needs tests for it.)
+
 ### Open: big icons in the New dialog
 
 Still the old "I" icons after the import above, also with HKLM DefaultIcon set
