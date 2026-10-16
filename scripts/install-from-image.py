@@ -55,17 +55,19 @@ VFS = {
     "systemx86": "windows/syswow64",
     "windows": "windows",
 }
-# Installers that end with an error under Wine although everything they
-# install is in place. name -> (exit codes to accept, file that must exist;
-# glob pattern - "Current" junctions are Wine reparse points Linux can't follow)
+# Installers that end with an error under Wine although their files are in
+# place. name -> (exit codes to accept, glob of a file that must exist,
+# name of an Installer method that finishes what the installer skipped)
 QUIRKS = {
-    # Installs fine, then starts AdskLicensingService as a Windows service.
-    # The service does start (its log shows "HTTP server running") but never
-    # reports "running" to Wine's service manager in time -> error 1053 ->
-    # installer exits with 69009748, which the shell sees as 84 (& 0xFF).
-    # Inventor's launcher starts the service itself, so this is harmless.
+    # Installs its files, then starts AdskLicensingService as a Windows
+    # service. The service does start (its log shows "HTTP server running")
+    # but doesn't report "running" to Wine's service manager in time ->
+    # error 1053 -> the installer gives up with 69009748 (84 to the shell)
+    # and skips its last steps: version.ini (Inventor.msi's licMarkInstall
+    # action needs it) and the Current / CurrentSDK links.
     "adsklicensing": ((84,), r"C:\Program Files (x86)\Common Files\Autodesk Shared"
-                             r"\AdskLicensing\*\AdskLicensingService\AdskLicensingService.exe"),
+                             r"\AdskLicensing\*\AdskLicensingService\AdskLicensingService.exe",
+                      "finish_licensing"),
 }
 
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
@@ -214,9 +216,33 @@ class Installer:
             return True
         q = QUIRKS.get(s["name"].lower())
         if q and rc in q[0] and glob.glob(self.unix(q[1])):
-            self.log("        known Wine quirk for %s, files are installed - OK" % s["name"])
-            return True
+            self.log("        known Wine quirk for %s, files are installed - finishing it" % s["name"])
+            return getattr(self, q[2])() if len(q) > 2 else True
         return False
+
+    def finish_licensing(self):
+        base = self.unix(r"C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing")
+        vers = sorted((d for d in os.listdir(base)
+                       if d[:1].isdigit() and os.path.isdir(os.path.join(base, d))),
+                      key=lambda v: [int(x) for x in v.split(".") if x.isdigit()])
+        if not vers:
+            return False
+        ver = vers[-1]
+        with open(os.path.join(base, "version.ini"), "w", newline="\r\n") as f:
+            f.write("[General]\nversion=%s\n" % ver)
+        # Plain relative symlinks, like the junctions look on an NTFS mount.
+        # Wine follows them; its own reparse-point version ("Current?") does
+        # not resolve from Linux, so replace it.
+        for name, target in (("Current", ver), ("CurrentSDK", ver + "/AdskLicensingSDK")):
+            for junk in (name, name + "?"):
+                p = os.path.join(base, junk)
+                if os.path.islink(p) or os.path.isfile(p):
+                    os.remove(p)
+                elif os.path.isdir(p):
+                    os.rmdir(p)   # empty placeholder; never delete real content
+            os.symlink(target, os.path.join(base, name))
+        self.log("        version.ini (%s), Current, CurrentSDK written" % ver)
+        return True
 
     def target_dir(self, s):
         loc = self.expand(s.get("installLocation") or "", step=s)
