@@ -33,7 +33,8 @@ case "$DLL" in
     shell32)  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
     oleaut32) CHECK='pointee index %lu out of range'; TEST=typelib ;;
     kernelbase) CHECK=''; TEST=security; TESTDLL=advapi32 ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    riched20) CHECK='paragraph needs rewrap'; TEST=editor ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0

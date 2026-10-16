@@ -1,0 +1,20 @@
+diff --git a/dlls/riched20/caret.c b/dlls/riched20/caret.c
+index 9b94bcb2..471fa5e4 100644
+--- a/dlls/riched20/caret.c
++++ b/dlls/riched20/caret.c
+@@ -229,7 +229,14 @@ void cursor_coords( ME_TextEditor *editor, ME_Cursor *cursor,
+   int run_x;
+   HDC hdc = ITextHost_TxGetDC( editor->texthost );
+ 
+-  assert(~para->nFlags & MEPF_REWRAP);
++  /* The caret can be placed before the next repaint has rewrapped the text
++   * (e.g. a host that creates the caret right after changing the text);
++   * rewrap now instead of failing an assertion. */
++  if (para->nFlags & MEPF_REWRAP)
++  {
++    WARN( "paragraph needs rewrap, wrapping now\n" );
++    wrap_marked_paras_dc( editor, hdc, FALSE );
++  }
+ 
+   row = row_from_cursor( cursor );
+ 
