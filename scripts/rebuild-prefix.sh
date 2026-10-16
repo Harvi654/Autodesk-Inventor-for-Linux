@@ -98,12 +98,14 @@ wine "$(to_wine_temp "$WEBVIEW2_INSTALLER")" /silent /install >>"$LOGDIR/webview
 WEBVIEW2_PID=$!
 
 # -----------------------------------------------------------------------------
-step "Copying Inventor $INV_YEAR (Bin, Configuration, Preferences)..."
+step "Copying Inventor $INV_YEAR (whole install folder)..."
+# The whole folder, not only Bin: e.g. "Design Accelerator\Models" holds the
+# templates the Shaft/Gear/... generators open (Documents.Add fails with
+# E_INVALIDARG -> "Failed to create shaft" without them). Bin\Anark is skipped
+# (3D PDF, needs CEF; its add-in is disabled).
 mkdir -p "$P_INV"
-copy --exclude='Anark' "$WIN_INV/Bin/" "$P_INV/Bin/"
-for d in Configuration Preferences; do
-    [ -d "$WIN_INV/$d" ] && copy "$WIN_INV/$d" "$P_INV/"
-done
+copy --exclude='/Bin/Anark/' "$WIN_INV/" "$P_INV/"
+[ -d "$P_INV/Design Accelerator" ] || warn "no 'Design Accelerator' folder - shaft/gear generators will fail"
 
 step "Copying Shared Components $ASC_VER..."
 mkdir -p "$(dirname "$P_ASC_BASE")"
