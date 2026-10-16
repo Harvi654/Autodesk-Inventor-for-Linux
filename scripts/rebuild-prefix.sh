@@ -13,6 +13,7 @@
 
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
+source "$COMMON_DIR/configure.sh"
 trap 'err "failed at line $LINENO: $BASH_COMMAND (see $LOGDIR/setup-wine.log)"' ERR
 
 ASSUME_YES=0; WITH_CC=0
@@ -79,10 +80,7 @@ wine_stop
 ok "prefix created"
 
 step "Windows 10 mode, X11 (XWayland) graphics driver..."
-winetricks -q win10 >>"$LOGDIR/setup-wine.log" 2>&1
-# Pin the X11 driver: under Hyprland it runs via XWayland. Wine's native
-# Wayland driver is not tested with Inventor yet.
-wine_reg_add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d x11
+cfg_wine_mode
 
 step "Installing DXVK ($([ "$INV_DXVK" = system ] && echo "system setup_dxvk" || echo "$DXVK_VER, pinned"))..."
 install_dxvk
@@ -197,67 +195,17 @@ wine_reg_add 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
 ok "registry keys set"
 
 step "Installing IdSDK SSO plugin into the Licensing Agent..."
-AGENTDIR="$P_LIC_BASE/$LIC_VER/AdskLicensingAgent"
-AGENT_WIN="C:\\\\Program Files (x86)\\\\Common Files\\\\Autodesk Shared\\\\AdskLicensing\\\\$LIC_VER\\\\AdskLicensingAgent\\\\SSOPlugin\\\\Current"
-mkdir -p "$AGENTDIR/SSOPlugin/Current"
-for f in "$P_IDMGR_BASE/Current/SSOPlugin/Current/"*.dll; do
-    [ -e "$AGENTDIR/SSOPlugin/Current/$(basename "$f")" ] || cp "$f" "$AGENTDIR/SSOPlugin/Current/"
-done
-if [ -f "$AGENTDIR/IDSDKVersionCompatibility.config" ]; then
-    info "Licensing Agent already ships IDSDKVersionCompatibility.config - keeping Autodesk's file"
-else
-    cat > "$AGENTDIR/IDSDKVersionCompatibility.config" <<EOF
-{
-    "comment": "Version compatibility file",
-    "ssoClientPlugin": [
-        {
-            "version": "0",
-            "module": "IdSDKPlugin.dll",
-            "modulePath": "$AGENT_WIN",
-            "modulePathWoW64": "$AGENT_WIN",
-            "compatibleSsoServicesVersion": { "minVersion": "0.0" }
-        }
-    ]
-}
-EOF
-    ok "created IDSDKVersionCompatibility.config (original project's workaround)"
-fi
+cfg_sso_plugin
 
 # -----------------------------------------------------------------------------
 step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."
-ADDINS="$P_INV/Bin/Addins"
-mkdir -p "$P_ADDINS_OFF/libs"
-for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
-    if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$P_ADDINS_OFF/"; else info "(not present: $f)"; fi
-done
+cfg_disable_addins
 
 step "Removing known crash sources (InteractiveTutorial, CER reporter, bcp47langs)..."
-for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
-    [ -f "$f" ] && mv "$f" "$P_ADDINS_OFF/libs/"
-done
-[ -f "$P_INV/Bin/CER/senddmp.exe" ] && mv "$P_INV/Bin/CER/senddmp.exe" "$P_INV/Bin/CER/senddmp.exe.disabled"
-for f in "$P_C/windows/system32/bcp47langs.dll" "$P_C/windows/syswow64/bcp47langs.dll"; do
-    [ -f "$f" ] && mv "$f" "$f.disabled"
-done
-wine_q reg delete 'HKCU\Software\Wine\DllOverrides' /v bcp47langs /f || true
+cfg_crash_sources
 
 step "Removing wine-mono WPF stub assemblies (README: Key Discovery #1)..."
-# Delete only the DLL files, not the GAC directories.
-WPF_RE='/(PresentationCore|PresentationFramework|WindowsBase|System\.Xaml)\.dll$'
-mapfile -t WPF_LOCAL < <(find "$P_C/windows" -path '*gac*' -name '*.dll' 2>/dev/null | grep -E "$WPF_RE" || true)
-if [ ${#WPF_LOCAL[@]} -gt 0 ]; then
-    rm -f -- "${WPF_LOCAL[@]}"
-    ok "removed ${#WPF_LOCAL[@]} stub DLL(s) from the prefix"
-else
-    mapfile -t WPF_SYS < <(find /usr/share/wine/mono -path '*gac*' -name '*.dll' 2>/dev/null | grep -E "$WPF_RE" || true)
-    if [ ${#WPF_SYS[@]} -gt 0 ]; then
-        warn "wine-mono is the shared system install (/usr/share/wine/mono); its WPF stubs are still there."
-        warn "This is the case the original setup did not cover - test Inventor first; if it exits"
-        warn "right after loading .NET add-ins, see docs/arch-hyprland.md (wine-mono section)."
-    else
-        info "no WPF stub assemblies found"
-    fi
-fi
+cfg_wpf_stubs
 
 step "Copying public Inventor documents (Design Data, Templates, Default.ipj, ...)..."
 # The whole folder, not a list of subfolders: Default.ipj lives at its top level
@@ -312,16 +260,7 @@ step "Windows fonts (WPF needs Segoe UI/Arial/Tahoma)..."
 bash "$SCRIPTS_DIR/windows-fonts.sh" || warn "Windows fonts not copied - WPF may FailFast in TypefaceMap.MapUnresolvedCharacters"
 
 step "Isolation (drives, home folders)..."
-if [ "$INV_SANDBOX" = 1 ]; then
-    sandbox_reg
-    wine_stop
-    sandbox_fs
-    ok "drives: $(cd "$WINEPREFIX/dosdevices" && ls -d ?: 2>/dev/null | while read -r d; do printf '%s->%s ' "$d" "$(readlink "$d")"; done)"
-    info "your Inventor files go to: ${INV_DATA_DIR:-<none, set INV_DATA_DIR>} (D:)"
-else
-    [ -n "$INV_DATA_DIR" ] && { mkdir -p "$INV_DATA_DIR"; ln -sfn "$INV_DATA_DIR" "$WINEPREFIX/dosdevices/d:"; }
-    info "sandbox disabled - Wine defaults (Z: = /)"
-fi
+cfg_isolation
 wine_stop
 wine --version > "$WINEPREFIX/.inventor-wine-version"
 

@@ -27,6 +27,7 @@ import json
 import os
 import shlex
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -36,6 +37,7 @@ import zipfile
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import odis  # noqa: E402
+import regf  # noqa: E402
 
 PROJECT = os.path.dirname(HERE)
 USER = os.environ.get("USER") or "user"
@@ -302,9 +304,32 @@ class Installer:
                     if not info.is_dir():
                         place(info.filename, lambda info=info: z.read(info))
         self.log("      %d files placed" % written)
-        if regs:
-            self.log("      NOTE registry hive(s) %s saved to the log folder - not imported yet" % ", ".join(regs))
+        for hive in regs:
+            if not self.import_hive(s, os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), logname):
+                return False
         return written > 0
+
+    def import_hive(self, s, path, logname):
+        """Registry.dat of an ADIX package -> .reg -> wine regedit."""
+        if self.a.dry_run:
+            return True
+        tokens = {}
+        for src, dst in (s.get("pathMappings") or {}).items():
+            tokens[src] = self.expand(dst, step=s)
+        try:
+            with open(path, "rb") as f:
+                text = regf.to_reg(f.read(), tokens)
+        except (ValueError, IndexError, struct.error) as e:
+            self.log("      ERROR can't read %s: %s" % (os.path.basename(path), e))
+            return False
+        keys = text.count("\r\n[")
+        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        name = os.path.splitext(os.path.basename(path))[0] + ".reg"
+        with open(os.path.join(self.c, "odis-logs", name), "w", encoding="utf-16", newline="") as f:
+            f.write(text)
+        rc = self.run(["wine", "regedit", "/S", "C:\\odis-logs\\" + name], logname)
+        self.log("      registry: %d keys from %s imported" % (keys, os.path.basename(path)))
+        return rc == 0
 
     def do_actions(self, s, logname, media=None):
         ok = True
