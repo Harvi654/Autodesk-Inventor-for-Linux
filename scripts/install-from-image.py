@@ -76,6 +76,17 @@ QUIRKS = {
                       "finish_licensing"),
 }
 
+# A Windows exit code reaches Linux only as its low byte: msiexec's 1603
+# shows up as 67. The usual Windows Installer codes:
+MSI_RC = {
+    67: " (= 1603, fatal error during installation - see the .msi/.msp log)",
+    69: " (= 1605, product not installed)",
+    82: " (= 1618, another installation is in progress)",
+    99: " (= 1635, patch package could not be opened)",
+    100: " (= 1636, patch package could not be opened)",
+    106: " (= 1642, patch does not apply to the installed product)",
+}
+
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
              "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
 
@@ -160,7 +171,8 @@ class Installer:
         with open(os.path.join(self.logdir, logname), "ab") as out:
             t0 = time.time()
             rc = subprocess.call(argv, env=self.env, stdout=out, stderr=subprocess.STDOUT)
-        self.log("        exit code %d after %.1fs" % (rc, time.time() - t0))
+        hint = MSI_RC.get(rc, "") if argv[1:2] == ["msiexec"] else ""
+        self.log("        exit code %d%s after %.1fs" % (rc, hint, time.time() - t0))
         return rc
 
     # --- prefix -------------------------------------------------------------
