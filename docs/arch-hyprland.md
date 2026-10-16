@@ -382,6 +382,22 @@ bash scripts/build-wine-dll.sh kernelbase --install --hook
 
 Confirmed: Place from Content Center lists and places parts (ISO screws).
 
+## Drawings: editing dimension text
+
+Editing a dimension's text aborted Inventor with
+`Assertion failed ... riched20/caret.c line 232: ~para->nFlags & MEPF_REWRAP`:
+the RichEdit caret was placed before the text had been rewrapped.
+`patches/riched20-caret-rewrap.patch` rewraps at that point instead
+(`build-wine-dll.sh riched20 --install --hook`). Confirmed working.
+
+## Open: black rectangles around the sketch input boxes
+
+While drawing, the length/angle input boxes sit on a shared window that should
+be transparent; under the X11 driver it is drawn black. Wine's Wayland driver
+(`HKCU\Software\Wine\Drivers` `Graphics=wayland`) was tried: the Home page
+(WebView2, a window embedded from another process) stays empty there, so it is
+not usable yet. Back to `x11`; the transparency has to be fixed in winex11.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
