@@ -161,6 +161,7 @@ class Installer:
 
     def log(self, msg):
         print(msg, flush=True)
+        os.makedirs(self.logdir, exist_ok=True)
         with open(os.path.join(self.logdir, "install.log"), "a") as f:
             f.write(msg + "\n")
 
