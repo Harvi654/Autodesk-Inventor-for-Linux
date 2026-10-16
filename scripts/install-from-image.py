@@ -447,6 +447,7 @@ class Installer:
             steps, skipped, missing = odis.plan_bundle(img, odis.bundle_manifest(self.image), self.a.lang)
             if not os.path.isfile(os.path.join(self.prefix, ".odis-install-state.json")):
                 sys.exit("no Inventor installed in %s yet - install the product image first" % self.prefix)
+            self.restore_originals()
         else:
             self.key_prefix = ""
             steps, skipped, missing = odis.plan(img, ["inventor"], self.a.lang)
@@ -482,6 +483,35 @@ class Installer:
                 sys.exit(1)
         self.stop_licensing_service()
         self.log("\nAll steps finished.")
+
+    def restore_originals(self):
+        """Put back what finish-install.sh moved aside (disabled add-ins,
+        InteractiveTutorial, the CER reporter). An update patches the files
+        in place; a file that isn't where the MSI put it can't be patched
+        (PatchFiles 1603) - and Wine's rollback then leaves Inventor
+        unregistered. Run finish-install.sh again after the update."""
+        if self.a.dry_run:
+            return
+        inv = os.path.join(self.c, "Program Files", "Autodesk", "Inventor 2026")
+        off = os.path.join(inv, "Addins.disabled")
+        moved = []
+        if os.path.isdir(off):
+            for f in os.listdir(off):
+                if f.lower().endswith(".addin"):
+                    shutil.move(os.path.join(off, f), os.path.join(inv, "Bin", "Addins", f))
+                    moved.append(f)
+            for f, sub in (("InteractiveTutorial.dll", ""), ("InteractiveTutorial.resources.dll", "en-US")):
+                src = os.path.join(off, "libs", f)
+                if os.path.isfile(src):
+                    shutil.move(src, os.path.join(inv, "Bin", sub, f))
+                    moved.append(f)
+        cer = os.path.join(inv, "Bin", "CER", "senddmp.exe")
+        if os.path.isfile(cer + ".disabled") and not os.path.exists(cer):
+            os.rename(cer + ".disabled", cer)
+            moved.append("senddmp.exe")
+        if moved:
+            self.log("restored for the update: %s" % ", ".join(moved))
+            self.log("run finish-install.sh again afterwards (it disables them again)")
 
     # Autodesk MSIs register the product with the licensing service through
     # custom actions (licIsSvcUpgraded, licMarkInstall ...), which talk to the
