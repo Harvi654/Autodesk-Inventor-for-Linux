@@ -8,8 +8,11 @@
 #                           instead of an empty 1x1 bitmap (patches/shell32-getimage.patch);
 #                           IFolderView2 selection methods, double-click in Inventor's
 #                           Open/Place dialog (patches/shell32-folderview-selection.patch)
-#               oleaut32  - only with --diag (no fix yet): more detail when
-#                           ITypeInfo::Invoke fails to convert a parameter
+#               oleaut32  - MSFT typelib: pointer to a simple type with VT_ARRAY
+#                           (or out of range) indexed past std_typedesc -> garbage
+#                           parameter type, IDispatch calls fail with E_INVALIDARG
+#                           (Design Accelerator shaft, patches/oleaut32-typedesc-pointee.patch);
+#                           --diag adds detail when ITypeInfo::Invoke can't convert a parameter
 #               All patches/DLL-*.patch are applied; with --diag also
 #               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
@@ -28,7 +31,7 @@ DLL="${1:-}"; shift || true
 case "$DLL" in
     wbemprox) CHECK=Win32_TimeZone;  TEST=query ;;
     shell32)  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
-    oleaut32) CHECK='(memid %#lx, %d params'; TEST=typelib ;;
+    oleaut32) CHECK='unsupported simple pointee type'; TEST=typelib ;;
     *) die "usage: $0 wbemprox|shell32|oleaut32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 

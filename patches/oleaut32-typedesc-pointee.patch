@@ -1,0 +1,43 @@
+diff --git a/dlls/oleaut32/typelib.c b/dlls/oleaut32/typelib.c
+index b72a0054..00bd612f 100644
+--- a/dlls/oleaut32/typelib.c
++++ b/dlls/oleaut32/typelib.c
+@@ -3521,6 +3521,7 @@ static ITypeLib2* ITypeLib2_Constructor_MSFT(LPVOID pLib, DWORD dwTLBLength)
+     if(tlbSegDir.pTypdescTab.length > 0)
+     {
+         int i, j, cTD = tlbSegDir.pTypdescTab.length / (2*sizeof(INT));
++        TYPEDESC *array_desc;
+         INT16 td[4];
+         pTypeLibImpl->ctTypeDesc = cTD;
+         pTypeLibImpl->pTypeDesc = calloc(cTD, sizeof(TYPEDESC));
+@@ -3533,7 +3534,29 @@ static ITypeLib2* ITypeLib2_Constructor_MSFT(LPVOID pLib, DWORD dwTLBLength)
+ 	    {
+ 	        /* FIXME: check safearray */
+                 if(td[3] < 0)
+-                    pTypeLibImpl->pTypeDesc[i].lptdesc = &std_typedesc[td[2]];
++                {
++                    /* Simple pointee type. It may carry VT_ARRAY (a SAFEARRAY of
++                     * that type) or be out of range - never index std_typedesc
++                     * with the raw value. */
++                    VARTYPE pointee = td[2];
++
++                    if (pointee <= VT_LPWSTR)
++                        pTypeLibImpl->pTypeDesc[i].lptdesc = &std_typedesc[pointee];
++                    else if ((pointee & ~VT_TYPEMASK) == VT_ARRAY && (pointee & VT_TYPEMASK) <= VT_LPWSTR
++                             && (array_desc = calloc(1, sizeof(*array_desc))))
++                    {
++                        TRACE_(typelib)("typedesc %d: pointer to SAFEARRAY of vt %d\n", i, pointee & VT_TYPEMASK);
++                        array_desc->vt = VT_SAFEARRAY;
++                        array_desc->lptdesc = &std_typedesc[pointee & VT_TYPEMASK];
++                        pTypeLibImpl->pTypeDesc[i].lptdesc = array_desc;
++                    }
++                    else
++                    {
++                        FIXME("typedesc %d: unsupported simple pointee type %#x (td %#x %#x %#x %#x)\n",
++                              i, (USHORT)pointee, (USHORT)td[0], (USHORT)td[1], (USHORT)td[2], (USHORT)td[3]);
++                        pTypeLibImpl->pTypeDesc[i].lptdesc = &std_typedesc[VT_VARIANT];
++                    }
++                }
+                 else
+                     pTypeLibImpl->pTypeDesc[i].lptdesc = &pTypeLibImpl->pTypeDesc[td[2]/8];
+             }
