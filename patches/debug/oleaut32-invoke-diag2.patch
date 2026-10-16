@@ -1,0 +1,26 @@
+--- a/dlls/oleaut32/typelib.c	2026-10-16 03:38:18.627767101 +0200
++++ b/dlls/oleaut32/typelib.c	2026-10-16 03:38:18.629743186 +0200
+@@ -7628,6 +7628,23 @@
+             if ((V_VT(&varresult) == VT_ERROR) && FAILED(V_ERROR(&varresult)))
+             {
+                 WARN("invoked function failed with error %#lx.\n", V_ERROR(&varresult));
++                {
++                    /* inventor-on-linux diagnostic: name the failing method and its arguments */
++                    BSTR fname = NULL, tname = NULL;
++                    UINT k;
++                    ITypeInfo_GetDocumentation((ITypeInfo *)iface, MEMBERID_NIL, &tname, NULL, NULL, NULL);
++                    ITypeInfo_GetDocumentation((ITypeInfo *)iface, memid, &fname, NULL, NULL, NULL);
++                    ERR("%s::%s (memid %#lx, flags %#x) returned %#lx, %u args, %u named\n",
++                        debugstr_w(tname), debugstr_w(fname), memid, wFlags, V_ERROR(&varresult),
++                        pDispParams->cArgs, pDispParams->cNamedArgs);
++                    for (k = 0; k < pDispParams->cArgs; k++)
++                        ERR("  arg %u: %s\n", k, debugstr_variant(&pDispParams->rgvarg[pDispParams->cArgs - 1 - k]));
++                    for (k = 0; k < func_desc->cParams; k++)
++                        ERR("  param %u: vt %#x flags %#x\n", k, rgvt[k],
++                            func_desc->lprgelemdescParam[k].paramdesc.wParamFlags);
++                    SysFreeString(fname);
++                    SysFreeString(tname);
++                }
+                 hres = DISP_E_EXCEPTION;
+                 if (pExcepInfo)
+                 {
