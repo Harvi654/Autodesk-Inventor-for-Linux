@@ -63,7 +63,8 @@ INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh
 |---|---|---|
 | update's `setup.xml` not recognised | a downloaded update's Bundle manifest is `setup.xml` | `odis.bundle_manifest()` |
 | PatchFiles 1603 on `senddmp.exe` | finish-install.sh had renamed it | moved-aside files are put back before an update |
-| PatchFiles 1603 on the first delta | Wine's `mspatcha`: "interleaved LZXD decompression is not supported" for old files larger than the 8 MB window (22 files in 2026.4) | `patches/mspatcha-large-old-file.patch` (`build-wine-dll.sh mspatcha --install`): only the first window-size bytes of the old file are the reference - found black-box against Windows' results, output byte-identical |
+| PatchFiles 1603 on the first delta | Wine's `mspatcha`: "interleaved LZXD decompression is not supported" for old files larger than the 8 MB window (22 files in 2026.4) | `patches/mspatcha-pa19-32bit-and-large-files.patch` (`build-wine-dll.sh mspatcha --install`): only the first window-size bytes of the old file are the reference - found black-box against Windows' results, output byte-identical |
+| PatchFiles 1603 on .NET assemblies | "special processing of 32-bit executables not implemented" (44 files in 2026.4) | same patch: Wine MR 3870 (Aidan Khoury, 2023, never merged) ported to 11.19 |
 | 2026.4 `Inventor.exe` dies at start (0xc06d007f) | Wine `msi` dropped the 570 Patch rows whose header is in `MsiPatchHeaders` (NULL `Header` stream) - their files stayed at 2026.0 | `patches/msi-transform-null-stream.patch` (`build-wine-dll.sh msi --install`) |
 | files skipped even so | Wine's MsiApplyPatch doesn't reinstall the patched features | `REINSTALL=ALL REINSTALLMODE=omus` |
 | a failed patch leaves the product unregistered (1605) | Wine's rollback | keep a copy of the prefix before updating |

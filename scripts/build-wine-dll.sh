@@ -17,9 +17,10 @@
 #                           was dropped; MSP updates lose their Patch rows that
 #                           use MsiPatchHeaders -> files not updated
 #                           (patches/msi-transform-null-stream.patch)
-#               mspatcha  - delta patches of files larger than the LZXD window
-#                           (8 MB) failed: "interleaved LZXD decompression is not
-#                           supported" (patches/mspatcha-large-old-file.patch)
+#               mspatcha  - delta patches of 32-bit PE files (.NET assemblies) and
+#                           of files larger than the LZXD window (8 MB) - needed
+#                           by Autodesk's MSP updates
+#                           (patches/mspatcha-pa19-32bit-and-large-files.patch)
 #               All patches/DLL-*.patch are applied; with --diag also
 #               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
