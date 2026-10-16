@@ -404,6 +404,8 @@ class Installer:
                 self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"])); continue
             self.log("[%2d/%d] %s" % (i, len(steps), s["display"]))
             t0 = time.time()
+            if s["type"] in ("MSI", "MSP"):
+                self.licensing_service()
             ok = self.install_step(s, "%02d-%s" % (i, s["name"]), img)
             if ok:
                 self.mark_done(key)
@@ -411,9 +413,41 @@ class Installer:
             elif s["ignoreFailure"]:
                 self.log("     failed, but the manifest allows that - continuing")
             else:
+                self.stop_licensing_service()
                 self.log("\nStopped at step %d. Fix it and rerun the same command to continue." % i)
                 sys.exit(1)
+        self.stop_licensing_service()
         self.log("\nAll steps finished.")
+
+    # Autodesk MSIs register the product with the licensing service through
+    # custom actions (licIsSvcUpgraded, licMarkInstall ...), which talk to the
+    # running service. Under Wine it can't be started as a Windows service
+    # (it never reports "running" -> 1053/1077), so run it as a plain
+    # process - exactly what launch-inventor.sh does.
+    _lic_proc = None
+
+    def licensing_service(self):
+        if self.a.dry_run or self._lic_proc is not None:
+            return
+        exe = glob.glob(self.unix(QUIRKS["adsklicensing"][1]))
+        if not exe:
+            return
+        win = "C:\\" + os.path.relpath(sorted(exe)[-1], self.c).replace("/", "\\")
+        self.log("      starting the licensing service as a process (%s)" % win)
+        out = open(os.path.join(self.logdir, "licensing-service.log"), "ab")
+        self._lic_proc = subprocess.Popen(["wine", win], env=self.env, stdout=out, stderr=subprocess.STDOUT)
+        time.sleep(8)   # it answers on 127.0.0.1:44511 within a few seconds
+
+    def stop_licensing_service(self):
+        if self._lic_proc is None:
+            return
+        subprocess.call(["wine", "taskkill", "/f", "/im", "AdskLicensingService.exe"], env=self.env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            self._lic_proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            self._lic_proc.kill()
+        self._lic_proc = None
 
 
 def main():
