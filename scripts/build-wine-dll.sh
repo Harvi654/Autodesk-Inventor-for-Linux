@@ -31,7 +31,7 @@ DLL="${1:-}"; shift || true
 case "$DLL" in
     wbemprox) CHECK=Win32_TimeZone;  TEST=query ;;
     shell32)  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
-    oleaut32) CHECK='unsupported simple pointee type'; TEST=typelib ;;
+    oleaut32) CHECK='pointee index %lu out of range'; TEST=typelib ;;
     *) die "usage: $0 wbemprox|shell32|oleaut32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 

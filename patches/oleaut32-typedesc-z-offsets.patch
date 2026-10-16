@@ -1,0 +1,44 @@
+--- a/dlls/oleaut32/typelib.c	2026-10-16 03:29:48.898390549 +0200
++++ b/dlls/oleaut32/typelib.c	2026-10-16 03:29:48.907335556 +0200
+@@ -3558,12 +3558,24 @@
+                     }
+                 }
+                 else
+-                    pTypeLibImpl->pTypeDesc[i].lptdesc = &pTypeLibImpl->pTypeDesc[td[2]/8];
++                {
++                    /* Offset into this table, a 32-bit value split over td[2] (low)
++                     * and td[3] (high): td[2] alone is negative from 32 KB on. */
++                    DWORD index = MAKELONG(td[2], td[3]) / (2 * sizeof(INT));
++
++                    if (index < cTD)
++                        pTypeLibImpl->pTypeDesc[i].lptdesc = &pTypeLibImpl->pTypeDesc[index];
++                    else
++                    {
++                        FIXME("typedesc %d: pointee index %lu out of range (%d)\n", i, index, cTD);
++                        pTypeLibImpl->pTypeDesc[i].lptdesc = &std_typedesc[VT_VARIANT];
++                    }
++                }
+             }
+ 	    else if(td[0] == VT_CARRAY)
+             {
+ 	        /* array descr table here */
+-	        pTypeLibImpl->pTypeDesc[i].lpadesc = (void *)(INT_PTR)td[2];  /* temp store offset in*/
++	        pTypeLibImpl->pTypeDesc[i].lpadesc = (void *)(INT_PTR)MAKELONG(td[2], td[3]);  /* temp store offset in*/
+             }
+             else if(td[0] == VT_USERDEFINED)
+ 	    {
+@@ -3584,7 +3596,13 @@
+                 if(td[1]<0)
+                     pTypeLibImpl->pTypeDesc[i].lpadesc->tdescElem.vt = td[0] & VT_TYPEMASK;
+                 else
+-                    pTypeLibImpl->pTypeDesc[i].lpadesc->tdescElem = cx.pLibInfo->pTypeDesc[td[0]/(2*sizeof(INT))];
++                {
++                    DWORD index = MAKELONG(td[0], td[1]) / (2 * sizeof(INT));
++                    if (index < cTD)
++                        pTypeLibImpl->pTypeDesc[i].lpadesc->tdescElem = cx.pLibInfo->pTypeDesc[index];
++                    else
++                        FIXME("array typedesc %d: element index %lu out of range (%d)\n", i, index, cTD);
++                }
+ 
+                 pTypeLibImpl->pTypeDesc[i].lpadesc->cDims = td[2];
+ 
