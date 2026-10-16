@@ -374,9 +374,12 @@ class Installer:
         elif t == "ZIP":
             ok = self.do_zip(s, logname, path)
         elif t == "7Z":
-            ok = self.do_7z(s, logname, path)
+            # e.g. Shared Components' asc-install-helper-tool runs
+            # ASCRegistryTool.exe --registry set afterwards
+            ok = self.do_7z(s, logname, path) and self.do_actions(s, logname, media)
         elif t == "ADIX":
-            ok = self.do_adix(s, logname, path)
+            # e.g. REX Framework registers REX.exe (/RegServer) afterwards
+            ok = self.do_adix(s, logname, path) and self.do_actions(s, logname, media)
         else:
             self.log("     WARN don't know how to install type %s - skipped" % t); return True
         if not ok:
