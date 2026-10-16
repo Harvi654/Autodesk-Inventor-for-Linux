@@ -8,10 +8,14 @@
 #                           instead of an empty 1x1 bitmap (patches/shell32-getimage.patch);
 #                           IFolderView2 selection methods, double-click in Inventor's
 #                           Open/Place dialog (patches/shell32-folderview-selection.patch)
-#               All patches/DLL-*.patch are applied.
+#               oleaut32  - only with --diag (no fix yet): more detail when
+#                           ITypeInfo::Invoke fails to convert a parameter
+#               All patches/DLL-*.patch are applied; with --diag also
+#               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
 #   --hook      add a pacman hook that reminds you to rerun this after Wine updates
 #   --restore   put the original system DLL back
+#   --diag      include the diagnostic patches from patches/debug/
 #   --test      also build the DLL's Wine tests and run the patched test file
 #               (in a throw-away prefix; run after --install)
 #
@@ -24,13 +28,14 @@ DLL="${1:-}"; shift || true
 case "$DLL" in
     wbemprox) CHECK=Win32_TimeZone;  TEST=query ;;
     shell32)  CHECK='supports neither IInitializeWithStream'; TEST=shlfolder ;;
-    *) die "usage: $0 wbemprox|shell32 [--install] [--hook] [--restore] [--test]" ;;
+    oleaut32) CHECK='(memid %#lx, %d params'; TEST=typelib ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
-DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0
+DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
 for a in "$@"; do
     case "$a" in
-        --install) DO_INSTALL=1 ;; --hook) DO_HOOK=1 ;; --restore) DO_RESTORE=1 ;; --test) DO_TEST=1 ;;
+        --install) DO_INSTALL=1 ;; --hook) DO_HOOK=1 ;; --restore) DO_RESTORE=1 ;; --test) DO_TEST=1 ;; --diag) DO_DIAG=1 ;;
         *) die "unknown option: $a" ;;
     esac
 done
@@ -70,7 +75,12 @@ fi
 
 step "Applying patches/$DLL-*.patch..."
 cd "$SRC"
-for PATCH in "$PROJECT_DIR/patches/$DLL-"*.patch; do
+shopt -s nullglob
+PATCHES=("$PROJECT_DIR/patches/$DLL-"*.patch)
+[ "$DO_DIAG" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/debug/$DLL-"*.patch)
+shopt -u nullglob
+[ ${#PATCHES[@]} -gt 0 ] || die "no patches for $DLL (diagnostic ones need --diag)"
+for PATCH in "${PATCHES[@]}"; do
     if patch -p1 -R --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
         ok "$(basename "$PATCH") already applied"
     else

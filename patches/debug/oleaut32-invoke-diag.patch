@@ -1,0 +1,30 @@
+diff --git a/dlls/oleaut32/typelib.c b/dlls/oleaut32/typelib.c
+index b72a0054..0a6f4078 100644
+--- a/dlls/oleaut32/typelib.c
++++ b/dlls/oleaut32/typelib.c
+@@ -7391,6 +7391,25 @@ static HRESULT WINAPI ITypeInfo_fnInvoke(
+                         {
+                             ERR("failed to convert param %d to %s from %s\n", i,
+                                 debugstr_vt(rgvt[i]), debugstr_variant(src_arg));
++                            {
++                                /* inventor-on-linux diagnostic: which method and what param type */
++                                BSTR fname = NULL, tname = NULL;
++                                const TYPEDESC *td = &func_desc->lprgelemdescParam[i].tdesc;
++                                int depth;
++                                ITypeInfo_GetDocumentation((ITypeInfo *)iface, MEMBERID_NIL, &tname, NULL, NULL, NULL);
++                                ITypeInfo_GetDocumentation((ITypeInfo *)iface, memid, &fname, NULL, NULL, NULL);
++                                ERR("  in %s::%s (memid %#lx, %d params, flags %#x), rgvt %#x, wParamFlags %#x\n",
++                                    debugstr_w(tname), debugstr_w(fname), memid, func_desc->cParams,
++                                    func_desc->invkind, rgvt[i], wParamFlags);
++                                for (depth = 0; td && depth < 4; depth++)
++                                {
++                                    ERR("  tdesc[%d] vt %#x hreftype %#lx\n", depth, td->vt,
++                                        td->vt == VT_USERDEFINED ? td->hreftype : 0);
++                                    td = (td->vt == VT_PTR || td->vt == VT_SAFEARRAY) ? td->lptdesc : NULL;
++                                }
++                                SysFreeString(fname);
++                                SysFreeString(tname);
++                            }
+                             break;
+                         }
+                         prgpvarg[i] = &rgvarg[i];
