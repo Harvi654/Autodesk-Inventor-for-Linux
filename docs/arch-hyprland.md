@@ -314,6 +314,25 @@ bash scripts/build-wine-dll.sh shell32 --test      # Wine's shell32 shlfolder te
 bash scripts/build-wine-dll.sh shell32 --restore   # back to the original
 ```
 
+### Open: big icons in the New dialog
+
+Still the old "I" icons after the import above, also with HKLM DefaultIcon set
+to `SrvRes.dll`. A `+shell` trace shows the dialog does **not** call
+`IShellItemImageFactory::GetImage`; it calls
+`ExtractIconW(...\Inventor.exe, 2..5)` itself - apparently its fallback when the
+system hands back a generic document icon. Next: find which shell call returns
+the generic icon for `.ipt`/`.iam` (trace limited to the moment the dialog opens).
+The shell32 GetImage patch is still worth upstreaming for other programs.
+
+## Known harmless log messages
+
+- `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
+  crash reporter (CER) and usage-data uploader are not in the prefix, so nothing
+  is sent. Intended.
+- `class {cfe9f29b-...} not registered`: not registered on Windows either.
+- `class {1060954f-...} not registered`: the Fusion interop add-in, disabled by
+  default (`scripts/addins.sh enable translatorfusion` to try it).
+
 ## Result log
 
 **2026-10-15 - Inventor 2026 build 30.40.43500 (.NET 10), Wine 11.19, Arch + Hyprland, RX 580 (RADV):**
