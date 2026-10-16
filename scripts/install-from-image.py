@@ -284,7 +284,7 @@ class Installer:
                 continue
             path = act["path"] or ""
             if "%INSTALLERPATH%" in path or "Installer.exe" in path:
-                self.nested_bundle(act, logname, s)
+                ok = self.nested_bundle(act, logname, s) and ok
                 continue
             exe = self.expand(path, {"install_source": media} if media else None, s)
             if "%" in exe:
@@ -300,11 +300,11 @@ class Installer:
         args = shlex.split(self.expand(act["params"], step=step))
         opt = {args[i]: args[i + 1] for i in range(len(args) - 1) if args[i].startswith("--")}
         if opt.get("--install_mode") != "install" or "--mount_point" not in opt:
-            return
+            return True
         mount = opt["--mount_point"]
         self.log("      nested bundle in %s" % mount)
         if self.a.dry_run:
-            return
+            return True
         img = odis.Image(self.unix(mount))
         manifest = os.path.relpath(self.unix(opt["--manifest"]), img.root)
         steps, skipped, missing = odis.plan_bundle(img, manifest, self.a.lang)
@@ -312,8 +312,13 @@ class Installer:
             self.log("        skip %s: %s" % (n, why))
         for n, rel, chain in missing:
             self.log("        MISSING manifest %s (%s)" % (rel, chain))
+        ok = not missing
         for i, sub in enumerate(steps, 1):
-            self.install_step(sub, "%s-sub%02d" % (os.path.splitext(logname)[0], i), img, mount)
+            # the inner manifests use the outer package's properties
+            # (e.g. ASC_BASE_PATH from pkg.asc.xml)
+            sub["properties"] = dict(step.get("properties") or {}, **(sub.get("properties") or {}))
+            ok = self.install_step(sub, "%s-sub%02d" % (os.path.splitext(logname)[0], i), img, mount) and ok
+        return ok
 
     # --- driver -------------------------------------------------------------
     def install_step(self, s, tag, img, media=None):
