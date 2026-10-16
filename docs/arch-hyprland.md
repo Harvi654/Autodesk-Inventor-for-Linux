@@ -49,11 +49,30 @@ What had to be worked around (all handled by the scripts):
 | `Inventor.msi`: licIsSvcUpgraded 1603 | its licensing actions need the running service | run `AdskLicensingService.exe` as a plain process during MSI steps |
 | Shared Components not installed | nested bundle; `%ASC_BASE_PATH%` defined by the outer package | nested plan inherits the outer properties |
 | `Current?` folders | Wine stores Autodesk's junctions in a form Linux can't follow | replaced by relative symlinks (`cfg_current_link`) |
-| "Failed to initialize a component for accessing AutoCAD files. Error 82" | no `RealDWGSettings.xml` in the profile | `finish-install.sh` writes it |
 | Login never returns to Inventor | `adskidmgr://` callback went to the default prefix | `launch-inventor.sh` records the running prefix for the callback |
+| "Failed to initialize a component for accessing AutoCAD files. Error 82" | no `RealDWGSettings.xml` in the profile | `finish-install.sh` writes it |
 
-Still open: the 2026.x update (`Inventor_2026.4_Update.exe`), fonts without a
-Windows partition, one-command/GUI installer, a bundled patched Wine.
+### Updates (e.g. 2026.4)
+
+```bash
+python3 scripts/install-from-image.py Inventor_2026.4_Update.exe   # the .exe from Autodesk, unpacked with 7z
+INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh
+```
+
+| Problem | Cause | Fix |
+|---|---|---|
+| update's `setup.xml` not recognised | a downloaded update's Bundle manifest is `setup.xml` | `odis.bundle_manifest()` |
+| PatchFiles 1603 on `senddmp.exe` | finish-install.sh had renamed it | moved-aside files are put back before an update |
+| PatchFiles 1603 on the first delta | Wine's `mspatcha` lacks PA19 executable preprocessing | **open** - works with Windows' `mspatcha.dll` (`WINEDLLOVERRIDES=mspatcha=n,b`) |
+| 2026.4 `Inventor.exe` dies at start (0xc06d007f) | Wine `msi` dropped the 570 Patch rows whose header is in `MsiPatchHeaders` (NULL `Header` stream) - their files stayed at 2026.0 | `patches/msi-transform-null-stream.patch` (`build-wine-dll.sh msi --install`) |
+| files skipped even so | Wine's MsiApplyPatch doesn't reinstall the patched features | `REINSTALL=ALL REINSTALLMODE=omus` |
+| a failed patch leaves the product unregistered (1605) | Wine's rollback | keep a copy of the prefix before updating |
+
+Result: 2026.4 installed from Autodesk's packages differs from the Windows
+install only in Inventor.ini and the optional Electrical add-in.
+
+Still open: Wine's mspatcha, fonts without a Windows partition,
+one-command/GUI installer, a bundled patched Wine.
 
 ## Mounting Windows
 
