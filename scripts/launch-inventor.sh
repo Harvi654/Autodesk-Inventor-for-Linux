@@ -88,9 +88,19 @@ pgrep -if '(^|[\\/])adsklicensingservice\.exe( |$)' >/dev/null && ok "Licensing 
 
 info "[4/4] launching Inventor"
 cd "$P_INV/Bin" || exit 1
+# Not "wine ... | tee": processes Inventor starts (WebView2, licensing agent)
+# inherit the pipe, so tee - and this script - would wait for them after
+# Inventor itself has exited or crashed. Write to the log and follow it instead.
+LOG="$LOGDIR/inventor-$TS.log"
 if [ -n "$INV_VDESKTOP" ]; then
     info "    inside Wine virtual desktop $INV_VDESKTOP"
-    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "$@" 2>&1 | tee -a "$LOGDIR/inventor-$TS.log"
+    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "$@" >>"$LOG" 2>&1 &
 else
-    wine Inventor.exe "$@" 2>&1 | tee -a "$LOGDIR/inventor-$TS.log"
+    wine Inventor.exe "$@" >>"$LOG" 2>&1 &
 fi
+INV_PID=$!
+tail -n +1 -f --pid="$INV_PID" "$LOG" &
+wait "$INV_PID"
+RC=$?
+sleep 1
+info "Inventor exited (code $RC)"
