@@ -456,7 +456,14 @@ class Installer:
             self.restore_originals()
         else:
             self.key_prefix = ""
-            steps, skipped, missing = odis.plan(img, self.a.app or ["inventor"], self.a.lang, extra=self.a.extra)
+            apps = self.a.app
+            if not apps:
+                # like ODIS: Inventor plus the Content Center libraries
+                # (app.dclibrary.xml, ~12.7 GB installed) when the image has them
+                apps = ["inventor"]
+                if not self.a.no_content and img.find("manifest/app.dclibrary.xml"):
+                    apps.append("dclibrary")
+            steps, skipped, missing = odis.plan(img, apps, self.a.lang, extra=self.a.extra)
         if missing:
             for n, rel, chain in missing:
                 print("missing manifest %s (needed by %s)" % (rel, chain))
@@ -589,6 +596,8 @@ def main():
     ap.add_argument("--app", action="append",
                     help="application manifest(s) to install (default: inventor; "
                          "dclibrary = Content Center libraries)")
+    ap.add_argument("--no-content", action="store_true",
+                    help="leave out the Content Center libraries (~12.7 GB)")
     ap.add_argument("--with", dest="extra", action="append", default=[],
                     help="also install this optional package, e.g. Content Center "
                          "libraries (names: scripts/odis-plan.py IMAGE, under skipped)")
