@@ -38,6 +38,28 @@ import time
 import urllib.parse
 import zipfile
 
+
+def win_split(cmdline):
+    """Split a Windows command line from a manifest into arguments.
+    Spaces separate arguments outside double quotes, the quotes are removed and
+    backslashes stay as they are (shlex would treat them as escapes:
+    M:\\x64\\ASC -> M:x64ASC, and "C:\\Dir\\" -> no closing quotation)."""
+    args, cur, quoted, have = [], [], False, False
+    for ch in cmdline:
+        if ch == '"':
+            quoted = not quoted
+            have = True
+        elif ch in " \t\r\n" and not quoted:
+            if have:
+                args.append("".join(cur))
+            cur, have = [], False
+        else:
+            cur.append(ch)
+            have = True
+    if have:
+        args.append("".join(cur))
+    return args
+
 HERE = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import odis  # noqa: E402
@@ -216,7 +238,7 @@ class Installer:
         extra = {"media_root": media} if media else None
         argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
                 if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
-        argv += shlex.split(self.expand(s["params"], extra, s))
+        argv += win_split(self.expand(s["params"], extra, s))
         # Autodesk MSIs have the launch condition "ADSK_ODIS_SETUP OR Installed"
         # ("needs to be run from Setup.exe"); ODIS sets this property.
         argv.append("ADSK_ODIS_SETUP=1")
@@ -244,7 +266,7 @@ class Installer:
     def do_exe(self, s, logname, media=None):
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
-        rc = self.run(["wine", exe] + shlex.split(self.expand(s["params"], extra, s)), logname)
+        rc = self.run(["wine", exe] + win_split(self.expand(s["params"], extra, s)), logname)
         if rc in (0, 1641, 3010):
             return True
         q = QUIRKS.get(s["name"].lower())
@@ -375,14 +397,14 @@ class Installer:
             if "%" in exe:
                 self.log("      skip action %s %s (unknown variable)" % (act["type"], path))
                 continue
-            rc = self.run(["wine", exe.replace("/", "\\")] + shlex.split(self.expand(act["params"], step=s)), logname)
+            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(self.expand(act["params"], step=s)), logname)
             if rc != 0:
                 self.log("      WARN %s action returned %d" % (act["type"], rc))
         return ok
 
     def nested_bundle(self, act, logname, step):
         """ODIS action that installs another bundle (e.g. Shared Components)."""
-        args = shlex.split(self.expand(act["params"], step=step))
+        args = win_split(self.expand(act["params"], step=step))
         opt = {args[i]: args[i + 1] for i in range(len(args) - 1) if args[i].startswith("--")}
         if opt.get("--install_mode") != "install" or "--mount_point" not in opt:
             return True
@@ -505,7 +527,7 @@ class Installer:
         unregistered. Run finish-install.sh again after the update."""
         if self.a.dry_run:
             return
-        inv = os.path.join(self.c, "Program Files", "Autodesk", "Inventor 2026")
+        inv = os.path.join(self.c, "Program Files", "Autodesk", "Inventor " + os.environ.get("INV_YEAR", "2026"))
         off = os.path.join(inv, "Addins.disabled")
         moved = []
         if os.path.isdir(off):
