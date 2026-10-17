@@ -143,11 +143,16 @@ Open an issue with:
 
 1. what you did, step by step, and whether it happens every time,
 2. a screenshot,
-3. for a crash or freeze, the end of the newest log:
-   `tail -80 "$(ls -t ~/inventor-on-linux/logs/inventor-*.log | head -1)"`
+3. the report file from
 
-Do not post whole logs without reading them first - they can contain your
-e-mail address or sign-in data.
+   ```bash
+   bash ~/inventor-on-linux/scripts/report.sh            # after a crash or a problem in Inventor
+   bash ~/inventor-on-linux/scripts/report.sh --install  # when the installation failed
+   ```
+
+   It collects your system, GPU, Wine and Inventor versions and the end of the
+   newest log into `~/inventor-report-<date>.txt`, with e-mail addresses,
+   sign-in tokens and your user name removed. Read it before you send it.
 
 ## Disclaimer
 
