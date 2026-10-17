@@ -84,7 +84,6 @@ info "All profiles:   $(ls "$WIN_ROOT/Users" 2>/dev/null | tr '\n' ' ')"
 hdr "Autodesk components on Windows"
 chk() { if [ -e "$2" ]; then ok "$1"; else bad "$1 missing: $2"; fi; }
 chk "Inventor $INV_YEAR"         "$WIN_INV/Bin/Inventor.exe"
-chk "OGSFactory.dll"            "$WIN_INV/Bin/OGSFactory.dll"
 detect_source_versions
 info "Shared Components versions: $(ls "$WIN_ASC_BASE" 2>/dev/null | tr '\n' ' ')-> using ${ASC_VER:-<none>}"
 info "AdskLicensing versions:     $(ls "$WIN_LIC_BASE" 2>/dev/null | tr '\n' ' ')-> using ${LIC_VER:-<none>}"
@@ -108,14 +107,6 @@ if have hivexget; then
     info "Inventor ClientVersion (registry): ${CV:-<not readable>}"
 fi
 info "Inventor.exe FileVersion: $(inv_file_version "$WIN_INV/Bin/Inventor.exe")"
-if [ -f "$WIN_INV/Bin/OGSFactory.dll" ]; then
-    OGS_HITS=$(LC_ALL=C grep -obUaP '\x48\x8b\x4c\x24\x70\x48\x8b\x11' "$WIN_INV/Bin/OGSFactory.dll" | cut -d: -f1 | while read -r o; do printf '0x%X ' "$o"; done)
-    if [ "$(od -v -An -tx1 -j $((0x56E5B)) -N 8 "$WIN_INV/Bin/OGSFactory.dll" | tr -d ' \n')" = 488b4c2470488b11 ]; then
-        ok "OGSFactory.dll matches the original project's build (binary patch applicable)"
-    else
-        info "OGSFactory.dll is a different build - binary patch will be skipped; crash-site pattern at: ${OGS_HITS:-<none>}"
-    fi
-fi
 [ -f "$REG_FILE" ] && ok "registry export present ($(wc -l < "$REG_FILE") lines)" || info "registry export not made yet (scripts/export-registry.sh)"
 
 hdr "Disk space"

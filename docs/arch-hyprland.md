@@ -217,7 +217,7 @@ Please report which one was needed.
 | Component versions | hard-coded (Licensing 15.4.2.4, Components 1.8.0, IdMgr 1.16.5.1/1.14.0.3, build 30.0.17500) | detected from `/mnt/windows` and the registry export |
 | Registry export | generated but never imported | imported with `regedit` **as UTF-16** before setting keys (see below) |
 | `rebuild-prefix.sh` | under `set -e`, any failing `cp`/`mv ... 2>/dev/null` of an optional file (license cache, Design Data dir that doesn't exist yet, `wineserver -k` with nothing running) can abort the run | optional steps warn and continue |
-| OGSFactory.dll patch | written blindly at fixed offsets | original bytes verified first; skipped on a different build; `scripts/ogs-patch.sh status|apply|revert` |
+| OGSFactory.dll patch | written blindly at fixed offsets | not needed: fixed in Wine (wbemprox patch), Autodesk files stay untouched |
 | WebView2 installer | expected in `/tmp`, never downloaded | downloaded to `downloads/` |
 | Wine patch | `patch -p1` fails (absolute `/tmp/...` paths in header) | regenerated as a proper `a/ b/` patch |
 | Logs | `~/Projects/Inventor on linux/logs` | `logs/` in the checkout |
@@ -227,29 +227,15 @@ Please report which one was needed.
 | DXVK | `setup_dxvk` from a system package | release 2.7.1 from github.com/doitsujin/dxvk, SHA-256 pinned (same hash as winetricks `dxvk2071`); `INV_DXVK=system` to use `setup_dxvk` |
 | File access | `Z:` = whole filesystem, Documents/Desktop/... linked into `$HOME` | only `C:` (prefix) and `D:` = `~/Inventor`; `--no-sandbox` restores Wine defaults |
 
-## Experiment: is the OGSFactory.dll patch still needed?
+## OGSFactory.dll is not modified
 
-Wine's `IEnumWbemClassObject::Next()` (`dlls/wbemprox/class.c`) cannot return
-`S_OK` with a NULL object: on an empty result it returns `WBEM_S_FALSE` (1)
-with `*puReturned = 0`. `S_FALSE` is a success code, so OGS most likely only
-checks `FAILED(hr)` and then dereferences the NULL object. The result was empty
-because `Win32_TimeZone` did not exist in Wine.
-
-The binary patch was made in session 2, the wbemprox patch in session 3. If
-this reasoning is right, **with the patched wbemprox.dll installed, the
-unmodified OGSFactory.dll should not crash**, and the patch's side effects
-(darker materials, "Material Library not available" in Realistic style) would go
-away.
-
-```bash
-bash scripts/ogs-patch.sh status    # expects: wbemprox has Win32_TimeZone
-bash scripts/ogs-patch.sh revert    # original DLL
-bash scripts/launch-inventor.sh     # create a Part, switch to Realistic style
-bash scripts/ogs-patch.sh apply     # back, if it crashes
-```
-
-If it works, that resolves Open Problems #1 and the Realistic Visual Style
-entry, and makes the wbemprox upstream patch the only fix needed.
+An earlier version of this project patched bytes in Autodesk's OGSFactory.dll
+to stop a crash of the 3D viewport. The crash came from Wine: Inventor asks WMI
+for `Win32_TimeZone`, Wine had no such class and returned an empty result,
+which Inventor then used as an object. `patches/wbemprox-timezone.patch` adds
+the class to Wine, and Inventor runs with its files exactly as Autodesk ships
+them (verified 2026-10-15; the darker materials of the patched DLL are gone too).
+No Autodesk file is modified by these scripts.
 
 ## DXVK and isolation
 

@@ -238,13 +238,6 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-step "Patching OGSFactory.dll (null-pointer guard for the 3D viewport)..."
-if [ "${INV_OGS_PATCH:-1}" = 1 ]; then
-    bash "$SCRIPTS_DIR/ogs-patch.sh" apply || warn "OGSFactory.dll not patched - please report its sha256 in an issue"
-else
-    info "skipped (INV_OGS_PATCH=0) - experiment: does Inventor work unpatched with the wbemprox patch?"
-fi
-
 step "Waiting for the WebView2 installer..."
 for _ in $(seq 1 180); do kill -0 "$WEBVIEW2_PID" 2>/dev/null || break; sleep 1; done
 if kill -0 "$WEBVIEW2_PID" 2>/dev/null; then warn "WebView2 installer still running after 3 min - leaving it"; else ok "done"; fi
