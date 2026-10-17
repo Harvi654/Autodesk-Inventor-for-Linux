@@ -1,19 +1,26 @@
 diff --git a/dlls/winex11.drv/bitblt.c b/dlls/winex11.drv/bitblt.c
-index 1f910400..403b54ac 100644
+index 1f910400..6b19ea32 100644
 --- a/dlls/winex11.drv/bitblt.c
 +++ b/dlls/winex11.drv/bitblt.c
-@@ -1829,6 +1829,25 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
+@@ -1797,6 +1797,7 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
+     XImage *ximage = surface->image->ximage;
+     const unsigned char *src = color_bits;
+     unsigned char *dst = (unsigned char *)ximage->data;
++    BOOL alpha_shape;
+ 
+     if (alpha_bits == -1)
+     {
+@@ -1829,11 +1830,32 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
                  ptr[x] |= alpha_bits;
      }
  
 +    /* Xwayland and Wayland compositors don't apply the X11 bounding shape
 +     * when they draw a window. With a 32-bit ARGB visual (see
-+     * X11DRV_SetWindowRgn), make the pixels outside the shape transparent. */
-+    if (shape_bits)
-+        WARN( "surface %p hwnd %p depth %u bpp %u src==dst %u dirty %s shape_changed %u\n", surface,
-+              window_surface->hwnd, ximage->depth, ximage->bits_per_pixel, src == dst,
-+              wine_dbgstr_rect( dirty ), shape_changed );
-+    if (shape_bits && ximage->depth == 32 && ximage->bits_per_pixel == 32)
++     * X11DRV_SetWindowRgn), make the pixels outside the shape transparent;
++     * the shape then only limits input - as a bounding shape it would also
++     * clip our transparent pixels out of the window's contents. */
++    alpha_shape = ximage->depth == 32 && ximage->bits_per_pixel == 32 && is_xwayland();
++    if (shape_bits && alpha_shape)
 +    {
 +        UINT shape_stride = shape_info->bmiHeader.biSizeImage / abs( shape_info->bmiHeader.biHeight );
 +        int x, y, stride = ximage->bytes_per_line / sizeof(ULONG);
@@ -28,11 +35,33 @@ index 1f910400..403b54ac 100644
      if (shape_changed)
      {
  #ifdef HAVE_LIBXSHAPE
+         if (!shape_bits)
++        {
+             XShapeCombineMask( gdi_display, surface->window, ShapeBounding, 0, 0, None, ShapeSet );
++            if (alpha_shape) XShapeCombineMask( gdi_display, surface->window, ShapeInput, 0, 0, None, ShapeSet );
++        }
+         else
+         {
+             struct gdi_image_bits bits = {.ptr = (void *)shape_bits};
+@@ -1842,7 +1864,12 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
+ 
+             vis.depth = 1;
+             shape = create_pixmap_from_image( 0, &vis, shape_info, &bits, DIB_RGB_COLORS );
+-            XShapeCombineMask( gdi_display, surface->window, ShapeBounding, 0, 0, shape, ShapeSet );
++            if (alpha_shape)
++            {
++                XShapeCombineMask( gdi_display, surface->window, ShapeBounding, 0, 0, None, ShapeSet );
++                XShapeCombineMask( gdi_display, surface->window, ShapeInput, 0, 0, shape, ShapeSet );
++            }
++            else XShapeCombineMask( gdi_display, surface->window, ShapeBounding, 0, 0, shape, ShapeSet );
+             XFreePixmap( gdi_display, shape );
+         }
+ #endif /* HAVE_LIBXSHAPE */
 diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
-index d7df0a85..69306213 100644
+index d7df0a85..6477da94 100644
 --- a/dlls/winex11.drv/window.c
 +++ b/dlls/winex11.drv/window.c
-@@ -3430,12 +3430,72 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+@@ -3430,12 +3430,80 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
   *
   * Assign specified region to window (for non-rectangular windows)
   */
@@ -42,6 +71,15 @@ index d7df0a85..69306213 100644
 + * windows that also draw outside the window surface (Vulkan/GL children,
 + * direct X drawing) break with a 32-bit visual (BadMatch).
 + * WINE_X11_SHAPE_ALPHA=0 turns it off, =2 also switches visible windows. */
++BOOL is_xwayland(void)
++{
++    static int xwayland = -1;
++    int opcode, event, error;
++
++    if (xwayland == -1) xwayland = XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error );
++    return xwayland;
++}
++
 +static BOOL needs_argb_for_shape( struct x11drv_win_data *data )
 +{
 +    static const WCHAR dialog_classW[] = {'#','3','2','7','7','0',0};
@@ -53,9 +91,8 @@ index d7df0a85..69306213 100644
 +    if (enabled == -1)
 +    {
 +        const char *env = getenv( "WINE_X11_SHAPE_ALPHA" );
-+        int opcode, event, error;
 +        enabled = env ? atoi( env ) : 1;
-+        if (!XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error )) enabled = 0;
++        if (!is_xwayland()) enabled = 0;
 +    }
 +    if (!enabled || !client_side_graphics || !argb_visual.visualid) return FALSE;
 +    if (data->embedded || data->client_window || data->layered) return FALSE;
@@ -105,3 +142,15 @@ index d7df0a85..69306213 100644
          sync_window_region( data, hrgn );
          release_win_data( data );
      }
+diff --git a/dlls/winex11.drv/x11drv.h b/dlls/winex11.drv/x11drv.h
+index 22462df6..fa1e1ca5 100644
+--- a/dlls/winex11.drv/x11drv.h
++++ b/dlls/winex11.drv/x11drv.h
+@@ -746,6 +746,7 @@ extern Window create_client_window( HWND hwnd, RECT client_rect, const XVisualIn
+ extern void detach_client_window( struct x11drv_win_data *data, Window client_window );
+ extern void attach_client_window( struct x11drv_win_data *data, Window client_window );
+ extern void destroy_client_window( HWND hwnd, Window client_window );
++extern BOOL is_xwayland(void);
+ extern void set_window_visual( struct x11drv_win_data *data, const XVisualInfo *vis, BOOL use_alpha );
+ extern void change_systray_owner( Display *display, Window systray_window );
+ extern BOOL update_clipboard( HWND hwnd );
