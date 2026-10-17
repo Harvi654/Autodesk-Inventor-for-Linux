@@ -26,6 +26,13 @@
 #                           this; Inventor redraws the sketch after a dimension edit
 #                           only on a mouse move) (patches/server-mousemove-on-show-hide.patch)
 #                           Close all Wine programs before --install.
+#               winex11   - X11 driver (native winex11.so): windows shaped with SetWindowRgn
+#                           get an ARGB visual under Xwayland and transparent pixels
+#                           outside the shape - Xwayland ignores the X shape, so
+#                           Inventor's sketch input boxes sat on a black rectangle
+#                           (patches/winex11-shape-alpha-xwayland.patch). Built in a
+#                           separate source tree configured with X11 and Vulkan
+#                           (needs vulkan-headers). Close all Wine programs before --install.
 #               All patches/DLL-*.patch are applied; with --diag also
 #               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
@@ -50,7 +57,8 @@ case "$DLL" in
     msi)      CHECK='no stream, NULL'; TEST=patch ;;
     mspatcha) CHECK='old file larger than the window'; TEST=apply_patch ;;
     server)   CHECK=''; TEST='' ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    winex11)  CHECK='shaped window under Xwayland'; TEST='' ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
@@ -67,6 +75,9 @@ SYS_DLL="$PE_DIR/$DLL.dll"
 if [ "$DLL" = server ]; then
     # wineserver is a native program next to the wine binary, not a PE DLL
     SYS_DLL="$(readlink -f "$(command -v wineserver)")"; [ -x "$SYS_DLL" ] || die "can't find wineserver"
+elif [ "$DLL" = winex11 ]; then
+    # the X11 driver's code is the native winex11.so, next to the PE directory
+    SYS_DLL="$(dirname "$PE_DIR")/x86_64-unix/winex11.so"; [ -f "$SYS_DLL" ] || die "can't find $SYS_DLL"
 fi
 BACKUP="$SYS_DLL.orig-$WV"
 
@@ -98,6 +109,25 @@ if wine --version | grep -ci staging >/dev/null; then
     warn "you run wine-staging; building $DLL from vanilla $WV source"
 fi
 
+if [ "$DLL" = winex11 ]; then
+    # the main tree is configured without X11; build the driver in its own
+    # copy of the source, configured like a full Wine (X11, Vulkan, OpenGL)
+    [ -x "$SRC/tools/winebuild/winebuild" ] || die "build any PE DLL first (e.g. $0 msi), the X11 tree reuses its tools"
+    TOOLS="$SRC"
+    SRC="$SRC_ROOT/wine-$WV-x11"
+    if [ ! -d "$SRC" ]; then
+        info "copying the source to $SRC"
+        mkdir -p "$SRC"
+        cp -a "$TOOLS/." "$SRC/"
+        (cd "$SRC" && make distclean >/dev/null 2>&1) || true
+        # take this project's patches to other DLLs out again (they live in the main tree)
+        for P in "$PROJECT_DIR"/patches/*.patch; do
+            patch -p1 -R --dry-run -s -f -d "$SRC" < "$P" >/dev/null 2>&1 && patch -p1 -R -s -d "$SRC" < "$P"
+        done
+    fi
+    [ -f /usr/include/vulkan/vulkan.h ] || die "needs Vulkan headers: sudo pacman -S --needed vulkan-headers"
+fi
+
 step "Applying patches/$DLL-*.patch..."
 cd "$SRC"
 shopt -s nullglob
@@ -124,6 +154,23 @@ for PATCH in "${PATCHES[@]}"; do
     fi
 done
 
+if [ "$DLL" = winex11 ]; then
+step "Configuring (X11, Vulkan, OpenGL)..."
+if [ ! -f Makefile ]; then
+    ./configure --with-wine-tools="$TOOLS" --enable-archs=x86_64 \
+        --without-gstreamer --without-cups --without-sane --without-gphoto --without-pcap \
+        --without-netapi --without-krb5 --without-v4l2 --without-capi --without-pcsclite \
+        --without-ffmpeg --without-sdl --without-usb --without-alsa --without-pulse --without-oss \
+        > "$LOGDIR/wine-x11-configure.log" 2>&1 || die "configure failed, see $LOGDIR/wine-x11-configure.log"
+fi
+MISSING=""
+for D in SONAME_LIBX11 HAVE_LIBXSHAPE HAVE_LIBXXSHM SONAME_LIBXCOMPOSITE SONAME_LIBXI SONAME_LIBXRANDR \
+         SONAME_LIBXRENDER SONAME_LIBXCURSOR SONAME_LIBXFIXES SONAME_LIBXEXT SONAME_LIBVULKAN; do
+    grep -q "^#define $D " include/config.h || MISSING="$MISSING $D"
+done
+[ -z "$MISSING" ] || die "the X11 driver would lack:$MISSING - see $LOGDIR/wine-x11-configure.log (missing -devel/headers?)"
+ok "configured"
+else
 step "Configuring (minimal, PE x86_64 only)..."
 if [ ! -f Makefile ]; then
     ./configure --enable-archs=x86_64 \
@@ -134,12 +181,18 @@ if [ ! -f Makefile ]; then
         > "$LOGDIR/wine-configure.log" 2>&1 || die "configure failed, see $LOGDIR/wine-configure.log"
 fi
 ok "configured"
+fi
 
 if [ "$DLL" = server ]; then
     step "Building wineserver..."
     make -j"$(nproc)" -C server > "$LOGDIR/$DLL-build.log" 2>&1 \
         || die "build failed, see $LOGDIR/$DLL-build.log"
     BUILT="$SRC/server/wineserver"
+elif [ "$DLL" = winex11 ]; then
+    step "Building dlls/winex11.drv..."
+    make -j"$(nproc)" -C dlls/winex11.drv > "$LOGDIR/$DLL-build.log" 2>&1 \
+        || die "build failed, see $LOGDIR/$DLL-build.log"
+    BUILT="$SRC/dlls/winex11.drv/winex11.so"
 else
 step "Building dlls/$DLL..."
 make -j"$(nproc)" -C "dlls/$DLL" > "$LOGDIR/$DLL-build.log" 2>&1 \
@@ -151,7 +204,7 @@ ok "$BUILT"
 
 step "Install..."
 if [ "$DO_INSTALL" -eq 1 ]; then
-    if [ "$DLL" = server ] && pgrep -x wineserver >/dev/null; then
+    if { [ "$DLL" = server ] || [ "$DLL" = winex11 ]; } && pgrep -x wineserver >/dev/null; then
         die "a wineserver is running - close Inventor and all Wine programs (or: wineserver -k) and rerun"
     fi
     [ -f "$BACKUP" ] || sudo cp "$SYS_DLL" "$BACKUP"

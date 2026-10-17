@@ -1,0 +1,63 @@
+diff --git a/dlls/winex11.drv/bitblt.c b/dlls/winex11.drv/bitblt.c
+index 1f910400..b1e3c2f6 100644
+--- a/dlls/winex11.drv/bitblt.c
++++ b/dlls/winex11.drv/bitblt.c
+@@ -1829,6 +1829,21 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
+                 ptr[x] |= alpha_bits;
+     }
+ 
++    /* Xwayland and Wayland compositors don't apply the X11 bounding shape
++     * when they draw a window. With a 32-bit ARGB visual (see
++     * X11DRV_SetWindowRgn), make the pixels outside the shape transparent. */
++    if (shape_bits && ximage->depth == 32 && ximage->bits_per_pixel == 32)
++    {
++        UINT shape_stride = shape_info->bmiHeader.biSizeImage / abs( shape_info->bmiHeader.biHeight );
++        int x, y, stride = ximage->bytes_per_line / sizeof(ULONG);
++        const BYTE *shape = (const BYTE *)shape_bits + dirty->top * shape_stride;
++        ULONG *ptr = (ULONG *)dst + dirty->top * stride;
++
++        for (y = dirty->top; y < dirty->bottom; y++, ptr += stride, shape += shape_stride)
++            for (x = dirty->left; x < dirty->right; x++)
++                if (!(shape[x / 8] & (0x80 >> (x & 7)))) ptr[x] = 0;
++    }
++
+     if (shape_changed)
+     {
+ #ifdef HAVE_LIBXSHAPE
+diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
+index d7df0a85..17fc8cb9 100644
+--- a/dlls/winex11.drv/window.c
++++ b/dlls/winex11.drv/window.c
+@@ -3430,12 +3430,32 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+  *
+  * Assign specified region to window (for non-rectangular windows)
+  */
++/* Xwayland draws a window's whole rectangle, ignoring its bounding shape;
++ * shaped windows need an ARGB visual so the shape can be made of alpha. */
++static BOOL needs_argb_for_shape( struct x11drv_win_data *data )
++{
++    static int xwayland = -1;
++
++    if (xwayland == -1)
++    {
++        int opcode, event, error;
++        xwayland = XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error );
++    }
++    return xwayland && client_side_graphics && argb_visual.visualid && !data->embedded &&
++           !data->client_window && data->whole_window && data->whole_window != root_window;
++}
++
+ void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )
+ {
+     struct x11drv_win_data *data;
+ 
+     if ((data = get_win_data( hwnd )))
+     {
++        if (hrgn && needs_argb_for_shape( data ))
++        {
++            TRACE( "hwnd %p: shaped window under Xwayland, using an ARGB visual\n", hwnd );
++            set_window_visual( data, &argb_visual, data->use_alpha );
++        }
+         sync_window_region( data, hrgn );
+         release_win_data( data );
+     }
