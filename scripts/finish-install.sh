@@ -6,8 +6,9 @@
 #
 # Usage: INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh [--data-dir PATH] [--no-sandbox]
 #
-# Windows fonts: if a Windows partition is mounted at WIN_ROOT (default
-# /mnt/windows) its fonts are copied (windows-fonts.sh); otherwise a warning.
+# Fonts: free Linux fonts with replacements for the Windows families
+# (linux-fonts.sh). INV_FONTS=windows copies them from a mounted Windows
+# partition at WIN_ROOT instead (windows-fonts.sh).
 
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
@@ -104,11 +105,11 @@ step "WebView2 for Wine (Windows 7 + wined3d for msedgewebview2.exe, policy swit
 webview2_reg
 ok "done"
 
-step "Windows fonts (WPF needs Segoe UI/Arial/Tahoma)..."
-if [ -d "$WIN_ROOT/Windows/Fonts" ]; then
+step "Fonts (WPF needs fonts for Segoe UI/Arial/Tahoma)..."
+if [ "${INV_FONTS:-linux}" = windows ]; then
     bash "$SCRIPTS_DIR/windows-fonts.sh" || warn "Windows fonts not copied - WPF may FailFast in TypefaceMap.MapUnresolvedCharacters"
 else
-    warn "no Windows fonts at $WIN_ROOT/Windows/Fonts - Inventor's ribbon/Home page may crash without Segoe UI"
+    bash "$SCRIPTS_DIR/linux-fonts.sh" || warn "fonts not set up - WPF may FailFast in TypefaceMap.MapUnresolvedCharacters"
 fi
 
 step "Isolation (drives, home folders)..."
