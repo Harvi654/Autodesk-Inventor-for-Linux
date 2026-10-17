@@ -162,6 +162,9 @@ what works.
 Ready-made rules: `config/hyprland-inventor.lua` (Hyprland 0.55+, Lua config)
 and `config/hyprland-inventor.conf` (0.53/0.54, hyprlang). They:
 
+- keep the Autodesk windows fully opaque (a desktop with `inactive_opacity`
+  below 1 otherwise shows the blurred wallpaper through Inventor whenever a
+  tool dialog takes the focus);
 - turn off Hyprland's border, shadow, rounding, blur and **animations** for the
   Autodesk windows. Inventor's WPF panels draw their own frame and shadow
   (separate shadow windows); Hyprland decorating those gives doubled grey

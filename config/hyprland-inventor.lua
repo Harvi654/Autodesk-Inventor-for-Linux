@@ -14,6 +14,9 @@ hl.window_rule({
   no_anim = true,
   no_blur = true,
   no_dim = true,
+  -- fully opaque even with decoration active/inactive_opacity < 1 (otherwise the
+  -- main window shows the blurred wallpaper when a tool dialog takes the focus)
+  opaque = true,
   no_shadow = true,
   border_size = 0,
   rounding = 0,
