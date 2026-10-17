@@ -83,9 +83,14 @@ unpack() {
     name="$(basename "${1%.*}")"
     name="${name%_[0-9][0-9][0-9]_[0-9][0-9][0-9]}"   # ..._db_001_002 -> ..._db
     dest="$CACHE/$name"
+    # Browser download = a small ..._001_002.exe (the self-extractor) plus
+    # ..._002_002.7z (the data): unpack the .7z, the .exe adds nothing
+    local parts=() f7=()
+    for f in "$@"; do case "${f,,}" in *.7z) f7+=("$f") ;; esac; done
+    if [ ${#f7[@]} -gt 0 ]; then parts=("${f7[@]}"); else parts=("$@"); fi
     if [ ! -f "$dest/.unpacked" ]; then
         mkdir -p "$dest"
-        for f in "$@"; do
+        for f in "${parts[@]}"; do
             info "unpacking $(basename "$f") (several minutes, ~10 GB)" >&2
             7z x -y -o"$dest" "$f" >/dev/null || die "could not unpack $f"
         done
