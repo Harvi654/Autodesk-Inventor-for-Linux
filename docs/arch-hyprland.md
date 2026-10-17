@@ -534,6 +534,23 @@ still hidden (the HUD sets its region before showing it).
 `+x11drv` logs every window that gets a region. `--restore` puts the
 original driver back. Confirmed: no black boxes, New/Open work.
 
+## Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)
+
+Seen on a laptop (Hyprland, Xwayland): Inventor closes when a command that
+uses raw mouse input starts (Hole), and the log ends with
+
+```
+X Error of failed request:  XI_BadDevice (invalid Device parameter)
+  Minor opcode of failed request:  28 (X_GetDeviceButtonMapping)
+```
+
+Wine's X11 driver looks up the button mapping of the device a raw mouse event
+came from with XInput 1 calls and no X error handler; Xwayland reports
+devices that XInput 1 cannot query, and an unhandled X error ends the
+process. `patches/winex11-xinput-bad-device.patch` catches the error and uses
+the identity button mapping for such a device (part of the `winex11` build:
+`bash scripts/build-wine-dll.sh winex11 --install --hook`).
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's

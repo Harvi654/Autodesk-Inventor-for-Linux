@@ -1,0 +1,69 @@
+--- a/dlls/winex11.drv/mouse.c
++++ b/dlls/winex11.drv/mouse.c
+@@ -263,31 +263,54 @@
+     free( InterlockedExchangePointer( (void**)&pointer_mapping, tmp ) );
+ }
+ 
++static int device_mapping_error_handler( Display *display, XErrorEvent *event, void *arg )
++{
++    return 1;
++}
++
+ static void update_device_mapping( Display *display, int deviceid )
+ {
+     struct mouse_button_mapping *tmp;
+-    XDevice *device;
+-
+-    if (!deviceid || !(device = pXOpenDevice( display, deviceid )))
+-    {
+-        WARN( "Unable to open cursor device %d\n", deviceid );
+-        return;
+-    }
++    XDevice *device = NULL;
++    int i;
+ 
+     if (!(tmp = malloc( sizeof(*tmp) )))
+     {
+         WARN( "Unable to allocate device mapping.\n" );
+-        pXCloseDevice( display, device );
+         return;
+     }
+-
+     tmp->deviceid = deviceid;
+     tmp->button_count = ARRAY_SIZE( tmp->buttons );
+-    tmp->button_count = pXGetDeviceButtonMapping( display, device, tmp->buttons, tmp->button_count );
++    for (i = 0; i < ARRAY_SIZE( tmp->buttons ); i++) tmp->buttons[i] = i + 1;
+ 
+-    free( InterlockedExchangePointer( (void**)&device_mapping, tmp ) );
++    /* Xwayland reports raw events from devices that XI 1.x cannot open or
++     * query (XI_BadDevice); without an error handler that kills the process.
++     * Keep an identity mapping for such a device so it is not queried again. */
++    if (deviceid)
++    {
++        X11DRV_expect_error( display, device_mapping_error_handler, NULL );
++        device = pXOpenDevice( display, deviceid );
++        if (X11DRV_check_error()) device = NULL;
++    }
++    if (device)
++    {
++        int count;
+ 
+-    pXCloseDevice( display, device );
++        X11DRV_expect_error( display, device_mapping_error_handler, NULL );
++        count = pXGetDeviceButtonMapping( display, device, tmp->buttons, ARRAY_SIZE( tmp->buttons ) );
++        if (X11DRV_check_error() || count <= 0)
++        {
++            WARN( "no button mapping for input device %d, using identity\n", deviceid );
++            for (i = 0; i < ARRAY_SIZE( tmp->buttons ); i++) tmp->buttons[i] = i + 1;
++        }
++        else tmp->button_count = count;
++        X11DRV_expect_error( display, device_mapping_error_handler, NULL );
++        pXCloseDevice( display, device );
++        X11DRV_check_error();
++    }
++    else WARN( "Unable to open cursor device %d, using identity button mapping\n", deviceid );
++
++    free( InterlockedExchangePointer( (void**)&device_mapping, tmp ) );
+ }
+ 
+ /***********************************************************************

@@ -30,7 +30,10 @@
 #                           get an ARGB visual under Xwayland and transparent pixels
 #                           outside the shape - Xwayland ignores the X shape, so
 #                           Inventor's sketch input boxes sat on a black rectangle
-#                           (patches/winex11-shape-alpha-xwayland.patch). Built in a
+#                           (patches/winex11-shape-alpha-xwayland.patch); raw mouse
+#                           buttons from a device XInput 1 cannot query (Xwayland,
+#                           XI_BadDevice) no longer kill the process - crash on the
+#                           Hole command (patches/winex11-xinput-bad-device.patch). Built in a
 #                           separate source tree configured with X11 and Vulkan
 #                           (needs vulkan-headers). Close all Wine programs before --install.
 #               All patches/DLL-*.patch are applied; with --diag also
