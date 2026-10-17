@@ -25,10 +25,10 @@ index 1f910400..b1e3c2f6 100644
      {
  #ifdef HAVE_LIBXSHAPE
 diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
-index d7df0a85..15f687da 100644
+index d7df0a85..6e3d820d 100644
 --- a/dlls/winex11.drv/window.c
 +++ b/dlls/winex11.drv/window.c
-@@ -3430,12 +3430,55 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+@@ -3430,12 +3430,60 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
   *
   * Assign specified region to window (for non-rectangular windows)
   */
@@ -37,8 +37,7 @@ index d7df0a85..15f687da 100644
 + * Only for plain owned dialog popups (e.g. Inventor's HUD input boxes):
 + * windows that also draw outside the window surface (Vulkan/GL children,
 + * direct X drawing) break with a 32-bit visual (BadMatch).
-+ * Only while the window is hidden (the HUD sets its region before showing).
-+ * WINE_X11_SHAPE_ALPHA=0 turns it off. */
++ * WINE_X11_SHAPE_ALPHA=0 turns it off, =2 also switches visible windows. */
 +static BOOL needs_argb_for_shape( struct x11drv_win_data *data )
 +{
 +    static const WCHAR dialog_classW[] = {'#','3','2','7','7','0',0};
@@ -51,8 +50,8 @@ index d7df0a85..15f687da 100644
 +    {
 +        const char *env = getenv( "WINE_X11_SHAPE_ALPHA" );
 +        int opcode, event, error;
-+        enabled = (!env || atoi( env )) &&
-+                  XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error );
++        enabled = env ? atoi( env ) : 1;
++        if (!XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error )) enabled = 0;
 +    }
 +    if (!enabled || !client_side_graphics || !argb_visual.visualid) return FALSE;
 +    if (data->embedded || data->client_window || data->layered) return FALSE;
@@ -61,9 +60,9 @@ index d7df0a85..15f687da 100644
 +    style = NtUserGetWindowLongW( data->hwnd, GWL_STYLE );
 +    ex_style = NtUserGetWindowLongW( data->hwnd, GWL_EXSTYLE );
 +    if (!(style & WS_POPUP) || (style & WS_CAPTION) == WS_CAPTION) return FALSE;
-+    /* changing the visual re-creates the X window; one already shown would
-+     * stay unmapped (an invisible modal dialog) */
-+    if (style & WS_VISIBLE) return FALSE;
++    /* changing the visual re-creates the X window: by default only while
++     * the window is hidden (WINE_X11_SHAPE_ALPHA=2: also when visible) */
++    if ((style & WS_VISIBLE) && enabled < 2) return FALSE;
 +    if (ex_style & (WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP)) return FALSE;
 +    if (!NtUserGetWindowRelative( data->hwnd, GW_OWNER )) return FALSE;
 +    if (!NtUserGetClassName( data->hwnd, FALSE, &name )) return FALSE;
@@ -78,7 +77,13 @@ index d7df0a85..15f687da 100644
      {
 +        if (hrgn && needs_argb_for_shape( data ))
 +        {
-+            TRACE( "hwnd %p: shaped window under Xwayland, using an ARGB visual\n", hwnd );
++            WCHAR title[64];
++            title[0] = 0;
++            NtUserInternalGetWindowText( hwnd, title, ARRAY_SIZE(title) );
++            WARN( "hwnd %p %s style %#x ex_style %#x owner %p visible %u: shaped window under Xwayland, using an ARGB visual\n",
++                  hwnd, debugstr_w(title), (UINT)NtUserGetWindowLongW( hwnd, GWL_STYLE ),
++                  (UINT)NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ), NtUserGetWindowRelative( hwnd, GW_OWNER ),
++                  !!(NtUserGetWindowLongW( hwnd, GWL_STYLE ) & WS_VISIBLE) );
 +            set_window_visual( data, &argb_visual, data->use_alpha );
 +        }
          sync_window_region( data, hrgn );

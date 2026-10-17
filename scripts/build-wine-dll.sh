@@ -149,6 +149,12 @@ for PATCH in "${PATCHES[@]}"; do
     if patch -p1 -R --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
         ok "$(basename "$PATCH") already applied"
     else
+        if [ "$DLL" = winex11 ]; then
+            # an older version of the patch may be applied: start from the
+            # untouched files of the main tree (winex11 is never patched there)
+            for F in $(sed -n 's|^+++ b/||p' "$PATCH"); do cp -f "$TOOLS/$F" "$F"; done
+            find dlls/winex11.drv -name '*.rej' -o -name '*.orig' | xargs -r rm -f
+        fi
         patch -p1 -s < "$PATCH" || die "$(basename "$PATCH") does not apply to Wine $WV - please open an issue"
         ok "$(basename "$PATCH") applied"
     fi
