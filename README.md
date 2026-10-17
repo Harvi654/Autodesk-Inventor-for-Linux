@@ -12,6 +12,10 @@ from Autodesk's own download, without Windows, with one command.
 > endorsed by Autodesk. You need your own Inventor license (an education
 > license works). See [Disclaimer](#disclaimer).
 
+![A part in Inventor 2026 on Arch Linux + Hyprland](docs/images/part.png)
+
+![A drawing with a section view](docs/images/drawing.png)
+
 ## What works
 
 | | Status | Notes |
@@ -27,7 +31,8 @@ from Autodesk's own download, without Windows, with one command.
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
-| Drawings | ⚠️ | not tested in depth |
+| Drawings (views, sections) | ✅ | |
+| Dimension text editor in drawings | ⚠️ | inserting symbols (⌀, GD&T) can show black text or freeze - being worked on |
 | iLogic, Stress / Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 
