@@ -1,18 +1,80 @@
+diff --git a/server/queue.c b/server/queue.c
+index 2449f0c8..7c44b93b 100644
+--- a/server/queue.c
++++ b/server/queue.c
+@@ -589,6 +589,50 @@ void update_cursor_pos( struct desktop *desktop )
+     set_cursor_pos( desktop, desktop_shm->cursor.x, desktop_shm->cursor.y );
+ }
+ 
++/* Windows sends the window under the cursor a mouse move when a window is
++ * shown or hidden; it arrives after the messages the change itself causes
++ * (Inventor redraws its view after a sketch dimension edit only then).
++ * Delay ours a little and send one for a burst of changes. */
++static struct timeout_user *cursor_pos_timeout;
++static struct desktop *cursor_pos_desktop;
++
++static void cursor_pos_timeout_cb( void *private )
++{
++    static const struct hw_msg_source source = { IMDT_UNAVAILABLE, IMO_SYSTEM };
++    struct desktop *desktop = cursor_pos_desktop;
++    struct message *msg;
++
++    cursor_pos_timeout = NULL;
++    cursor_pos_desktop = NULL;
++    if ((msg = alloc_hardware_message( 0xff515700, source, get_tick_count(), 0 )))
++    {
++        msg->msg = WM_MOUSEMOVE;
++        msg->x   = desktop->shared->cursor.x;
++        msg->y   = desktop->shared->cursor.y;
++        queue_hardware_message( desktop, msg, 1 );
++    }
++    release_object( desktop );
++}
++
++void update_cursor_pos_delayed( struct desktop *desktop )
++{
++    static int delay_ms = -1;
++
++    if (delay_ms < 0)
++    {
++        const char *env = getenv( "WINE_SHOWHIDE_MOUSEMOVE_MS" );
++        delay_ms = env ? atoi( env ) : 100;
++    }
++    if (!delay_ms) return;
++    if (cursor_pos_timeout)
++    {
++        remove_timeout_user( cursor_pos_timeout );
++        release_object( cursor_pos_desktop );
++    }
++    cursor_pos_desktop = (struct desktop *)grab_object( desktop );
++    cursor_pos_timeout = add_timeout_user( -(timeout_t)delay_ms * 10000, cursor_pos_timeout_cb, NULL );
++}
++
+ /* retrieve default position and time for synthesized messages */
+ static void get_message_defaults( struct msg_queue *queue, int *x, int *y, unsigned int *time )
+ {
+diff --git a/server/user.h b/server/user.h
+index f1a1f07d..5f043be7 100644
+--- a/server/user.h
++++ b/server/user.h
+@@ -124,6 +124,7 @@ extern void detach_thread_input( struct msg_queue *queue_from, struct msg_queue
+ extern void set_clip_rectangle( struct desktop *desktop, const struct rectangle *rect,
+                                 unsigned int flags, int reset );
+ extern void update_cursor_pos( struct desktop *desktop );
++extern void update_cursor_pos_delayed( struct desktop *desktop );
+ extern void post_message( user_handle_t win, unsigned int message,
+                           lparam_t wparam, lparam_t lparam );
+ extern void send_notify_message( user_handle_t win, unsigned int message,
 diff --git a/server/window.c b/server/window.c
-index 3cd82b0c..07005944 100644
+index 3cd82b0c..76bcf667 100644
 --- a/server/window.c
 +++ b/server/window.c
-@@ -2767,8 +2767,11 @@ DECL_HANDLER(set_window_pos)
-     old_client = win->client_rect;
-     set_window_pos( win, previous, flags, &window_rect, &client_rect,
-                     &visible_rect, &surface_rect, &valid_rect );
--    if ((win->style & old_style & WS_VISIBLE) && (memcmp( &old_client, &win->client_rect, sizeof(old_client) )
--        || memcmp( &old_window, &win->window_rect, sizeof(old_window) )))
-+    /* like Windows, send a mouse move to the window under the cursor when a
-+     * window is shown or hidden too, not only when a visible one moves */
-+    if (((win->style ^ old_style) & WS_VISIBLE) ||
-+        ((win->style & old_style & WS_VISIBLE) && (memcmp( &old_client, &win->client_rect, sizeof(old_client) )
-+        || memcmp( &old_window, &win->window_rect, sizeof(old_window) ))))
+@@ -2770,6 +2770,8 @@ DECL_HANDLER(set_window_pos)
+     if ((win->style & old_style & WS_VISIBLE) && (memcmp( &old_client, &win->client_rect, sizeof(old_client) )
+         || memcmp( &old_window, &win->window_rect, sizeof(old_window) )))
          update_cursor_pos( win->desktop );
++    else if ((win->style ^ old_style) & WS_VISIBLE)
++        update_cursor_pos_delayed( win->desktop );
  
      if (win->paint_flags & SET_WINPOS_LAYERED_WINDOW) validate_whole_window( win );
+ 
