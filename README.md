@@ -113,8 +113,9 @@ If it is the integrated one, add part of the name of the GPU you want to
 ### Keeping it working
 
 - Update this project: `cd ~/inventor-on-linux && git pull`
-- When Arch updates Wine, a pacman hook prints the commands that rebuild the
-  Wine fixes for the new version. Run them before starting Inventor.
+- When Arch updates Wine, the Wine fixes are replaced by the new version's
+  files and a pacman hook reminds you to rebuild them. Before starting
+  Inventor run `bash ~/inventor-on-linux/scripts/rebuild-wine-fixes.sh`.
 
 ## How it works
 

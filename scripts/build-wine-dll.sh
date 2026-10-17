@@ -248,8 +248,10 @@ elif [ "$DO_TEST" -eq 1 ]; then
 fi
 
 if [ "$DO_HOOK" -eq 1 ]; then
-    HOOK="/etc/pacman.d/hooks/inventor-$DLL.hook"
+    # one hook for all parts (older versions made one per DLL)
+    HOOK=/etc/pacman.d/hooks/inventor-wine.hook
     sudo mkdir -p /etc/pacman.d/hooks
+    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11}.hook
     sudo tee "$HOOK" >/dev/null <<EOF
 [Trigger]
 Operation = Install
@@ -259,9 +261,9 @@ Target = wine
 Target = wine-staging
 
 [Action]
-Description = Inventor: Wine changed - patched $DLL.dll was replaced
+Description = Inventor: Wine was updated, so its fixes were replaced
 When = PostTransaction
-Exec = /usr/bin/sh -c 'echo ">>> Rerun: bash \"$SCRIPTS_DIR/build-wine-dll.sh\" $DLL --install"'
+Exec = /usr/bin/sh -c 'echo ">>> Before starting Inventor run: bash \"$SCRIPTS_DIR/rebuild-wine-fixes.sh\""'
 EOF
     ok "pacman hook: $HOOK"
 fi

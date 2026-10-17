@@ -54,7 +54,6 @@ exec > >(tee -a "$LOG") 2>&1
 trap 'err "installation stopped at line $LINENO: $BASH_COMMAND"; err "log: $LOG - fix the problem and run the same command again, finished steps are skipped"' ERR
 
 _STEPS=8
-WINE_PARTS=(wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha server winex11)
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/inventor-on-linux/media"
 
 kind_of() {   # product | update | ""
@@ -123,7 +122,7 @@ if [ "$SKIP_WINE" -eq 1 ]; then info "skipped (--skip-wine)"
 else
     info "built from Wine's source the first time (10-30 minutes), later only checked"
     wineserver -k 2>/dev/null || true
-    for p in "${WINE_PARTS[@]}"; do
+    for p in "${WINE_FIX_PARTS[@]}"; do
         info "-- $p"
         bash "$SCRIPTS_DIR/build-wine-dll.sh" "$p" --install --hook
     done

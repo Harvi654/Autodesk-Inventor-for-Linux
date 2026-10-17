@@ -47,7 +47,7 @@ collect() {
     echo "wine: $(wine --version 2>/dev/null) ($(pacman -Qo "$(command -v wine)" 2>/dev/null | awk '{print $(NF-1), $NF}'))"
     local wv pe f sys
     wv="$(wine_version)"; pe="$(wine_pe_dir)"
-    for f in wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha server winex11; do
+    for f in "${WINE_FIX_PARTS[@]}"; do
         case "$f" in
             server)  sys="$(readlink -f "$(command -v wineserver)")" ;;
             winex11) sys="$(dirname "$pe")/x86_64-unix/winex11.so" ;;
