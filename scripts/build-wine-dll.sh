@@ -21,6 +21,11 @@
 #                           of files larger than the LZXD window (8 MB) - needed
 #                           by Autodesk's MSP updates
 #                           (patches/mspatcha-pa19-32bit-and-large-files.patch)
+#               server    - wineserver, not a DLL: a mouse move for the window under
+#                           the cursor when a window is shown or hidden (Windows does
+#                           this; Inventor redraws the sketch after a dimension edit
+#                           only on a mouse move) (patches/server-mousemove-on-show-hide.patch)
+#                           Close all Wine programs before --install.
 #               All patches/DLL-*.patch are applied; with --diag also
 #               patches/debug/DLL-*.patch (diagnostic output, not for upstream).
 #   --install   copy the built DLL over the system one (sudo, original backed up)
@@ -44,7 +49,8 @@ case "$DLL" in
     riched20) CHECK='paragraph needs rewrap'; TEST=editor ;;
     msi)      CHECK='no stream, NULL'; TEST=patch ;;
     mspatcha) CHECK='old file larger than the window'; TEST=apply_patch ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    server)   CHECK=''; TEST='' ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
@@ -58,11 +64,15 @@ done
 WV="$(wine_version)"; [ -n "$WV" ] || die "wine not installed"
 PE_DIR="$(wine_pe_dir)"; [ -n "$PE_DIR" ] || die "can't find Wine's PE DLL directory"
 SYS_DLL="$PE_DIR/$DLL.dll"
+if [ "$DLL" = server ]; then
+    # wineserver is a native program next to the wine binary, not a PE DLL
+    SYS_DLL="$(readlink -f "$(command -v wineserver)")"; [ -x "$SYS_DLL" ] || die "can't find wineserver"
+fi
 BACKUP="$SYS_DLL.orig-$WV"
 
 if [ "$DO_RESTORE" -eq 1 ]; then
     [ -f "$BACKUP" ] || die "no backup for Wine $WV at $BACKUP (reinstall the wine package instead)"
-    sudo cp "$BACKUP" "$SYS_DLL"; ok "restored $SYS_DLL"; exit 0
+    sudo install -m 755 "$BACKUP" "$SYS_DLL"; ok "restored $SYS_DLL"; exit 0
 fi
 
 SRC_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/inventor-on-linux"
@@ -125,24 +135,36 @@ if [ ! -f Makefile ]; then
 fi
 ok "configured"
 
+if [ "$DLL" = server ]; then
+    step "Building wineserver..."
+    make -j"$(nproc)" -C server > "$LOGDIR/$DLL-build.log" 2>&1 \
+        || die "build failed, see $LOGDIR/$DLL-build.log"
+    BUILT="$SRC/server/wineserver"
+else
 step "Building dlls/$DLL..."
 make -j"$(nproc)" -C "dlls/$DLL" > "$LOGDIR/$DLL-build.log" 2>&1 \
     || die "build failed, see $LOGDIR/$DLL-build.log"
 BUILT="$SRC/dlls/$DLL/x86_64-windows/$DLL.dll"
+fi
 [ -z "$CHECK" ] || { strings -a "$BUILT"; strings -a -el "$BUILT"; } | grep -cF "$CHECK" >/dev/null || die "built DLL lacks the patch?!"
 ok "$BUILT"
 
 step "Install..."
 if [ "$DO_INSTALL" -eq 1 ]; then
+    if [ "$DLL" = server ] && pgrep -x wineserver >/dev/null; then
+        die "a wineserver is running - close Inventor and all Wine programs (or: wineserver -k) and rerun"
+    fi
     [ -f "$BACKUP" ] || sudo cp "$SYS_DLL" "$BACKUP"
-    sudo cp "$BUILT" "$SYS_DLL"
+    sudo install -m 755 "$BUILT" "$SYS_DLL"
     ok "installed to $SYS_DLL (original: $BACKUP)"
     info "Wine loads builtin DLLs from that directory, so prefixes use it on their next start."
 else
     info "not installed (rerun with --install)"
 fi
 
-if [ "$DO_TEST" -eq 1 ]; then
+if [ "$DO_TEST" -eq 1 ] && [ -z "$TEST" ]; then
+    warn "no Wine test set up for $DLL"
+elif [ "$DO_TEST" -eq 1 ]; then
     info "building and running Wine's $DLL:$TEST tests in a throw-away prefix..."
     make -j"$(nproc)" -C "dlls/${TESTDLL:-$DLL}/tests" > "$LOGDIR/$DLL-tests-build.log" 2>&1 \
         || die "test build failed, see $LOGDIR/$DLL-tests-build.log"
