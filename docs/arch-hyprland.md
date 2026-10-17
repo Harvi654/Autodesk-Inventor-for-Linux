@@ -35,8 +35,11 @@ command after a failure; finished steps are skipped.
 Verified on a fresh prefix (Inventor image + 2026.4 update, ~6 minutes with
 the Wine fixes already built): sign-in, 2026.4, Home page New/Open, sketch
 (no black boxes, dimensions redraw at once), extrude, materials, Content
-Center, Design Accelerator shaft in an assembly. Not yet verified: unpacking
-Autodesk's downloaded `.exe` files (done on the second machine test).
+Center, Design Accelerator shaft in an assembly. Browser download (a 15 MB
+`..._db_001_002.exe` + the `..._db_002_002.7z` with the data) given as their
+folder: the `.7z` unpacks to the install image directly, found and used.
+The 2026.x update is a separate download (account -> Updates); the
+`Create_Installer_...exe` files are Windows-only tools, not needed.
 
 ## Installing from Autodesk's install image (no Windows needed)
 
