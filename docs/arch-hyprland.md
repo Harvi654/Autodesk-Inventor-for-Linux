@@ -482,7 +482,7 @@ first) sends one 100 ms after a window is shown/hidden, one per burst
 Confirmed working. The delay is empirical - before proposing it upstream,
 measure when Windows delivers that mouse move.
 
-## Open: black rectangles around the sketch input boxes
+## Sketch: black rectangles around the sketch input boxes (fixed)
 
 While drawing, the length/angle input boxes sit on a shared window that should
 be transparent; under the X11 driver it is drawn black. Wine's Wayland driver
@@ -495,13 +495,19 @@ popup, resized to span both boxes and clipped with `SetWindowRgn`. winex11
 turns the region into an X bounding shape, which Xwayland/Wayland
 compositors ignore when drawing - hence black.
 `patches/winex11-shape-alpha-xwayland.patch` (`build-wine-dll.sh winex11
---install`): under Xwayland such a window gets an ARGB visual and the pixels
-outside the shape are written transparent. First version did this for every
-window with a region - the main frame and WebView2's windows then mixed 32-
-and 24-bit drawables (`BadMatch` in `X_CopyArea`/`RenderCreatePicture`) and
-Inventor exited. Now only owned dialog popups (`#32770`, `WS_POPUP`, no
-caption, not layered). `WINE_X11_SHAPE_ALPHA=0` turns it off;
-`--restore` puts the original driver back.
+--install`, close all Wine programs first): under Xwayland such a window
+gets an ARGB visual, the pixels outside the shape are written transparent,
+and the shape is set as the *input* shape only - as a bounding shape it
+clips those transparent pixels out of the window contents (that is why the
+first working attempt still showed black). Limited to owned dialog popups
+(`#32770`, `WS_POPUP`, no caption, not layered): doing it for every window
+with a region (main frame, WebView2) mixed 32- and 24-bit drawables
+(`BadMatch` in `X_CopyArea`/`RenderCreatePicture`, Inventor exited) and
+broke New/Open on the Home page. The visual is switched while the dialog is
+still hidden (the HUD sets its region before showing it).
+`WINE_X11_SHAPE_ALPHA=0` turns it off, `=2` also switches visible windows;
+`+x11drv` logs every window that gets a region. `--restore` puts the
+original driver back. Confirmed: no black boxes, New/Open work.
 
 ## Known harmless log messages
 

@@ -58,7 +58,7 @@ index 1f910400..6b19ea32 100644
          }
  #endif /* HAVE_LIBXSHAPE */
 diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
-index d7df0a85..6477da94 100644
+index d7df0a85..d5ca6373 100644
 --- a/dlls/winex11.drv/window.c
 +++ b/dlls/winex11.drv/window.c
 @@ -3430,12 +3430,80 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
@@ -116,14 +116,14 @@ index d7df0a85..6477da94 100644
  
      if ((data = get_win_data( hwnd )))
      {
-+        if (hrgn && WARN_ON(x11drv))
++        if (hrgn && TRACE_ON(x11drv))
 +        {
 +            WCHAR cls[64], title[64];
 +            UNICODE_STRING name = {.Buffer = cls, .MaximumLength = sizeof(cls)};
 +            cls[0] = title[0] = 0;
 +            NtUserGetClassName( hwnd, FALSE, &name );
 +            NtUserInternalGetWindowText( hwnd, title, ARRAY_SIZE(title) );
-+            WARN( "region for hwnd %p class %s title %s style %#x ex_style %#x owner %p parent %p embedded %u client_window %lx layered %u\n",
++            TRACE( "region for hwnd %p class %s title %s style %#x ex_style %#x owner %p parent %p embedded %u client_window %lx layered %u\n",
 +                  hwnd, debugstr_w(cls), debugstr_w(title), (UINT)NtUserGetWindowLongW( hwnd, GWL_STYLE ),
 +                  (UINT)NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ), NtUserGetWindowRelative( hwnd, GW_OWNER ),
 +                  NtUserGetAncestor( hwnd, GA_PARENT ), data->embedded, data->client_window, data->layered );
@@ -133,7 +133,7 @@ index d7df0a85..6477da94 100644
 +            WCHAR title[64];
 +            title[0] = 0;
 +            NtUserInternalGetWindowText( hwnd, title, ARRAY_SIZE(title) );
-+            WARN( "hwnd %p %s style %#x ex_style %#x owner %p visible %u: shaped window under Xwayland, using an ARGB visual\n",
++            TRACE( "hwnd %p %s style %#x ex_style %#x owner %p visible %u: shaped window under Xwayland, using an ARGB visual\n",
 +                  hwnd, debugstr_w(title), (UINT)NtUserGetWindowLongW( hwnd, GWL_STYLE ),
 +                  (UINT)NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ), NtUserGetWindowRelative( hwnd, GW_OWNER ),
 +                  !!(NtUserGetWindowLongW( hwnd, GWL_STYLE ) & WS_VISIBLE) );
