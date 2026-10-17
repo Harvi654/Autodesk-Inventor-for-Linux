@@ -210,6 +210,12 @@ ok "$BUILT"
 
 step "Install..."
 if [ "$DO_INSTALL" -eq 1 ]; then
+    if cmp -s "$BUILT" "$SYS_DLL"; then
+        ok "already installed: $SYS_DLL"
+        DO_INSTALL=2
+    fi
+fi
+if [ "$DO_INSTALL" -eq 1 ]; then
     if { [ "$DLL" = server ] || [ "$DLL" = winex11 ]; } && pgrep -x wineserver >/dev/null; then
         die "a wineserver is running - close Inventor and all Wine programs (or: wineserver -k) and rerun"
     fi
@@ -217,7 +223,7 @@ if [ "$DO_INSTALL" -eq 1 ]; then
     sudo install -m 755 "$BUILT" "$SYS_DLL"
     ok "installed to $SYS_DLL (original: $BACKUP)"
     info "Wine loads builtin DLLs from that directory, so prefixes use it on their next start."
-else
+elif [ "$DO_INSTALL" -eq 0 ]; then
     info "not installed (rerun with --install)"
 fi
 

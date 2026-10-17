@@ -606,9 +606,11 @@ def main():
         a.image = unpack_exe(a.image, a.dry_run)
     if odis.image_kind(a.image) is None:
         sys.exit("%s is neither an install image (manifest/app.*.xml) nor an update (Bundle setup.xml)" % a.image)
-    if os.path.realpath(os.path.expanduser(a.prefix)) == os.path.realpath(
-            os.path.expanduser("~/.wine-inventor2026")) and not a.dry_run:
-        sys.exit("refusing to install into your working prefix - use a test prefix")
+    prefix = os.path.expanduser(a.prefix)
+    if (os.path.isdir(os.path.join(prefix, "drive_c")) and not a.dry_run and
+            not os.path.isfile(os.path.join(prefix, ".odis-install-state.json"))):
+        sys.exit("refusing to install into %s: it exists and was not made by this installer "
+                 "(e.g. a prefix copied from Windows) - move it away or choose another --prefix" % prefix)
     Installer(a).main()
 
 

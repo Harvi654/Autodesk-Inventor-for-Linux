@@ -32,7 +32,10 @@ PKGS=(
     xdg-utils desktop-file-utils libnotify        # adskidmgr:// handler, launch notifications
     curl coreutils tar                            # DXVK/WebView2 download + checksum
     vulkan-icd-loader lib32-vulkan-icd-loader vulkan-tools
-    mingw-w64-gcc base-devel flex bison           # building the patched wbemprox.dll
+    mingw-w64-gcc base-devel flex bison           # building the patched Wine parts
+    vulkan-headers                                # ... the X11 driver (winex11.so)
+    python 7zip                                   # install-from-image.py, Autodesk's .exe downloads
+    ttf-liberation noto-fonts ttf-dejavu          # fonts instead of Windows' (linux-fonts.sh)
 )
 # Vulkan driver for the GPU(s) present. Skipped for NVIDIA if any nvidia utils
 # package is already installed (nvidia-open / -beta / -470xx setups differ).

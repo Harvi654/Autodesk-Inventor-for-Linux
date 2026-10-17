@@ -43,13 +43,17 @@ if [ -n "$IM" ] && [ -f "$ICO" ]; then
     "$IM" "${ICO}[0]" -thumbnail 256x256 -flatten "$ICONS/$NAME.png" 2>/dev/null && ok "icon extracted" \
         || warn "icon extraction failed"
 fi
+EXEC="$BIN/launch-inventor"
+# a prefix other than the default has to be passed on
+[ "$(realpath -m "$INV_PREFIX")" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ] \
+    || EXEC="env INV_PREFIX=$(realpath -m "$INV_PREFIX") $EXEC"
 cat > "$APPS/$NAME.desktop" <<EOF
 [Desktop Entry]
 Type=Application
 Name=Autodesk Inventor $INV_YEAR
 GenericName=CAD Application
 Comment=Autodesk Inventor Professional $INV_YEAR (Wine)
-Exec=$BIN/launch-inventor
+Exec=$EXEC
 Icon=$NAME
 Terminal=false
 Categories=Graphics;Engineering;3DGraphics;
