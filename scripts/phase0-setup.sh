@@ -33,7 +33,9 @@ PKGS=(
     curl coreutils tar                            # DXVK/WebView2 download + checksum
     vulkan-icd-loader lib32-vulkan-icd-loader vulkan-tools
     mingw-w64-gcc base-devel flex bison           # building the patched Wine parts
-    vulkan-headers                                # ... the X11 driver (winex11.so)
+    vulkan-headers libx11 libxext libxcomposite libxi libxrandr libxrender \
+    libxcursor libxfixes libxinerama mesa         # ... the X11 driver (winex11.so)
+    git                                           # updates of this project
     python 7zip                                   # install-from-image.py, Autodesk's .exe downloads
     ttf-liberation noto-fonts ttf-dejavu          # fonts instead of Windows' (linux-fonts.sh)
 )
