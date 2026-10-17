@@ -25,10 +25,10 @@ index 1f910400..b1e3c2f6 100644
      {
  #ifdef HAVE_LIBXSHAPE
 diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
-index d7df0a85..6e3d820d 100644
+index d7df0a85..69306213 100644
 --- a/dlls/winex11.drv/window.c
 +++ b/dlls/winex11.drv/window.c
-@@ -3430,12 +3430,60 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+@@ -3430,12 +3430,72 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
   *
   * Assign specified region to window (for non-rectangular windows)
   */
@@ -75,6 +75,18 @@ index d7df0a85..6e3d820d 100644
  
      if ((data = get_win_data( hwnd )))
      {
++        if (hrgn && WARN_ON(x11drv))
++        {
++            WCHAR cls[64], title[64];
++            UNICODE_STRING name = {.Buffer = cls, .MaximumLength = sizeof(cls)};
++            cls[0] = title[0] = 0;
++            NtUserGetClassName( hwnd, FALSE, &name );
++            NtUserInternalGetWindowText( hwnd, title, ARRAY_SIZE(title) );
++            WARN( "region for hwnd %p class %s title %s style %#x ex_style %#x owner %p parent %p embedded %u client_window %lx layered %u\n",
++                  hwnd, debugstr_w(cls), debugstr_w(title), (UINT)NtUserGetWindowLongW( hwnd, GWL_STYLE ),
++                  (UINT)NtUserGetWindowLongW( hwnd, GWL_EXSTYLE ), NtUserGetWindowRelative( hwnd, GW_OWNER ),
++                  NtUserGetAncestor( hwnd, GA_PARENT ), data->embedded, data->client_window, data->layered );
++        }
 +        if (hrgn && needs_argb_for_shape( data ))
 +        {
 +            WCHAR title[64];
