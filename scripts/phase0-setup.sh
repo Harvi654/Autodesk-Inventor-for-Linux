@@ -52,6 +52,10 @@ grep -qi intel <<<"$GPU" && PKGS+=(vulkan-intel lib32-vulkan-intel)
 # (packages that were replaced on the mirrors give 404) - update the system
 # together with the new packages.
 info "updating the system together with the packages (pacman -Syu) - Arch needs both at once"
+if pacman -Qq 2>/dev/null | grep -qE '^nvidia-[0-9]+xx-dkms$'; then
+    warn "your NVIDIA driver comes from the AUR ($(pacman -Qq | grep -E '^nvidia-[0-9]+xx-dkms$')): if the kernel is updated,"
+    warn "update the driver too (e.g. yay -Syu) and reboot - check with: nvidia-smi"
+fi
 sudo pacman -Syu --needed "${PKGS[@]}"
 
 step "Summary"
