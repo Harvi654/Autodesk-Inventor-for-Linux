@@ -25,26 +25,45 @@ index 1f910400..b1e3c2f6 100644
      {
  #ifdef HAVE_LIBXSHAPE
 diff --git a/dlls/winex11.drv/window.c b/dlls/winex11.drv/window.c
-index d7df0a85..17fc8cb9 100644
+index d7df0a85..fb048a8c 100644
 --- a/dlls/winex11.drv/window.c
 +++ b/dlls/winex11.drv/window.c
-@@ -3430,12 +3430,32 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
+@@ -3430,12 +3430,51 @@ void X11DRV_SetWindowIcons( HWND hwnd, HICON icon, const ICONINFO *ii, HICON ico
   *
   * Assign specified region to window (for non-rectangular windows)
   */
 +/* Xwayland draws a window's whole rectangle, ignoring its bounding shape;
-+ * shaped windows need an ARGB visual so the shape can be made of alpha. */
++ * a shaped window needs an ARGB visual so the shape can be made of alpha.
++ * Only for plain owned dialog popups (e.g. Inventor's HUD input boxes):
++ * windows that also draw outside the window surface (Vulkan/GL children,
++ * direct X drawing) break with a 32-bit visual (BadMatch).
++ * WINE_X11_SHAPE_ALPHA=0 turns it off. */
 +static BOOL needs_argb_for_shape( struct x11drv_win_data *data )
 +{
-+    static int xwayland = -1;
++    static const WCHAR dialog_classW[] = {'#','3','2','7','7','0',0};
++    static int enabled = -1;
++    WCHAR buffer[16];
++    UNICODE_STRING name = {.Buffer = buffer, .MaximumLength = sizeof(buffer)};
++    DWORD style, ex_style;
 +
-+    if (xwayland == -1)
++    if (enabled == -1)
 +    {
++        const char *env = getenv( "WINE_X11_SHAPE_ALPHA" );
 +        int opcode, event, error;
-+        xwayland = XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error );
++        enabled = (!env || atoi( env )) &&
++                  XQueryExtension( gdi_display, "XWAYLAND", &opcode, &event, &error );
 +    }
-+    return xwayland && client_side_graphics && argb_visual.visualid && !data->embedded &&
-+           !data->client_window && data->whole_window && data->whole_window != root_window;
++    if (!enabled || !client_side_graphics || !argb_visual.visualid) return FALSE;
++    if (data->embedded || data->client_window || data->layered) return FALSE;
++    if (!data->whole_window || data->whole_window == root_window) return FALSE;
++
++    style = NtUserGetWindowLongW( data->hwnd, GWL_STYLE );
++    ex_style = NtUserGetWindowLongW( data->hwnd, GWL_EXSTYLE );
++    if (!(style & WS_POPUP) || (style & WS_CAPTION) == WS_CAPTION) return FALSE;
++    if (ex_style & (WS_EX_LAYERED | WS_EX_NOREDIRECTIONBITMAP)) return FALSE;
++    if (!NtUserGetWindowRelative( data->hwnd, GW_OWNER )) return FALSE;
++    if (!NtUserGetClassName( data->hwnd, FALSE, &name )) return FALSE;
++    return !wcscmp( buffer, dialog_classW );
 +}
 +
  void X11DRV_SetWindowRgn( HWND hwnd, HRGN hrgn, BOOL redraw )

@@ -493,14 +493,15 @@ not usable yet. Back to `x11`; the transparency has to be fixed in winex11.
 Cause (trace `+win`): the boxes are child Edits of one `HUDFieldDialog`
 popup, resized to span both boxes and clipped with `SetWindowRgn`. winex11
 turns the region into an X bounding shape, which Xwayland/Wayland
-compositors ignore when drawing - hence black. First try
-(`patches/winex11-shape-alpha-xwayland.patch`, NOT for use): switch every
-window that gets a region to an ARGB visual and write the outside as
-transparent. That broke Inventor (and the WebView2 Home page): other
-windows with regions (the main frame, Chromium's) then mixed 32- and
-24-bit drawables -> `BadMatch` in `X_CopyArea`/`RenderCreatePicture`, the
-process exits. Undo with `build-wine-dll.sh winex11 --restore`. Needs to
-be limited to plain popups that only draw through the window surface.
+compositors ignore when drawing - hence black.
+`patches/winex11-shape-alpha-xwayland.patch` (`build-wine-dll.sh winex11
+--install`): under Xwayland such a window gets an ARGB visual and the pixels
+outside the shape are written transparent. First version did this for every
+window with a region - the main frame and WebView2's windows then mixed 32-
+and 24-bit drawables (`BadMatch` in `X_CopyArea`/`RenderCreatePicture`) and
+Inventor exited. Now only owned dialog popups (`#32770`, `WS_POPUP`, no
+caption, not layered). `WINE_X11_SHAPE_ALPHA=0` turns it off;
+`--restore` puts the original driver back.
 
 ## Known harmless log messages
 
