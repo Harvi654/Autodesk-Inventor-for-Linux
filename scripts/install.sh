@@ -179,6 +179,6 @@ if [ "$NO_DESKTOP" -eq 1 ]; then info "skipped (--no-desktop)"
 else bash "$SCRIPTS_DIR/install-desktop-integration.sh"; fi
 
 ok "Inventor is installed."
-info "Start it from your app launcher (\"Autodesk Inventor $INV_YEAR\") or with:"
+[ "$NO_DESKTOP" -eq 1 ] && info "Start it with:" || info "Start it from your app launcher (\"Autodesk Inventor $INV_YEAR\") or with:"
 info "    INV_PREFIX=$PREFIX bash $SCRIPTS_DIR/launch-inventor.sh"
 info "The first start asks you to sign in with your Autodesk account in the browser."
