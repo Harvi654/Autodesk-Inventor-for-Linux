@@ -60,7 +60,8 @@ fix_font_registry
 # Z: or the $HOME links.
 WINE_NOW="$(wine --version 2>/dev/null)"
 if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ]; then
-    info "    Wine changed ($WINE_NOW) - updating prefix"
+    info "    Wine changed ($WINE_NOW) - updating the prefix (once, up to a minute;
+          a Wine window about updating the configuration shows meanwhile - that is normal)"
     wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
     wineserver -w
     sandbox_reg
