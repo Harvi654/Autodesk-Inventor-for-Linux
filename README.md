@@ -172,4 +172,6 @@ of AI (Claude, by Anthropic) and tested by people on real machines.
 
 ## License
 
-Not decided yet.
+[MIT](LICENSE), like the original project. The files in `patches/` change
+Wine's source code; when they are sent to Wine they are offered under Wine's
+license (LGPL 2.1 or later).
