@@ -75,6 +75,13 @@ install only in Inventor.ini/InvRO.ini and the optional Electrical add-in
 the updated prefix starts, signs in and models (extrude, hole, circular
 pattern) as 2026.4.
 
+Content Center libraries: the install image has them as a second
+application (`manifest/app.dclibrary.xml`, `Content/DCLibrary/DCLibrary64.msi`,
+~12.7 GB installed). `install-from-image.py` installs them with Inventor
+(`--no-content` leaves them out; `--app dclibrary` adds them to an existing
+prefix). They land in `C:\ProgramData\Autodesk\Inventor 2026\Content Center\Libraries`
+and Inventor's Default project picks them up - no configuration needed.
+
 Still open: fonts without a Windows partition,
 one-command/GUI installer, a bundled patched Wine.
 
