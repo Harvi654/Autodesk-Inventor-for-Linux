@@ -48,7 +48,11 @@ if grep -qi nvidia <<<"$GPU" && ! pacman -Qq 2>/dev/null | grep -cE '^nvidia.*ut
 fi
 grep -qiE 'amd|radeon' <<<"$GPU" && PKGS+=(vulkan-radeon lib32-vulkan-radeon)
 grep -qi intel <<<"$GPU" && PKGS+=(vulkan-intel lib32-vulkan-intel)
-sudo pacman -S --needed "${PKGS[@]}"
+# -Syu: Arch does not support installing from an outdated package database
+# (packages that were replaced on the mirrors give 404) - update the system
+# together with the new packages.
+info "updating the system together with the packages (pacman -Syu) - Arch needs both at once"
+sudo pacman -Syu --needed "${PKGS[@]}"
 
 step "Summary"
 info "$(wine --version 2>/dev/null || echo 'wine: not found')"
