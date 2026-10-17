@@ -18,6 +18,12 @@ LINES="${INV_REPORT_LINES:-250}"
 section() { printf '\n===== %s =====\n' "$*"; }
 run() { "$@" 2>&1 || true; }
 
+# "line (x N)" instead of N identical lines in a row
+fold_repeats() {
+    awk 'function out() { if (n > 1) printf "%s   (x %d)\n", prev, n; else if (n) print prev }
+         $0 == prev { n++; next } { out(); prev = $0; n = 1 } END { out() }'
+}
+
 collect() {
     section "inventor-on-linux"
     run git -C "$PROJECT_DIR" log -1 --format='%h %cd %s' --date=short
@@ -29,6 +35,14 @@ collect() {
     echo "desktop:      ${XDG_CURRENT_DESKTOP:-?} (${XDG_SESSION_TYPE:-?})"
     command -v hyprctl >/dev/null && echo "hyprland:     $(hyprctl version 2>/dev/null | head -1)"
     command -v Xwayland >/dev/null && echo "xwayland:     $(pacman -Q xorg-xwayland 2>/dev/null)"
+    if command -v hyprctl >/dev/null; then
+        if grep -qs "hyprland-inventor" "${XDG_CONFIG_HOME:-$HOME/.config}"/hypr/*; then
+            echo "window rules: in the Hyprland config"
+        else
+            echo "window rules: NOT found in ~/.config/hypr (see README, step 4)"
+        fi
+    fi
+    if [ -e /dev/ntsync ]; then echo "ntsync:       yes"; else echo "ntsync:       no (/dev/ntsync missing)"; fi
     echo "cpu:          $(grep -m1 'model name' /proc/cpuinfo | cut -d: -f2- | sed 's/^ //')"
     echo "memory:       $(free -g | awk '/^Mem:/{print $2 " GB"}')"
     echo "free disk:    $(df -h --output=avail "$HOME" | tail -1 | tr -d ' ') in home"
@@ -69,7 +83,7 @@ collect() {
     local log
     log="$(ls -t "$LOGDIR/$KIND-"*.log 2>/dev/null | head -1)"
     section "Log: ${log:-none} (last $LINES lines)"
-    [ -n "$log" ] && tail -n "$LINES" "$log"
+    [ -n "$log" ] && grep -avE '^info:  +([A-Za-z0-9_]+ *: [0-9]+|VK_[A-Za-z0-9_]+:)$' "$log" | fold_repeats | tail -n "$LINES"
     if [ "$KIND" = inventor ] && [ -n "$log" ]; then
         section "Log: errors and crashes (whole file)"
         grep -nE 'X Error|Unhandled exception|page fault|wine: |backtrace|FailFast|err:seh|Assertion|fatal' "$log" | tail -40
@@ -87,7 +101,7 @@ clean() {
         -e 's/((access|refresh|id|auth)_?token|client_secret|password)([":= ]+)[^ ",&]+/\1\3<removed>/Ig' \
         -e 's#(https?://[^ ?"]*)\?[^ "]*#\1?<query removed>#g' \
         -e 's/[A-Za-z0-9_-]{24,}\.[A-Za-z0-9_-]{24,}(\.[A-Za-z0-9_-]+)?/<token>/g' \
-        -e 's/[A-Za-z0-9+=_-]{40,}/<long string>/g'
+    | perl -pe 's/(?=[A-Za-z0-9+=_-]*[0-9])(?=[A-Za-z0-9+=_-]*[A-Za-z])[A-Za-z0-9+=_-]{40,}/<long string>/g'
 }
 
 collect | clean > "$OUT"
