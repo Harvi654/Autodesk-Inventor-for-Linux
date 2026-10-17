@@ -477,6 +477,17 @@ the RichEdit caret was placed before the text had been rewrapped.
 `patches/riched20-caret-rewrap.patch` rewraps at that point instead
 (`build-wine-dll.sh riched20 --install --hook`). Confirmed working.
 
+Inserting a symbol (diameter, GD&T, ...) with the buttons above the text made
+the whole text black until it was selected. The log shows
+`TextFont_Reset reset mode 4 not supported`: mode 4 is `tomApplyTmp`,
+temporary display-only formatting (Inventor uses it to highlight the `<<>>`
+value field). Wine ignored the mode, so the highlight colours that followed
+were written into the text as real formatting.
+`patches/riched20-textfont-applytmp.patch` drops temporary formatting instead
+(no highlight, readable text). Untested in Inventor yet. A freeze of the same
+dialog with `virtual_setup_exception stack overflow` was seen once and is not
+understood yet.
+
 ## Sketch: an edited dimension shows only after the mouse moves
 
 After typing a new dimension value and pressing Enter the sketch kept the old

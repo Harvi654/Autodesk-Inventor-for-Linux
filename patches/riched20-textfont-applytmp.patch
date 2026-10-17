@@ -1,0 +1,57 @@
+--- a/dlls/riched20/richole.c
++++ b/dlls/riched20/richole.c
+@@ -224,6 +224,7 @@
+     textfont_prop_val props[FONT_PROPID_LAST];
+     BOOL get_cache_enabled;
+     BOOL set_cache_enabled;
++    BOOL apply_tmp;
+ } ITextFontImpl;
+ 
+ typedef struct ITextParaImpl {
+@@ -727,6 +728,9 @@
+     CHARFORMAT2W fmt;
+     LONG start, end;
+ 
++    if (font->apply_tmp)
++        TRACE("temporary formatting, property %d not applied\n", propid);
++
+     /* when font is not attached to any range use cache */
+     if (!font->range || font->set_cache_enabled) {
+         if (propid == FONT_NAME) {
+@@ -3004,11 +3008,27 @@
+             This->get_cache_enabled = FALSE;
+             break;
+         case tomApplyLater:
++            This->apply_tmp = FALSE;
+             This->set_cache_enabled = TRUE;
+             break;
+         case tomApplyNow:
+             This->set_cache_enabled = FALSE;
+-            textfont_apply_range_props(This);
++            /* temporary (display-only) formatting is not supported: drop it
++               instead of writing it into the text */
++            if (This->apply_tmp)
++                This->apply_tmp = FALSE;
++            else
++                textfont_apply_range_props(This);
++            break;
++        case tomApplyTmp:
++            /* Temporary formatting is shown on screen only and never becomes
++               part of the text (hosts use it to highlight fields). It is not
++               implemented; collect the following changes in the cache and
++               drop them, rather than applying them as real formatting. */
++            WARN("temporary formatting (tomApplyTmp) not supported, ignored\n");
++            textfont_cache_range_props(This);
++            This->set_cache_enabled = TRUE;
++            This->apply_tmp = TRUE;
+             break;
+         case tomUsePoints:
+         case tomUseTwips:
+@@ -3495,6 +3515,7 @@
+ 
+     font->ITextFont_iface.lpVtbl = &textfontvtbl;
+     font->ref = 1;
++    font->apply_tmp = FALSE;
+ 
+     if (src) {
+         font->range = NULL;
