@@ -303,6 +303,16 @@ TrueType/OpenType fonts from your own Windows installation into
 `HKLM\...\Windows NT\CurrentVersion\Fonts` - DirectWrite (and so WPF) only sees
 registered fonts. `rebuild-prefix.sh` runs it automatically.
 
+Without Windows: `scripts/linux-fonts.sh` (default in `finish-install.sh`;
+`INV_FONTS=windows` for the copy above) copies Liberation, Noto and DejaVu
+(`sudo pacman -S --needed ttf-liberation noto-fonts ttf-dejavu`) into
+`C:\windows\Fonts`, registers them, and maps the Windows family names
+through `HKCU\Software\Wine\Fonts\Replacements` (read by both dwrite and
+gdi32): Arial -> Liberation Sans, Times New Roman -> Liberation Serif,
+Courier New -> Liberation Mono (metric-compatible), Segoe UI & co. -> Noto
+Sans / DejaVu Sans. Tested with the 313 Windows fonts moved out of the
+prefix (`--remove-windows-fonts`): Inventor starts, no FailFast.
+
 ## Default.ipj is required (materials, appearances, shading)
 
 The active project file decides which material and appearance libraries
