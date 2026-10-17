@@ -456,6 +456,22 @@ the RichEdit caret was placed before the text had been rewrapped.
 `patches/riched20-caret-rewrap.patch` rewraps at that point instead
 (`build-wine-dll.sh riched20 --install --hook`). Confirmed working.
 
+## Sketch: an edited dimension shows only after the mouse moves
+
+After typing a new dimension value and pressing Enter the sketch kept the old
+value until the mouse moved or a key was pressed (on Windows: immediately).
+Traces (`+msg,+win`) showed Inventor waiting in `WaitMessage` with nothing
+pending, and that its view redraws on a mouse move over it - but the redraw
+it does at once still has the old value (Ctrl+Z showed the same: every input
+displays the state from before that input). Windows sends the window under
+the cursor a mouse move when a window is shown or hidden; Wine only did when
+a visible window moved. `patches/server-mousemove-on-show-hide.patch`
+(wineserver, `build-wine-dll.sh server --install`, close all Wine programs
+first) sends one 100 ms after a window is shown/hidden, one per burst
+(`WINE_SHOWHIDE_MOUSEMOVE_MS`, 0 = off). Sent at once it came too early.
+Confirmed working. The delay is empirical - before proposing it upstream,
+measure when Windows delivers that mouse move.
+
 ## Open: black rectangles around the sketch input boxes
 
 While drawing, the length/angle input boxes sit on a shared window that should
