@@ -19,6 +19,25 @@ bash scripts/install-desktop-integration.sh  # adskidmgr:// handler + launcher e
 bash scripts/launch-inventor.sh              # first run opens the browser for SSO
 ```
 
+## One command: scripts/install.sh
+
+```bash
+bash scripts/install.sh DOWNLOAD [UPDATE ...] [--prefix DIR] [--no-content] [--no-desktop]
+```
+
+DOWNLOAD is what Autodesk's **Browser download** gives (all `.exe` parts,
+their folder, or an unpacked image) - not the small `..._webinstall.exe`
+that "Install" gives. It runs: packages (official repos), every Wine fix
+(`build-wine-dll.sh`, skipped when already installed), unpacking, Inventor +
+Content Center, updates, `finish-install.sh`, desktop entry. Rerun the same
+command after a failure; finished steps are skipped.
+
+Verified on a fresh prefix (Inventor image + 2026.4 update, ~6 minutes with
+the Wine fixes already built): sign-in, 2026.4, Home page New/Open, sketch
+(no black boxes, dimensions redraw at once), extrude, materials, Content
+Center, Design Accelerator shaft in an assembly. Not yet verified: unpacking
+Autodesk's downloaded `.exe` files (done on the second machine test).
+
 ## Installing from Autodesk's install image (no Windows needed)
 
 Work in progress, but it gets to a working Inventor. Instead of copying a

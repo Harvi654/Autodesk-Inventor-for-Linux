@@ -75,9 +75,9 @@ cfg_wpf_stubs() {
     else
         mapfile -t sys_stubs < <(find /usr/share/wine/mono -path '*gac*' -name '*.dll' 2>/dev/null | grep -E "$re" || true)
         if [ ${#sys_stubs[@]} -gt 0 ]; then
-            warn "wine-mono is the shared system install (/usr/share/wine/mono); its WPF stubs are still there."
-            warn "This is the case the original setup did not cover - test Inventor first; if it exits"
-            warn "right after loading .NET add-ins, see docs/arch-hyprland.md (wine-mono section)."
+            # Inventor 2026 brings its own .NET 8/10 with WPF; a clean install
+            # from Autodesk's image runs fine next to the system wine-mono.
+            info "system wine-mono has WPF stubs - not used by Inventor 2026 (.NET 8+), fine"
         else
             info "no WPF stub assemblies found"
         fi
