@@ -38,9 +38,11 @@ mkdir -p "$DST"
 
 # file globs per font directory candidates (Arch, Debian/Ubuntu, Fedora paths)
 find_fonts() {
-    local pat
+    local pat dirs=()
+    for pat in /usr/share/fonts /usr/local/share/fonts; do [ -d "$pat" ] && dirs+=("$pat"); done
+    # "|| true": under set -e a find error (unreadable dir) would end the loop
     for pat in "$@"; do
-        find /usr/share/fonts /usr/local/share/fonts -type f -name "$pat" 2>/dev/null
+        find "${dirs[@]}" -type f -name "$pat" 2>/dev/null || true
     done | sort -u
 }
 
