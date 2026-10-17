@@ -45,19 +45,33 @@ find_fonts() {
 }
 
 mapfile -t FILES < <(
+    # Noto comes as static (NotoSans-Regular.ttf) or variable fonts
+    # (NotoSans[wdth,wght].ttf, NotoSans-Italic[wdth,wght].ttf - Arch)
     find_fonts 'Liberation*.ttf' \
                'DejaVuSans*.ttf' 'DejaVuSerif*.ttf' \
-               'NotoSans-*.ttf' 'NotoSerif-*.ttf' 'NotoSansMono-*.ttf' \
-               'NotoSansSymbols-*.ttf' 'NotoSansSymbols2-*.ttf' 'NotoSansMath-*.ttf' \
+               'NotoSans-*.ttf' 'NotoSans\[*.ttf' 'NotoSerif-*.ttf' 'NotoSerif\[*.ttf' \
+               'NotoSansMono-*.ttf' 'NotoSansMono\[*.ttf' \
+               'NotoSansSymbols-*.ttf' 'NotoSansSymbols\[*.ttf' 'NotoSansSymbols2-*.ttf' \
+               'NotoSansMath-*.ttf' \
                'Carlito-*.ttf' 'Caladea-*.ttf'
     find "$WINE_DATA_DIR/fonts" -maxdepth 1 -type f -name '*.ttf' 2>/dev/null
 )
 
-have() { printf '%s\n' "${FILES[@]}" | grep -q "/$1"; }
+# (no "printf | grep -q": with pipefail the early exit of grep fails the pipe)
+have() {
+    local f p
+    for f in "${FILES[@]}"; do
+        for p in "$@"; do
+            # shellcheck disable=SC2053
+            [[ "${f##*/}" == $p ]] && return 0
+        done
+    done
+    return 1
+}
 MISSING=()
-have 'LiberationSans-Regular.ttf' || MISSING+=(ttf-liberation)
-have 'NotoSans-Regular.ttf'       || MISSING+=(noto-fonts)
-have 'DejaVuSans.ttf'             || MISSING+=(ttf-dejavu)
+have 'LiberationSans-Regular.ttf'                 || MISSING+=(ttf-liberation)
+have 'NotoSans-Regular.ttf' 'NotoSans\[*.ttf'      || MISSING+=(noto-fonts)
+have 'DejaVuSans.ttf'                             || MISSING+=(ttf-dejavu)
 if [ ${#MISSING[@]} -gt 0 ]; then
     die "missing fonts - install them first: sudo pacman -S --needed ${MISSING[*]}"
 fi
