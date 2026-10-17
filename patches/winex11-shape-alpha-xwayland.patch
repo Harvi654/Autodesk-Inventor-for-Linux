@@ -1,14 +1,18 @@
 diff --git a/dlls/winex11.drv/bitblt.c b/dlls/winex11.drv/bitblt.c
-index 1f910400..b1e3c2f6 100644
+index 1f910400..403b54ac 100644
 --- a/dlls/winex11.drv/bitblt.c
 +++ b/dlls/winex11.drv/bitblt.c
-@@ -1829,6 +1829,21 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
+@@ -1829,6 +1829,25 @@ static BOOL x11drv_surface_flush( struct window_surface *window_surface, const R
                  ptr[x] |= alpha_bits;
      }
  
 +    /* Xwayland and Wayland compositors don't apply the X11 bounding shape
 +     * when they draw a window. With a 32-bit ARGB visual (see
 +     * X11DRV_SetWindowRgn), make the pixels outside the shape transparent. */
++    if (shape_bits)
++        WARN( "surface %p hwnd %p depth %u bpp %u src==dst %u dirty %s shape_changed %u\n", surface,
++              window_surface->hwnd, ximage->depth, ximage->bits_per_pixel, src == dst,
++              wine_dbgstr_rect( dirty ), shape_changed );
 +    if (shape_bits && ximage->depth == 32 && ximage->bits_per_pixel == 32)
 +    {
 +        UINT shape_stride = shape_info->bmiHeader.biSizeImage / abs( shape_info->bmiHeader.biHeight );
