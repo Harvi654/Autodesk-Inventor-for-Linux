@@ -86,13 +86,14 @@ update. Put everything in **one folder** - its name does not matter:
 
 ```
 ~/Downloads/Inventor/
-├── Inventor_Professional_2026_English_Win_64bit_db_001_002.exe   16 MB    required
+├── Inventor_Professional_2026_English_Win_64bit_db_001_002.exe   16 MB    comes with the .7z
 ├── Inventor_Professional_2026_English_Win_64bit_db_002_002.7z    5.7 GB   required
 └── Inventor_2026.4_Update.exe                                    1.3 GB   optional, recommended
 ```
 
-- Both `..._001_002.exe` and `..._002_002.7z` are needed (two parts of one
-  download). With another language, `English` in the names is different.
+- The two `..._db_...` files are one download: the `.7z` holds Inventor, the
+  small `.exe` is the Windows unpacker (not used here, but keep it with the
+  `.7z`). With another language, `English` in the names is different.
 - Keep the downloaded names; don't unpack anything yourself - the installer
   does it (into `~/.cache/inventor-on-linux/media`, ~15 GB).
 - An already unpacked install image (a folder with `setup.xml` /
