@@ -484,7 +484,8 @@ temporary display-only formatting (Inventor uses it to highlight the `<<>>`
 value field). Wine ignored the mode, so the highlight colours that followed
 were written into the text as real formatting.
 `patches/riched20-textfont-applytmp.patch` drops temporary formatting instead
-(no highlight, readable text). Untested in Inventor yet. A freeze of the same
+(no highlight, readable text). Confirmed: symbols are inserted and the text
+stays readable; the drawing shows them correctly. A freeze of the same
 dialog with `virtual_setup_exception stack overflow` was seen once and is not
 understood yet.
 
