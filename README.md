@@ -178,7 +178,7 @@ Planned, roughly in this order:
 
 - [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
 - [ ] other distributions: Ubuntu / Debian, Fedora, openSUSE
-- [ ] other desktops (KDE Plasma, GNOME) - Hyprland-specific parts are only window rules
+- [ ] other desktops: KDE Plasma (Wayland) works in a first test, GNOME untested - Hyprland-specific parts are only window rules
 - [ ] prebuilt Wine fixes, so nothing has to be compiled
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
