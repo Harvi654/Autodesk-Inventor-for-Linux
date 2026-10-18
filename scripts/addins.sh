@@ -7,7 +7,7 @@
 #   bash scripts/addins.sh list
 #   bash scripts/addins.sh enable  <name-or-part>    e.g. enable InteractiveTutorial
 #   bash scripts/addins.sh disable <name-or-part>
-#   bash scripts/addins.sh enable-safe     everything except iLogic and Anark
+#   bash scripts/addins.sh enable-safe     everything except Anark
 #                                          (also restores InteractiveTutorial.dll)
 #                                          WARNING: SharedViews then crashes Inventor
 #                                          (it is loaded by wine-mono) - use reset
@@ -55,7 +55,7 @@ case "${1:-list}" in
         ;;
     enable-safe)
         while IFS= read -r f; do
-            case "$f" in *ilogic*|*Anark*) info "kept disabled: $f"; continue ;; esac
+            case "$f" in *Anark*) info "kept disabled: $f"; continue ;; esac
             mv "$OFF/$f" "$ADDINS/"; ok "enabled $f"
         done < <(find "$OFF" -maxdepth 1 -iname '*.addin' -printf '%f\n' | sort)
         restore_tutorial_libs

@@ -640,3 +640,7 @@ ribbon panel, the iLogic browser, the Edit Rule dialog (snippets, model tree,
 parameters, code editor with syntax colours) work, and a rule
 `MessageBox.Show("Ahoj", "Test")` runs in an assembly. The old `E_FAIL` on
 `get_ActiveDesignProject` was the missing `Default.ipj`, not iLogic itself.
+A rule `Dlzka = CDbl(InputBox("Dĺžka v mm", "Test", Dlzka))` with
+`iLogicVb.UpdateWhenDone = True` in a part changed a renamed extrusion
+parameter from 50 to 120 mm and the model updated (checked with Measure).
+iLogic is now on by default.
