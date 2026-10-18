@@ -684,3 +684,9 @@ activation context the object was created/marshaled in (it is part of the
 object's COM context). Fix: `patches/combase-stub-activation-context.patch` -
 the stub manager records the active activation context when it is created and
 `rpc_execute_call` activates it around `IRpcStubBuffer_Invoke`.
+
+**2026-10-18 - Stress Analysis works:** with the ntdll, rpcrt4 and combase
+fixes: mesh (18195 nodes / 10517 elements on a pipe elbow), Simulate with
+convergence, Von Mises / displacement results, animation. Screenshots:
+`docs/images/stress-mesh.png`, `docs/images/stress-analysis.png`. The add-in
+is now on by default.

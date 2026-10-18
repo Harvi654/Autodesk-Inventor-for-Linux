@@ -18,6 +18,8 @@ from Autodesk's own download, without Windows, with one command.
 
 ![An assembly with Content Center bolts and nuts](docs/images/assembly.png)
 
+![Stress Analysis: displacement of a pipe elbow under load](docs/images/stress-analysis.png)
+
 ## What works
 
 | | Status | Notes |
@@ -38,7 +40,8 @@ from Autodesk's own download, without Windows, with one command.
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
 | Home page: highlight of Recent rows | ⚠️ | follows the mouse wrongly (being investigated) |
 | iLogic | ✅ | rules, parameters driving the model |
-| Stress / Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
+| Stress Analysis (mesh, simulate, results, animation) | ✅ | |
+| Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
@@ -133,7 +136,7 @@ Inventor itself is not modified. The work is in three places:
 
 - **Wine fixes** (`patches/`): small patches for Wine bugs Inventor runs into -
   a missing WMI class, the file dialog's folder view, type libraries, MSI
-  transforms and delta patches, a sketch that only redrew on mouse movement,
+  transforms and delta patches, COM details Stress Analysis needs, a sketch that only redrew on mouse movement,
   black boxes behind sketch inputs under Xwayland, a crash with some mouse
   devices. They are built from Wine's source for the Wine version you have
   installed and replace only the affected Wine files (originals are kept).

@@ -8,7 +8,7 @@ does not work). The list is `INV_DEFAULT_DISABLED_ADDINS` in
 
 ```bash
 bash scripts/addins.sh list              # what is on / off
-bash scripts/addins.sh enable NAME       # e.g. simulationstressanalysis
+bash scripts/addins.sh enable NAME       # e.g. frameanalysis
 bash scripts/addins.sh disable NAME
 bash scripts/addins.sh reset             # back to the default set
 ```
@@ -20,9 +20,13 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
 | `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | publishing / 3D PDF, untested |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `autodesk.simulationstressanalysis.inventor.addin`, `autodesk.frameanalysis.inventor.addin`, `autodesk.dynamicsimulation.inventor.addin` | heavy, untested |
+| `autodesk.frameanalysis.inventor.addin`, `autodesk.dynamicsimulation.inventor.addin` | heavy, untested |
 
 Untested means: please try it with `addins.sh enable` and report what happens.
 
 iLogic was off by default until 2026-10-18; it works now (rules, parameters
 driving the model) and is on. An existing prefix: `bash scripts/addins.sh enable ilogic`.
+
+Stress Analysis was off until 2026-10-18; with the ntdll, rpcrt4 and combase
+Wine fixes it works (mesh, simulate, results) and is on. An existing prefix:
+`bash scripts/addins.sh enable simulationstressanalysis`.
