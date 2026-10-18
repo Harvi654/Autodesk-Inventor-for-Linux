@@ -68,11 +68,12 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 
 ## Requirements
 
-- **Arch Linux** (or a derivative with `pacman`) with **Hyprland**
+- **Arch Linux** (or a derivative with `pacman`), Wayland or X11
+- tested desktops: **Hyprland** and **KDE Plasma** (Wayland); others will likely work too
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
 - an Autodesk account with an Inventor 2026 license
-- about an hour, most of it waiting
+- about an hour, most of it waiting (the first build of the Wine fixes takes 10-30 minutes)
 
 ## Installation
 
@@ -102,8 +103,11 @@ cd ~/inventor-on-linux
 bash scripts/install.sh ~/Downloads/Inventor
 ```
 
-Run it as your normal user; it asks for your password when it needs `sudo`.
-It installs the system packages (official Arch repositories only), builds
+Run it as your normal user; it asks for your password when it needs `sudo`
+(system packages, installing the Wine fixes, a pacman hook). Arch does not
+support partial upgrades, so installing packages runs `pacman -Syu` - your
+system is updated too. It installs the system packages (official Arch
+repositories only), builds
 this project's Wine fixes, unpacks the download, runs Autodesk's installers,
 sets up the Wine prefix and adds Inventor to your app launcher.
 
@@ -113,9 +117,9 @@ steps are skipped. The log is in `logs/install-*.log`.
 Options: `--no-content` (leave out Content Center), `--prefix DIR`,
 `--help` for the rest.
 
-### 4. Hyprland window rules
+### 4. Hyprland only: window rules
 
-Add to `~/.config/hypr/hyprland.conf`:
+On other desktops skip this step. Add to `~/.config/hypr/hyprland.conf`:
 
 ```
 source = ~/inventor-on-linux/config/hyprland-inventor.conf
@@ -149,6 +153,34 @@ If it is the integrated one, add part of the name of the GPU you want to
 - When Arch updates Wine, the Wine fixes are replaced by the new version's
   files and a pacman hook reminds you to rebuild them. Before starting
   Inventor run `bash ~/inventor-on-linux/scripts/rebuild-wine-fixes.sh`.
+
+### Uninstall
+
+```bash
+bash ~/inventor-on-linux/scripts/uninstall.sh
+```
+
+Removes the launcher entry, the Wine fixes (Arch's `wine` package is
+reinstalled) and, after asking, the Wine prefix. Your Inventor files in
+`~/Inventor` are kept.
+
+## FAQ
+
+**Which license do I need?** Your own Inventor 2026 license - a paid
+subscription or a free education license. Sign-in and licensing are Autodesk's
+own, in your browser; nothing is bypassed.
+
+**Does it need Windows or a virtual machine?** No. Autodesk's own download is
+installed directly under Wine.
+
+**Where are my files?** In `~/Inventor` (drive `D:` in Inventor). The Wine
+prefix cannot see the rest of your home folder.
+
+**Is it slow?** 3D runs through DXVK (Direct3D 11 on Vulkan) and feels like on
+Windows on the tested machines. The first start after installing takes longer.
+
+**Will Autodesk support it?** No - see [Disclaimer](#disclaimer). Report
+problems here.
 
 ## How it works
 
