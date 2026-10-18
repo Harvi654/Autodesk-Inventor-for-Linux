@@ -43,7 +43,7 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
   </tr>
 </table>
 
-### Demo: modeling a part on Arch Linux
+### Demo - real-time viewport on Linux
 
 https://github.com/user-attachments/assets/d64e236a-c817-4076-bee3-72428a7bc288
 
