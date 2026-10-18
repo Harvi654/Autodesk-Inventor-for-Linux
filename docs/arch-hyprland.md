@@ -690,3 +690,17 @@ fixes: mesh (18195 nodes / 10517 elements on a pipe elbow), Simulate with
 convergence, Von Mises / displacement results, animation. Screenshots:
 `docs/images/stress-mesh.png`, `docs/images/stress-analysis.png`. The add-in
 is now on by default.
+
+**2026-10-18 - Home page hover highlight lags (winex11, X flush):** the
+highlight of Recent rows showed the row the mouse was over a moment ago and
+stayed lit after the mouse left; clicks hit the right row. Same on KDE Plasma,
+so not Hyprland. With DevTools attached (`--remote-debugging-port`): the page
+gets 100-500 `mousemove` events/s and a dot drawn at the event position
+follows the cursor - input is fine, the window shows an older frame.
+`--in-process-gpu` did not change it. WebView2 draws into a child window of
+Inventor's window, owned by another process; win32u gives child windows no
+window surface, so winex11 draws straight to the top-level X window with
+`XPutImage` on `gdi_display` - without `XFlush`. A small update (a hover
+change) stays in Xlib's output buffer until that process next handles X events
+(the next mouse move), which is exactly "one frame behind". Fix:
+`patches/winex11-flush-putimage.patch` flushes after `X11DRV_PutImage`.

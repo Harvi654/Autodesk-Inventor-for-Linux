@@ -1,0 +1,16 @@
+--- a/dlls/winex11.drv/bitblt.c
++++ b/dlls/winex11.drv/bitblt.c
+@@ -1295,6 +1295,13 @@
+         if (restore_region) restore_clipping_region( physdev );
+         add_device_bounds( physdev, &dst->visrect );
+         image->data = NULL;
++        /* Windows without a window surface (children of another process's
++         * window, e.g. a browser's child window in an embedding app) are
++         * drawn straight to the X drawable. Small updates otherwise stay in
++         * Xlib's buffer until this process next handles X events, so the
++         * window shows an older frame (a hover highlight that lags behind
++         * or never goes away). */
++        XFlush( gdi_display );
+     }
+ 
+     XDestroyImage( image );

@@ -53,7 +53,10 @@
 #                           (patches/winex11-shape-alpha-xwayland.patch); raw mouse
 #                           buttons from a device XInput 1 cannot query (Xwayland,
 #                           XI_BadDevice) no longer kill the process - crash on the
-#                           Hole command (patches/winex11-xinput-bad-device.patch). Built in a
+#                           Hole command (patches/winex11-xinput-bad-device.patch); flush
+#                           images drawn straight to a window (WebView2's child window of
+#                           Inventor: the Home page showed an older frame - hover highlight
+#                           behind the mouse) (patches/winex11-flush-putimage.patch). Built in a
 #                           separate source tree configured with X11 and Vulkan
 #                           (needs vulkan-headers). Close all Wine programs before --install.
 #               All patches/DLL-*.patch are applied; with --diag also
