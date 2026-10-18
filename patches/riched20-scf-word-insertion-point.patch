@@ -1,0 +1,37 @@
+--- a/dlls/riched20/editor.c
++++ b/dlls/riched20/editor.c
+@@ -3250,6 +3250,25 @@
+   ME_EndToUnicode(codepage, wszText);
+ }
+ 
++static BOOL is_word_char( WCHAR c )
++{
++    return iswalnum( c ) || c == '_';
++}
++
++/* SCF_WORD with an empty selection formats the word only when the insertion
++   point is inside it, not when it is just before or after it. */
++static BOOL cursor_inside_word( ME_TextEditor *editor )
++{
++    int ofs = ME_GetCursorOfs( &editor->pCursors[0] );
++    ME_Cursor cursor;
++    WCHAR buf[4];
++
++    if (ofs < 1) return FALSE;
++    cursor_from_char_ofs( editor, ofs - 1, &cursor );
++    if (ME_GetTextW( editor, buf, ARRAY_SIZE(buf), &cursor, 2, FALSE, FALSE ) < 2) return FALSE;
++    return is_word_char( buf[0] ) && is_word_char( buf[1] );
++}
++
+ static LRESULT handle_EM_SETCHARFORMAT( ME_TextEditor *editor, WPARAM flags, const CHARFORMAT2W *fmt_in )
+ {
+     CHARFORMAT2W fmt;
+@@ -3274,7 +3293,7 @@
+     else if (flags & SCF_SELECTION)
+     {
+         if (editor->mode & TM_PLAINTEXT) return 0;
+-        if (flags & SCF_WORD)
++        if ((flags & SCF_WORD) && (ME_IsSelection( editor ) || cursor_inside_word( editor )))
+         {
+             end = editor->pCursors[0];
+             ME_MoveCursorWords( editor, &end, +1 );

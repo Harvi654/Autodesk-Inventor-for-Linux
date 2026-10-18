@@ -488,13 +488,16 @@ text. `patches/riched20-textfont-applytmp.patch` drops temporary formatting
 (no spell-check underline) and skips that write-back. Confirmed: no more black
 text.
 
-Open: GD&T symbols other than Ø ° ± turn into letters (`gajic...`) when the
-dimension text is edited a second time, and are saved as letters. They are
-letters in the AIGDT font (installed and registered in the prefix). Inventor
-loads the text with `EM_SETTEXTEX` as plain text; how it sets the symbol font
-afterwards is being traced with `patches/debug/riched20-charformat-trace.patch`
-(`build-wine-dll.sh riched20 --install --diag`, then `warn+richedit`, grep
-`DIAG`).
+GD&T symbols other than Ø ° ± turned into letters (`gajic...`) when the
+dimension text was edited a second time, and were saved as letters. They are
+letters in the AIGDT font. The CHARFORMAT trace
+(`patches/debug/riched20-charformat-trace.patch`) showed the load: Inventor
+inserts the symbol letters with AIGDT, then sets its normal font with
+`EM_SETCHARFORMAT(SCF_SELECTION | SCF_WORD)` at the empty insertion point right
+after them. Windows formats the word only when the insertion point is *inside*
+a word; Wine took the word before the cursor and turned the symbols into
+Tahoma. `patches/riched20-scf-word-insertion-point.patch` applies SCF_WORD to
+an empty selection only inside a word. Being tested.
 
 A freeze of the same dialog with `virtual_setup_exception stack overflow` was
 seen once and is not understood yet.
