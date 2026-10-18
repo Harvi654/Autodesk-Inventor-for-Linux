@@ -644,3 +644,18 @@ A rule `Dlzka = CDbl(InputBox("Dĺžka v mm", "Test", Dlzka))` with
 `iLogicVb.UpdateWhenDone = True` in a part changed a renamed extrusion
 parameter from 50 to 120 mm and the model updated (checked with Measure).
 iLogic is now on by default.
+
+**2026-10-18 - Stress Analysis hangs on start (ntdll, activation contexts):**
+Environments → Stress Analysis left Inventor with a busy cursor for good.
+`winedbg bt all`: the main thread waits (`WaitForSingleObject`, no timeout) in
+`fea_addin_utils` for a worker thread; the worker sits in `combase` creating
+`{E4E2FE54-5A90-4006-AC58-9E11DE19817B}` (`+ole`: `CoCreateInstance` from the
+MTA, then the main apartment is looked up). The class is not in the registry;
+it comes from the manifest embedded in `FEA_Application_Common.dll`:
+`<comClass clsid="{E4E2FE54-...}" threadingModel="free">` - lower case.
+Wine's manifest parser compared the value case-sensitively, took "free" as no
+threading model, and no threading model means "create it in the main STA" -
+which was the thread waiting for the worker: deadlock. Windows (and Wine for
+the same value in the registry) compares case-insensitively.
+Fix: `patches/ntdll-actctx-threadingmodel-case.patch` (`xmlstr_cmpi`), part
+`ntdll` of the Wine fixes (only the PE `ntdll.dll` is replaced).

@@ -1,0 +1,24 @@
+--- a/dlls/ntdll/actctx.c
++++ b/dlls/ntdll/actctx.c
+@@ -1485,14 +1485,17 @@
+ 
+ static enum comclass_threadingmodel parse_com_class_threadingmodel(xmlstr_t *value)
+ {
++    /* case-insensitive like the registry value: manifests with
++       threadingModel="free" exist, and taking them as "no threading model"
++       creates the object in the main apartment */
+     if (value->len == 0) return ThreadingModel_No;
+-    if (xmlstr_cmp(value, L"Apartment"))
++    if (xmlstr_cmpi(value, L"Apartment"))
+         return ThreadingModel_Apartment;
+-    else if (xmlstr_cmp(value, L"Free"))
++    else if (xmlstr_cmpi(value, L"Free"))
+         return ThreadingModel_Free;
+-    else if (xmlstr_cmp(value, L"Both"))
++    else if (xmlstr_cmpi(value, L"Both"))
+         return ThreadingModel_Both;
+-    else if (xmlstr_cmp(value, L"Neutral"))
++    else if (xmlstr_cmpi(value, L"Neutral"))
+         return ThreadingModel_Neutral;
+     else
+         return ThreadingModel_No;
