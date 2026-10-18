@@ -480,14 +480,20 @@ the RichEdit caret was placed before the text had been rewrapped.
 Inserting a symbol (diameter, GD&T, ...) with the buttons above the text made
 the whole text black until it was selected. The log shows
 `TextFont_Reset reset mode 4 not supported`: mode 4 is `tomApplyTmp`,
-temporary display-only formatting (Inventor uses it to highlight the `<<>>`
-value field). Wine ignored the mode, so the highlight colours that followed
-were written into the text as real formatting.
-`patches/riched20-textfont-applytmp.patch` drops temporary formatting instead
-(no highlight, readable text). Confirmed: symbols are inserted and the text
-stays readable; the drawing shows them correctly. A freeze of the same
-dialog with `virtual_setup_exception stack overflow` was seen once and is not
-understood yet.
+temporary formatting. Inventor uses it to show the symbol characters (stored
+as letters like `g`, `a`, `j`) in the AIGDT symbol font, with a highlight, and
+reads the font back when the dialog is confirmed. Wine ignored the mode and
+applied everything, including colours that made the text black.
+
+First fix (dropping temporary formatting completely): text readable, but
+symbols showed as letters, and confirming the dialog a second time saved them
+as letters - the drawing lost the symbols. Current
+`patches/riched20-textfont-applytmp.patch`: temporary formatting is applied
+like normal formatting except colours; the WARN lines in the log
+(`warn+richedit`) list what Inventor sets. Being tested.
+
+A freeze of the same dialog with `virtual_setup_exception stack overflow` was
+seen once and is not understood yet.
 
 ## Sketch: an edited dimension shows only after the mouse moves
 

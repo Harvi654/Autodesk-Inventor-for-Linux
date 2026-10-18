@@ -148,20 +148,42 @@ PATCHES=("$PROJECT_DIR/patches/$DLL-"*.patch)
 [ "$DO_DIAG" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/debug/$DLL-"*.patch)
 shopt -u nullglob
 [ ${#PATCHES[@]} -gt 0 ] || die "no patches for $DLL (diagnostic ones need --diag)"
+# Untouched copies of the files the patches change: from the main tree for
+# winex11 (never patched there), otherwise from Wine's git for this version.
+restore_pristine() {
+    local F
+    for F in $(sed -n 's|^+++ b/||p' "${PATCHES[@]}" | sort -u); do
+        if [ "$DLL" = winex11 ]; then
+            cp -f "$TOOLS/$F" "$F"
+        else
+            curl -fsSL --retry 3 -o "$F.pristine" \
+                "https://gitlab.winehq.org/wine/wine/-/raw/wine-$WV/$F" \
+                || die "could not download the original $F of Wine $WV"
+            mv -f "$F.pristine" "$F"
+        fi
+    done
+    find dlls server \( -name '*.rej' -o -name '*.orig' \) -delete 2>/dev/null || true
+}
+NEED_RESET=0
 for PATCH in "${PATCHES[@]}"; do
     if patch -p1 -R --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
         ok "$(basename "$PATCH") already applied"
-    else
-        if [ "$DLL" = winex11 ]; then
-            # an older version of the patch may be applied: start from the
-            # untouched files of the main tree (winex11 is never patched there)
-            for F in $(sed -n 's|^+++ b/||p' "$PATCH"); do cp -f "$TOOLS/$F" "$F"; done
-            find dlls/winex11.drv -name '*.rej' -o -name '*.orig' | xargs -r rm -f
-        fi
-        patch -p1 -s < "$PATCH" || die "$(basename "$PATCH") does not apply to Wine $WV - please open an issue"
+    elif patch -p1 --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
+        patch -p1 -s < "$PATCH"
         ok "$(basename "$PATCH") applied"
+    else
+        NEED_RESET=1; break
     fi
 done
+if [ "$NEED_RESET" -eq 1 ]; then
+    # an older version of a patch is applied: start again from the originals
+    info "a patch changed since the last build - restoring the original files"
+    restore_pristine
+    for PATCH in "${PATCHES[@]}"; do
+        patch -p1 -s < "$PATCH" || die "$(basename "$PATCH") does not apply to Wine $WV - please open an issue"
+        ok "$(basename "$PATCH") applied"
+    done
+fi
 
 if [ "$DLL" = winex11 ]; then
 step "Configuring (X11, Vulkan, OpenGL)..."
