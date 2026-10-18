@@ -25,6 +25,8 @@
 #                           toolbar, so the symbol palette of the dimension text
 #                           editor is a grid, not one column
 #                           (patches/comctl32-toolbar-setrows-wrapable.patch)
+#               comctl32_v6 - the same for the version-6 common controls
+#                           (Inventor uses these)
 #               server    - wineserver, not a DLL: a mouse move for the window under
 #                           the cursor when a window is shown or hidden (Windows does
 #                           this; Inventor redraws the sketch after a dimension edit
@@ -66,7 +68,10 @@ case "$DLL" in
     server)   CHECK=''; TEST='' ;;
     winex11)  CHECK='shaped window under Xwayland'; TEST='' ;;
     comctl32) CHECK=''; TEST=toolbar ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    # the version-6 common controls (what apps with a manifest get), built from
+    # the same source - takes the comctl32 patches
+    comctl32_v6) CHECK=''; TEST=''; PATCH_DLL=comctl32 ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32|comctl32_v6 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
@@ -136,21 +141,22 @@ if [ "$DLL" = winex11 ]; then
     [ -f /usr/include/vulkan/vulkan.h ] || die "needs Vulkan headers: sudo pacman -S --needed vulkan-headers"
 fi
 
-step "Applying patches/$DLL-*.patch..."
+PDLL="${PATCH_DLL:-$DLL}"
+step "Applying patches/$PDLL-*.patch..."
 cd "$SRC"
 shopt -s nullglob
 # Without --diag, take diagnostic patches from an earlier --diag build out
 # again (newest first; they sit on top of the real patches).
 if [ "$DO_DIAG" -eq 0 ]; then
-    DIAG=("$PROJECT_DIR/patches/debug/$DLL-"*.patch)
+    DIAG=("$PROJECT_DIR/patches/debug/$PDLL-"*.patch)
     for ((k = ${#DIAG[@]} - 1; k >= 0; k--)); do
         if patch -p1 -R --dry-run -s -f < "${DIAG[k]}" >/dev/null 2>&1; then
             patch -p1 -R -s < "${DIAG[k]}" && ok "removed diagnostic $(basename "${DIAG[k]}")"
         fi
     done
 fi
-PATCHES=("$PROJECT_DIR/patches/$DLL-"*.patch)
-[ "$DO_DIAG" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/debug/$DLL-"*.patch)
+PATCHES=("$PROJECT_DIR/patches/$PDLL-"*.patch)
+[ "$DO_DIAG" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/debug/$PDLL-"*.patch)
 shopt -u nullglob
 [ ${#PATCHES[@]} -gt 0 ] || die "no patches for $DLL (diagnostic ones need --diag)"
 # Untouched copies of the files the patches change: from the main tree for
@@ -278,7 +284,7 @@ if [ "$DO_HOOK" -eq 1 ]; then
     # one hook for all parts (older versions made one per DLL)
     HOOK=/etc/pacman.d/hooks/inventor-wine.hook
     sudo mkdir -p /etc/pacman.d/hooks
-    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11,comctl32}.hook
+    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11,comctl32,comctl32_v6}.hook
     sudo tee "$HOOK" >/dev/null <<EOF
 [Trigger]
 Operation = Install
