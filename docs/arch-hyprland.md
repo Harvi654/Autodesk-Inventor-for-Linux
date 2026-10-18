@@ -427,7 +427,9 @@ Inventor's extensions (`.idw` had none in HKLM) to HKLM before each start
 First test: only the `.dwg` icons changed - Inventor writes the old
 `Inventor.exe,N` icons to HKCR (HKLM in Wine) again while it starts. So the
 launcher checks once more ~40 s after the start (live `reg query`/`reg add`,
-`INV_ICON_SYNC_DELAY`). Being tested.
+`INV_ICON_SYNC_DELAY`). Confirmed: part, assembly, drawing (.idw/.dwg) and
+presentation templates show Inventor's own icons in New. A cleaner fix would
+be per-user classes winning in Wine's HKEY_CLASSES_ROOT, as on Windows.
 
 ## Design Accelerator (Shaft, gears, ...): "Failed to create shaft"
 
