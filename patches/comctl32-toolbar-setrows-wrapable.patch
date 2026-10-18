@@ -1,0 +1,22 @@
+--- a/dlls/comctl32/toolbar.c
++++ b/dlls/comctl32/toolbar.c
+@@ -5005,8 +5005,17 @@
+ 
+         TRACE("Result - %d rows\n", curRow + 1);
+ 
+-        /* recalculate toolbar */
+-        TOOLBAR_CalcToolbar (infoPtr);
++        /* Recalculate the toolbar with the wrap points just set: with
++           TBSTYLE_WRAPABLE the layout would wrap again by the current window
++           width and return a one-column rectangle for a narrow toolbar
++           (Inventor's symbol palette sizes itself from this rectangle). */
++        {
++            DWORD style = infoPtr->dwStyle;
++
++            infoPtr->dwStyle &= ~TBSTYLE_WRAPABLE;
++            TOOLBAR_CalcToolbar (infoPtr);
++            infoPtr->dwStyle = style;
++        }
+ 
+         /* Resize if necessary (Only if NORESIZE is set - odd, but basically
+            if NORESIZE is NOT set, then the toolbar will always be resized to

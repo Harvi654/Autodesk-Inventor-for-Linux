@@ -21,6 +21,10 @@
 #                           of files larger than the LZXD window (8 MB) - needed
 #                           by Autodesk's MSP updates
 #                           (patches/mspatcha-pa19-32bit-and-large-files.patch)
+#               comctl32  - TB_SETROWS keeps its wrap points on a TBSTYLE_WRAPABLE
+#                           toolbar, so the symbol palette of the dimension text
+#                           editor is a grid, not one column
+#                           (patches/comctl32-toolbar-setrows-wrapable.patch)
 #               server    - wineserver, not a DLL: a mouse move for the window under
 #                           the cursor when a window is shown or hidden (Windows does
 #                           this; Inventor redraws the sketch after a dimension edit
@@ -61,7 +65,8 @@ case "$DLL" in
     mspatcha) CHECK='old file larger than the window'; TEST=apply_patch ;;
     server)   CHECK=''; TEST='' ;;
     winex11)  CHECK='shaped window under Xwayland'; TEST='' ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11 [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    comctl32) CHECK=''; TEST=toolbar ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
@@ -273,7 +278,7 @@ if [ "$DO_HOOK" -eq 1 ]; then
     # one hook for all parts (older versions made one per DLL)
     HOOK=/etc/pacman.d/hooks/inventor-wine.hook
     sudo mkdir -p /etc/pacman.d/hooks
-    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11}.hook
+    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11,comctl32}.hook
     sudo tee "$HOOK" >/dev/null <<EOF
 [Trigger]
 Operation = Install
