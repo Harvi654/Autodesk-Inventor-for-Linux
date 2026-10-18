@@ -197,10 +197,10 @@ restore_pristine() {
 }
 NEED_RESET=0
 for PATCH in "${PATCHES[@]}"; do
-    if patch -p1 -R --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
+    if patch -p1 -R --dry-run -s -N < "$PATCH" >/dev/null 2>&1; then
         ok "$(basename "$PATCH") already applied"
-    elif patch -p1 --dry-run -s -f < "$PATCH" >/dev/null 2>&1; then
-        patch -p1 -s < "$PATCH"
+    elif patch -p1 --dry-run -s -N < "$PATCH" >/dev/null 2>&1; then
+        patch -p1 -s -N < "$PATCH"
         ok "$(basename "$PATCH") applied"
     else
         NEED_RESET=1; break
@@ -211,7 +211,7 @@ if [ "$NEED_RESET" -eq 1 ]; then
     info "a patch changed since the last build - restoring the original files"
     restore_pristine
     for PATCH in "${PATCHES[@]}"; do
-        patch -p1 -s < "$PATCH" || die "$(basename "$PATCH") does not apply to Wine $WV - please open an issue"
+        patch -p1 -s -N < "$PATCH" || die "$(basename "$PATCH") does not apply to Wine $WV - please open an issue"
         ok "$(basename "$PATCH") applied"
     done
 fi
