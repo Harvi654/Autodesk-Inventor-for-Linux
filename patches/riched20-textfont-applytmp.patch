@@ -8,28 +8,17 @@
  } ITextFontImpl;
  
  typedef struct ITextParaImpl {
-@@ -727,6 +728,20 @@
+@@ -727,6 +728,9 @@
      CHARFORMAT2W fmt;
      LONG start, end;
  
-+    /* Temporary formatting (tomApplyTmp) is not implemented: it is applied
-+       as normal formatting, except for colours. Hosts use it to show
-+       symbol characters in a symbol font and read the font back, but the
-+       highlight colours they set with it turned the text black. */
 +    if (font->apply_tmp)
-+    {
-+        if (propid == FONT_NAME)
-+            WARN("temporary formatting: font %s\n", debugstr_w(value->str));
-+        else
-+            WARN("temporary formatting: property %d = %#lx\n", propid, value->l);
-+        if (propid == FONT_BACKCOLOR || propid == FONT_FORECOLOR)
-+            return S_OK;
-+    }
++        TRACE("temporary formatting, property %d not applied\n", propid);
 +
      /* when font is not attached to any range use cache */
      if (!font->range || font->set_cache_enabled) {
          if (propid == FONT_NAME) {
-@@ -3004,11 +3019,22 @@
+@@ -3004,11 +3008,28 @@
              This->get_cache_enabled = FALSE;
              break;
          case tomApplyLater:
@@ -39,21 +28,27 @@
          case tomApplyNow:
              This->set_cache_enabled = FALSE;
 -            textfont_apply_range_props(This);
-+            /* after temporary formatting the cache holds old values:
-+               applying it would undo what was just set */
++            /* temporary (display-only) formatting is not supported: drop it
++               instead of writing it into the text */
 +            if (This->apply_tmp)
 +                This->apply_tmp = FALSE;
 +            else
 +                textfont_apply_range_props(This);
 +            break;
 +        case tomApplyTmp:
-+            WARN("temporary formatting (tomApplyTmp) applied as normal formatting, without colours\n");
-+            This->set_cache_enabled = FALSE;
++            /* Temporary formatting is shown on screen only and never becomes
++               part of the text (spell checkers use it for the wavy underline
++               under misspelled words). It is not implemented; collect the
++               following changes in the cache and drop them, rather than
++               applying them as real formatting. */
++            WARN("temporary formatting (tomApplyTmp) not supported, ignored\n");
++            textfont_cache_range_props(This);
++            This->set_cache_enabled = TRUE;
 +            This->apply_tmp = TRUE;
              break;
          case tomUsePoints:
          case tomUseTwips:
-@@ -3495,6 +3521,7 @@
+@@ -3495,6 +3516,7 @@
  
      font->ITextFont_iface.lpVtbl = &textfontvtbl;
      font->ref = 1;

@@ -477,20 +477,24 @@ the RichEdit caret was placed before the text had been rewrapped.
 `patches/riched20-caret-rewrap.patch` rewraps at that point instead
 (`build-wine-dll.sh riched20 --install --hook`). Confirmed working.
 
-Inserting a symbol (diameter, GD&T, ...) with the buttons above the text made
-the whole text black until it was selected. The log shows
-`TextFont_Reset reset mode 4 not supported`: mode 4 is `tomApplyTmp`,
-temporary formatting. Inventor uses it to show the symbol characters (stored
-as letters like `g`, `a`, `j`) in the AIGDT symbol font, with a highlight, and
-reads the font back when the dialog is confirmed. Wine ignored the mode and
-applied everything, including colours that made the text black.
+Inserting a symbol (diameter, GD&T, ...) made the whole text black until it
+was selected. The log shows `TextFont_Reset reset mode 4 not supported`.
+Mode 4 is `tomApplyTmp`, temporary formatting: a `+richedit` trace shows that
+Inventor's spell checker (AdSpellEng.dll) uses it for the red wavy underline
+under "misspelled" words (`SetUnderline(0xff0000ff)`, `SetUnderline(tomWave)`).
+Wine ignored the mode, and the `Reset(tomApplyNow)` that followed wrote the
+font object's stale cached properties - colours included - back into the
+text. `patches/riched20-textfont-applytmp.patch` drops temporary formatting
+(no spell-check underline) and skips that write-back. Confirmed: no more black
+text.
 
-First fix (dropping temporary formatting completely): text readable, but
-symbols showed as letters, and confirming the dialog a second time saved them
-as letters - the drawing lost the symbols. Current
-`patches/riched20-textfont-applytmp.patch`: temporary formatting is applied
-like normal formatting except colours; the WARN lines in the log
-(`warn+richedit`) list what Inventor sets. Being tested.
+Open: GD&T symbols other than Ø ° ± turn into letters (`gajic...`) when the
+dimension text is edited a second time, and are saved as letters. They are
+letters in the AIGDT font (installed and registered in the prefix). Inventor
+loads the text with `EM_SETTEXTEX` as plain text; how it sets the symbol font
+afterwards is being traced with `patches/debug/riched20-charformat-trace.patch`
+(`build-wine-dll.sh riched20 --install --diag`, then `warn+richedit`, grep
+`DIAG`).
 
 A freeze of the same dialog with `virtual_setup_exception stack overflow` was
 seen once and is not understood yet.

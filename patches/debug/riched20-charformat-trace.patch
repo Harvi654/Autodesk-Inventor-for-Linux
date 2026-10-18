@@ -1,0 +1,30 @@
+--- a/dlls/riched20/editor.c
++++ b/dlls/riched20/editor.c
+@@ -3555,7 +3555,17 @@
+   case EM_GETEVENTMASK:
+     return editor->nEventMask;
+   case EM_SETCHARFORMAT:
++  {
++    const CHARFORMAT2W *cf = (const CHARFORMAT2W *)lParam;
++    if (cf && (cf->cbSize == sizeof(CHARFORMATW) || cf->cbSize == sizeof(CHARFORMAT2W)))
++      WARN( "DIAG SETCHARFORMAT wp %#Ix sel %ld-%ld mask %#lx face %s charset %d effects %#lx\n",
++            wParam, (LONG)ME_GetCursorOfs( &editor->pCursors[1] ), (LONG)ME_GetCursorOfs( &editor->pCursors[0] ),
++            cf->dwMask, debugstr_w( cf->szFaceName ), cf->bCharSet, cf->dwEffects );
++    else if (cf)
++      WARN( "DIAG SETCHARFORMAT wp %#Ix ansi cbSize %u mask %#lx face %s\n", wParam, cf->cbSize, cf->dwMask,
++            debugstr_a( ((const CHARFORMATA *)cf)->szFaceName ) );
+     return handle_EM_SETCHARFORMAT( editor, wParam, (CHARFORMAT2W *)lParam );
++  }
+   case EM_GETCHARFORMAT:
+   {
+     CHARFORMAT2W tmp, *dst = (CHARFORMAT2W *)lParam;
+@@ -3570,6 +3580,9 @@
+     else
+       ME_GetSelectionCharFormat(editor, &tmp);
+     cf2w_to_cfany(dst, &tmp);
++    WARN( "DIAG GETCHARFORMAT wp %#Ix sel %ld-%ld mask %#lx face %s charset %d\n", wParam,
++          (LONG)ME_GetCursorOfs( &editor->pCursors[1] ), (LONG)ME_GetCursorOfs( &editor->pCursors[0] ),
++          tmp.dwMask, debugstr_w( tmp.szFaceName ), tmp.bCharSet );
+     return tmp.dwMask;
+   }
+   case EM_SETPARAFORMAT:
