@@ -634,3 +634,9 @@ selection highlight work, Visual Style list complete.
 **2026-10-15, evening:** WebView2 renders (Windows 7 + wined3d + HKLM policy):
 licensing dialog shows and closes normally, Home tab works (project picker,
 Open/New, Recent, Help links) after copying `ProgramData\Autodesk\Inventor 2026`.
+
+**2026-10-18 - iLogic:** enabled with `addins.sh enable ilogic`. The iLogic
+ribbon panel, the iLogic browser, the Edit Rule dialog (snippets, model tree,
+parameters, code editor with syntax colours) work, and a rule
+`MessageBox.Show("Ahoj", "Test")` runs in an assembly. The old `E_FAIL` on
+`get_ActiveDesignProject` was the missing `Default.ipj`, not iLogic itself.

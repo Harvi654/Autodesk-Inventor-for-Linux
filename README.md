@@ -37,7 +37,8 @@ from Autodesk's own download, without Windows, with one command.
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
 | Home page: highlight of Recent rows | ⚠️ | follows the mouse wrongly (being investigated) |
-| iLogic, Stress / Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
+| iLogic | ✅ | rule editor and rules run; off by default - `bash scripts/addins.sh enable ilogic` |
+| Stress / Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).

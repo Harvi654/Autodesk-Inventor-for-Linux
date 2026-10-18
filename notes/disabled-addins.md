@@ -20,7 +20,7 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
 | `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | publishing / 3D PDF, untested |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `autodesk.ilogic.inventor.addin` | failed on older setups (COM error from the project manager); untested with the current fixes |
+| `autodesk.ilogic.inventor.addin` | works with the current fixes (2026-10-18: iLogic tab, rule editor with snippets and model tree, a `MessageBox` rule runs in an assembly); still off by default until rules that change parameters are tested. It failed on older setups only because `Default.ipj` was missing |
 | `autodesk.simulationstressanalysis.inventor.addin`, `autodesk.frameanalysis.inventor.addin`, `autodesk.dynamicsimulation.inventor.addin` | heavy, untested |
 
 Untested means: please try it with `addins.sh enable` and report what happens.
