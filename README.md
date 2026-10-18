@@ -9,7 +9,7 @@ command.
 > **Status: early release (v0.1), in active development.** Works for everyday
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
 > on **Arch Linux + Hyprland** (tested on two machines: AMD RX 580, and an
-> Intel UHD 630 + NVIDIA GTX 1050 laptop). More distributions and an easier
+> Intel UHD 630 + NVIDIA GTX 1050 laptop - the laptop with a slightly older version). More distributions and an easier
 > installer are planned - see [Roadmap](#roadmap). Reports are welcome.
 >
 > This is an unofficial community project. It is not made, supported or
