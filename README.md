@@ -59,7 +59,6 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
-| Home page: highlight of Recent rows | ⚠️ | follows the mouse wrongly (being investigated) |
 | iLogic | ✅ | rules, parameters driving the model |
 | Stress Analysis (mesh, simulate, results, animation) | ✅ | |
 | Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
@@ -183,7 +182,6 @@ Planned, roughly in this order:
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
 - [ ] Frame Analysis, Dynamic Simulation, Inventor Studio, sheet metal - test and fix
-- [ ] Home page: the highlight of Recent rows follows the mouse wrongly
 - [ ] Inventor 2025 and 2027
 
 ## Reporting problems

@@ -18,6 +18,6 @@ if [ "${1:-}" = --revert ]; then
     ok "WebView2 settings removed"
 else
     webview2_reg
-    ok "WebView2: Windows 7 + wined3d for msedgewebview2.exe, switches: $INV_WEBVIEW2_ARGS"
+    ok "WebView2: Windows 7 + wined3d for msedgewebview2.exe, switches: $INV_WEBVIEW2_ARGS (Inventor.exe: $INV_WEBVIEW2_ARGS_INVENTOR)"
 fi
 wine_stop

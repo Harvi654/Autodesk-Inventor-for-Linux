@@ -88,6 +88,11 @@ INV_VDESKTOP="${INV_VDESKTOP:-}"
 # Chromium switches for WebView2 (Inventor's home page, licensing dialog, ...).
 # Written to the HKLM WebView2 policy by webview2_reg (rebuild-prefix.sh, webview2-fix.sh).
 INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:---no-sandbox --enable-unsafe-swiftshader --use-angle=swiftshader}"
+# Inventor.exe's own WebView2 (Home page): software output without the GPU
+# process - with it the page lagged one frame behind the mouse (hover highlight
+# on the wrong Recent row) even with the winex11 flush fix. The licensing and
+# sign-in windows keep INV_WEBVIEW2_ARGS.
+INV_WEBVIEW2_ARGS_INVENTOR="${INV_WEBVIEW2_ARGS_INVENTOR:-$INV_WEBVIEW2_ARGS --disable-gpu}"
 
 export WINEPREFIX="$INV_PREFIX"
 export WINEARCH=win64
@@ -374,9 +379,10 @@ webview2_reg() {
     wine_reg_add "$k" /v Version /t REG_SZ /d win7
     for d in d3d11 dxgi d3d10core d3d9; do wine_reg_add "$k\\DllOverrides" /v "$d" /t REG_SZ /d builtin; done
     k='HKLM\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
-    for app in '*' Inventor.exe AdskLicensingAgent.exe AdskIdentityManager.exe; do
+    for app in '*' AdskLicensingAgent.exe AdskIdentityManager.exe; do
         wine_reg_add "$k" /v "$app" /t REG_SZ /d "$INV_WEBVIEW2_ARGS"
     done
+    wine_reg_add "$k" /v Inventor.exe /t REG_SZ /d "$INV_WEBVIEW2_ARGS_INVENTOR"
 }
 
 # Copy a Linux file into C:\windows\temp and print its Windows path, so Wine

@@ -704,3 +704,7 @@ window surface, so winex11 draws straight to the top-level X window with
 change) stays in Xlib's output buffer until that process next handles X events
 (the next mouse move), which is exactly "one frame behind". Fix:
 `patches/winex11-flush-putimage.patch` flushes after `X11DRV_PutImage` and `xrenderdrv_PutImage` (with XRender - the usual case - GDI image puts go through the XRender driver).
+Confirmed fixed with `--disable-gpu`; with the GPU process (ANGLE/SwiftShader)
+the page still lags behind - another presentation path. Inventor.exe's
+WebView2 now gets `--disable-gpu` by default (`INV_WEBVIEW2_ARGS_INVENTOR`);
+the licensing agent and Identity Manager keep the previous switches.
