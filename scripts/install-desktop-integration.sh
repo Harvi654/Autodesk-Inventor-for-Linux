@@ -48,12 +48,16 @@ ok "adskidmgr:// -> $(xdg-mime query default x-scheme-handler/adskidmgr)"
 
 # Launcher + icon
 ln -sfn "$SCRIPTS_DIR/launch-inventor.sh" "$BIN/launch-inventor"
+# the program's own icon from Inventor.exe (Bin/idv.ico is Inventor View's)
 ICO="$P_INV/Bin/idv.ico"
 IM="$(command -v magick || command -v convert || true)"
-if [ -n "$IM" ] && [ -f "$ICO" ]; then
+if python3 -I "$COMMON_DIR/exe-icon.py" "$P_INV/Bin/Inventor.exe" "$ICONS/$NAME.png" >/dev/null 2>&1; then
+    ok "icon extracted from Inventor.exe"
+elif [ -n "$IM" ] && [ -f "$ICO" ]; then
     "$IM" "${ICO}[0]" -thumbnail 256x256 -flatten "$ICONS/$NAME.png" 2>/dev/null && ok "icon extracted" \
         || warn "icon extraction failed"
 fi
+gtk-update-icon-cache -q -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
 EXEC="$BIN/launch-inventor"
 # a prefix other than the default has to be passed on
 [ "$(realpath -m "$INV_PREFIX")" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ] \
