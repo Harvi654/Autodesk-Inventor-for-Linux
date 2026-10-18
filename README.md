@@ -244,6 +244,20 @@ check that your license terms allow it.
 
 The scripts are provided as they are, without warranty of any kind.
 
+## About this project
+
+This is a hobby project, made out of enthusiasm - I am a fan of Linux and of
+the Wine project, and I wanted to use Inventor on Linux without a virtual
+machine. Nobody pays for it and it is not connected to any company.
+
+It is only possible thanks to the people who build, for free and in the open,
+what it stands on: **Wine** and **DXVK** first of all, and Mesa / the Vulkan
+drivers, Arch Linux, Hyprland and KDE. And thanks to **AI** - most of the code
+and the Wine patches were worked out together with Claude (Anthropic), which
+made a project like this doable for one person in their free time.
+
+Thank you all.
+
 ## Credits
 
 This project started as a fork of
