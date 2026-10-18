@@ -671,3 +671,16 @@ the 64-bit default). Wine had the client side (`NdrClientCall3`, which picks
 the NDR syntax) but not the stub. Fix: `patches/rpcrt4-ndrstubcall3.patch`
 implements it the same way - the NDR format strings from `pSyntaxInfo`, then
 the existing `NdrStubCall2` interpreter (factored out as `ndr_stub_call`).
+
+**2026-10-18 - Mesh View crash (combase, activation context of incoming calls):**
+with `NdrStubCall3` the mesh progress window appears, then Inventor
+disappears. `debug-crash.sh`: right after `class {A9485C80-...} not
+registered` (the second class of the same `FEA_Application_Common.dll`
+manifest) the main thread reads address 0 in `FEA_Addin_Utils.dll+0x757fc`.
+`+actctx`: the lookup happens on an RPC worker thread executing an incoming
+call (`ICommunicator`, from the mesher) with no activation context active, so
+the manifest's classes cannot be found. Windows runs incoming COM calls in the
+activation context the object was created/marshaled in (it is part of the
+object's COM context). Fix: `patches/combase-stub-activation-context.patch` -
+the stub manager records the active activation context when it is created and
+`rpc_execute_call` activates it around `IRpcStubBuffer_Invoke`.

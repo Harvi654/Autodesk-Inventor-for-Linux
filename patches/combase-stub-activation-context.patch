@@ -1,0 +1,73 @@
+--- a/dlls/combase/combase_private.h
++++ b/dlls/combase/combase_private.h
+@@ -237,6 +237,7 @@
+     IUnknown         *object;     /* the object we are managing the stub for (RO) */
+     ULONG             next_ipid;  /* currently unused (LOCK) */
+     OXID_INFO         oxid_info;  /* string binding, ipid of rem unknown and other information (RO) */
++    HANDLE            actctx;     /* activation context active when the stub was created (RO) */
+ 
+     IExternalConnection *extern_conn;
+ 
+--- a/dlls/combase/rpc.c
++++ b/dlls/combase/rpc.c
+@@ -106,6 +106,7 @@
+     IRpcChannelBuffer *chan; /* server channel buffer, if applicable */
+     IID                iid; /* ID of interface being called */
+     IUnknown          *iface; /* interface being called */
++    HANDLE             actctx; /* activation context to run the call in, if any */
+     HANDLE             handle; /* handle that will become signaled when call finishes */
+     BOOL               bypass_rpcrt; /* bypass RPC runtime? */
+     RPC_STATUS         status; /* status (out) */
+@@ -1878,6 +1879,8 @@
+     GUID old_causality_id;
+     struct tlsdata *tlsdata;
+     struct apartment *apt;
++    ULONG_PTR actctx_cookie = 0;
++    BOOL actctx_active = FALSE;
+ 
+     if (FAILED(com_get_tlsdata(&tlsdata)))
+         return;
+@@ -1971,7 +1974,11 @@
+     old_causality_id = tlsdata->causality_id;
+     tlsdata->causality_id = orpcthis.cid;
+     tlsdata->pending_call_count_server++;
++    if (params->actctx)
++        actctx_active = ActivateActCtx(params->actctx, &actctx_cookie);
+     params->hr = IRpcStubBuffer_Invoke(params->stub, params->msg, params->chan);
++    if (actctx_active)
++        DeactivateActCtx(0, actctx_cookie);
+     tlsdata->pending_call_count_server--;
+     tlsdata->causality_id = old_causality_id;
+ 
+@@ -2024,6 +2031,7 @@
+     params->hr = S_OK;
+     params->handle = NULL;
+     params->bypass_rpcrt = FALSE;
++    params->actctx = stub_manager->actctx;
+ 
+     /* Note: this is the important difference between STAs and MTAs - we
+      * always execute RPCs to STAs in the thread that originally created the
+--- a/dlls/combase/stubmanager.c
++++ b/dlls/combase/stubmanager.c
+@@ -196,6 +196,11 @@
+     sm->object = object;
+     sm->apt    = apt;
+ 
++    /* calls to the object run in the activation context it was marshaled in,
++     * so it can create the COM classes its manifest declares */
++    if (!GetCurrentActCtx(&sm->actctx))
++        sm->actctx = NULL;
++
+     /* start off with 2 references because the stub is in the apartment
+      * and the caller will also hold a reference */
+     sm->refs   = 2;
+@@ -275,6 +280,9 @@
+ 
+     CoTaskMemFree(m->oxid_info.psa);
+ 
++    if (m->actctx)
++        ReleaseActCtx(m->actctx);
++
+     /* Some broken apps crash in object destructors. We have a test showing
+      * that on winxp+ those crashes are caught and ignored. */
+     __TRY
