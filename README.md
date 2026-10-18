@@ -17,7 +17,7 @@ command.
 **Quick start** (details in [Installation](#installation)):
 
 ```bash
-git clone https://github.com/Harvi654/inventor-on-linux.git ~/inventor-on-linux
+git clone https://github.com/Harvi654/Autodesk-Inventor-for-Linux.git ~/inventor-on-linux
 cd ~/inventor-on-linux
 bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's download
 ```
@@ -93,7 +93,7 @@ tools - they are for Windows.
 ### 2. Get this project
 
 ```bash
-git clone https://github.com/Harvi654/inventor-on-linux.git ~/inventor-on-linux
+git clone https://github.com/Harvi654/Autodesk-Inventor-for-Linux.git ~/inventor-on-linux
 cd ~/inventor-on-linux
 ```
 
