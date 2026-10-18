@@ -14,3 +14,15 @@
      }
  
      XDestroyImage( image );
+--- a/dlls/winex11.drv/xrender.c
++++ b/dlls/winex11.drv/xrender.c
+@@ -1855,6 +1855,9 @@
+ 
+         pXRenderFreePicture( gdi_display, src_pict );
+         XFreePixmap( gdi_display, src_pixmap );
++        /* see X11DRV_PutImage: send it now, windows without a window surface
++         * are drawn straight to the X drawable */
++        XFlush( gdi_display );
+     }
+     return ret;
+ 

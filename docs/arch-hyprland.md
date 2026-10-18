@@ -703,4 +703,4 @@ window surface, so winex11 draws straight to the top-level X window with
 `XPutImage` on `gdi_display` - without `XFlush`. A small update (a hover
 change) stays in Xlib's output buffer until that process next handles X events
 (the next mouse move), which is exactly "one frame behind". Fix:
-`patches/winex11-flush-putimage.patch` flushes after `X11DRV_PutImage`.
+`patches/winex11-flush-putimage.patch` flushes after `X11DRV_PutImage` and `xrenderdrv_PutImage` (with XRender - the usual case - GDI image puts go through the XRender driver).
