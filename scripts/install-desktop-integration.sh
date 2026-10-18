@@ -24,11 +24,12 @@ chmod +x "$SCRIPTS_DIR"/*.sh
 
 # Entries Wine's menu builder made for this prefix before it was turned off
 # (lib/common.sh): Autodesk's Start-menu shortcuts and file associations that
+# (Exec=env "WINEPREFIX=/path" wine ...)
 # start the programs without the launcher. Other Wine programs are left alone.
 removed=0
 while IFS= read -r -d '' f; do
     rm -f "$f"; removed=$((removed + 1))
-done < <(grep -rlZF "WINEPREFIX=\"$INV_PREFIX\"" "$APPS" 2>/dev/null || true)
+done < <(grep -rlZF -e "WINEPREFIX=$INV_PREFIX\"" -e "WINEPREFIX=\"$INV_PREFIX\"" "$APPS" 2>/dev/null || true)
 find "$APPS/wine" -type d -empty -delete 2>/dev/null || true
 [ "$removed" -eq 0 ] || ok "removed $removed Wine menu entries of $INV_PREFIX"
 
