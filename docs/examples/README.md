@@ -8,6 +8,6 @@ together in an assembly with Content Center bolts and nuts, then exported.
 |---|---|
 | `flanged-pipe-assembly.stp` | STEP AP214 (File → Export → CAD Format) |
 | `flanged-pipe-assembly.stl` | STL, binary (File → Export → CAD Format) |
-| `flanged-pipe-assembly.pdf` | PDF of the drawing (File → Export → PDF) |
+| `flanged-pipe-assembly.pdf` | PDF (File → Export → PDF) |
 
 ![The assembly rendered](../images/assembly-render.jpg)
