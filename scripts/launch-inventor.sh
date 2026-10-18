@@ -70,6 +70,16 @@ fi
 wineboot >>"$LOGDIR/inventor-$TS.log" 2>&1
 sandbox_fs   # again after wineboot, so nothing it does can bring Z: or the $HOME links back
 
+# Inventor registers its file type icons per user (HKCU\Software\Classes);
+# Wine's shell reads the machine classes, which still hold the installer's
+# old "I" icons - copy them over (from the previous run's registration).
+ICONREG="$P_C/windows/temp/inventor-class-icons.reg"
+N="$(python3 -I "$COMMON_DIR/sync-class-icons.py" "$WINEPREFIX" "$ICONREG" 2>/dev/null || echo 0)"
+if [ "${N:-0}" -gt 0 ] 2>/dev/null; then
+    import_reg_file "$ICONREG" && info "    $N file type icons updated"
+fi
+rm -f "$ICONREG"
+
 info "[2/4] starting Identity Manager"
 # Only look at log lines written after this point, not a previous session's "ready".
 LOG_OFFSET=$(stat -c %s "$IDSERVICES_LOG" 2>/dev/null || echo 0)

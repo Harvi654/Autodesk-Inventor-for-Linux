@@ -414,13 +414,16 @@ patch. Confirmed: click fills the name, double-click opens files and folders.
 
 ### Open: big icons in the New dialog
 
-Still the old "I" icons after the import above, also with HKLM DefaultIcon set
-to `SrvRes.dll`. A `+shell` trace shows the dialog does **not** call
-`IShellItemImageFactory::GetImage`; it calls
-`ExtractIconW(...\Inventor.exe, 2..5)` itself - apparently its fallback when the
-system hands back a generic document icon. Next: find which shell call returns
-the generic icon for `.ipt`/`.iam` (trace limited to the moment the dialog opens).
-The shell32 GetImage patch is still worth upstreaming for other programs.
+The New dialog showed Inventor's old "I" icons. A `+shell` trace: the dialog
+asks `SHGetFileInfoW(template, SHGFI_SYSICONINDEX | SHGFI_ICON)`; Wine's
+shell32 reads `HKCR\Inventor.PartDocument\DefaultIcon` = `Inventor.exe,4`
+- the value the installer wrote to HKLM. Inventor registers the real icons
+per user on start (`HKCU\Software\Classes\...\DefaultIcon` =
+`SrvRes.dll,N`), which on Windows win over HKLM in HKEY_CLASSES_ROOT; Wine's
+shell does not see them. `launch-inventor.sh` now copies these per-user
+DefaultIcon values to HKLM before each start (`scripts/lib/sync-class-icons.py`,
+only values mentioning Autodesk/Inventor), so the icons show from the second
+start on. Being tested.
 
 ## Design Accelerator (Shaft, gears, ...): "Failed to create shaft"
 
