@@ -16,6 +16,8 @@ from Autodesk's own download, without Windows, with one command.
 
 ![A drawing with a section view](docs/images/drawing.png)
 
+![An assembly with Content Center bolts and nuts](docs/images/assembly.png)
+
 ## What works
 
 | | Status | Notes |
@@ -33,6 +35,8 @@ from Autodesk's own download, without Windows, with one command.
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
+| Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
+| Home page: highlight of Recent rows | ⚠️ | follows the mouse wrongly (being investigated) |
 | iLogic, Stress / Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 
