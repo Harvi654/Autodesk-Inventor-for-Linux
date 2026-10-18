@@ -254,6 +254,10 @@ Open an [issue](../../issues/new/choose) with:
    newest log into `~/inventor-report-<date>.txt`, with e-mail addresses,
    sign-in tokens and your user name removed. Read it before you send it.
 
+Please report problems **here, not to WineHQ**: this project runs Wine with
+its own patches, and Wine's bug tracker only takes reports from unmodified
+Wine. Fixes that belong in Wine are sent there by this project.
+
 ## Disclaimer
 
 Autodesk and Inventor are trademarks of Autodesk, Inc. This project is not
