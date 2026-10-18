@@ -31,7 +31,7 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
   </tr>
   <tr>
     <td align="center">Part modelling</td>
-    <td align="center">Assembly with Content Center parts</td>
+    <td align="center">Assembly with constraints</td>
   </tr>
   <tr>
     <td><img src="docs/images/drawing.png" alt="A drawing with a section view"></td>
