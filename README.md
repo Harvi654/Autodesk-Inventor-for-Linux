@@ -32,7 +32,7 @@ from Autodesk's own download, without Windows, with one command.
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
 | Drawings (views, sections) | ✅ | |
-| Dimension text editor in drawings | ✅ | symbols and GD&T work; the symbol palette is a narrow column instead of a grid |
+| Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | iLogic, Stress / Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 

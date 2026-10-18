@@ -516,7 +516,7 @@ and the groups as on Windows. Also: separator lines span the toolbar width,
 and `patches/comctl32-toolbar-padding-height.patch` takes the button height
 padding from TB_SETPADDING like the width (Inventor sets 0: rows as tall as
 the 16-pixel symbols instead of 22, so the palette fits without a scroll
-bar) - being tested.
+bar). Confirmed: the palette looks like on Windows.
 
 A freeze of the same dialog with `virtual_setup_exception stack overflow` was
 seen once and is not understood yet.
