@@ -91,6 +91,15 @@ INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:---no-sandbox --enable-unsafe-swiftshader
 
 export WINEPREFIX="$INV_PREFIX"
 export WINEARCH=win64
+# No Wine menu entries and file associations: Autodesk's installers create
+# Start-menu shortcuts and register .ipt/.iam/.dwg/... - Wine's winemenubuilder
+# would copy them to ~/.local/share/applications as entries that start the
+# programs without this project's launcher. The launcher entry comes from
+# install-desktop-integration.sh instead.
+case ";${WINEDLLOVERRIDES:-};" in
+    *";winemenubuilder.exe="*) ;;
+    *) export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}winemenubuilder.exe=d" ;;
+esac
 
 # Windows-side source paths
 WIN_INV="$WIN_ROOT/Program Files/Autodesk/Inventor $INV_YEAR"
