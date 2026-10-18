@@ -1,0 +1,153 @@
+--- a/dlls/comctl32/status.c
++++ b/dlls/comctl32/status.c
+@@ -151,6 +151,10 @@
+     {
+         int themePart = SP_PANE;
+ 
++        /* an owner-drawn part is painted by its owner (on the background it
++           erased); the theme's opaque pane would hide that */
++        if (part->style & SBT_OWNERDRAW) return;
++
+         if ((GetWindowLongW(infoPtr->Self, GWL_STYLE) & SBARS_SIZEGRIP)
+             && (infoPtr->simple || (itemID == (infoPtr->numParts - 1))))
+             themePart = SP_GRIPPERPANE;
+@@ -238,7 +242,7 @@
+ }
+ 
+ static LRESULT
+-STATUSBAR_Refresh (STATUS_INFO *infoPtr, HDC hdc)
++STATUSBAR_Refresh (STATUS_INFO *infoPtr, HDC hdc, BOOL background)
+ {
+     RECT   rect;
+     HFONT  hOldFont;
+@@ -250,7 +254,8 @@
+     STATUSBAR_SetPartBounds(infoPtr);
+ 
+     GetClientRect (infoPtr->Self, &rect);
+-    STATUSBAR_DrawBackground (infoPtr, hdc, &rect);
++    if (background)
++        STATUSBAR_DrawBackground (infoPtr, hdc, &rect);
+ 
+     hOldFont = SelectObject (hdc, infoPtr->hFont ? infoPtr->hFont : infoPtr->hDefaultFont);
+ 
+@@ -372,7 +377,7 @@
+     infoPtr->horizontalBorder = in[0];
+     infoPtr->verticalBorder = in[1];
+     infoPtr->horizontalGap = in[2];
+-    InvalidateRect(infoPtr->Self, NULL, FALSE);
++    InvalidateRect(infoPtr->Self, NULL, TRUE);
+ 
+     return TRUE;
+ }
+@@ -556,7 +561,7 @@
+ 
+     oldBkColor = infoPtr->clrBk;
+     infoPtr->clrBk = color;
+-    InvalidateRect(infoPtr->Self, NULL, FALSE);
++    InvalidateRect(infoPtr->Self, NULL, TRUE);
+ 
+     TRACE("CREF: %#lx -> %#lx\n", oldBkColor, infoPtr->clrBk);
+     return oldBkColor;
+@@ -577,14 +582,14 @@
+ 	    return TRUE;
+ 	infoPtr->part0.hIcon = hIcon;
+ 	if (infoPtr->simple)
+-            InvalidateRect(infoPtr->Self, &infoPtr->part0.bound, FALSE);
++            InvalidateRect(infoPtr->Self, &infoPtr->part0.bound, TRUE);
+     } else {
+ 	if (infoPtr->parts[nPart].hIcon == hIcon) /* same as - no redraw */
+ 	    return TRUE;
+ 
+ 	infoPtr->parts[nPart].hIcon = hIcon;
+ 	if (!(infoPtr->simple))
+-            InvalidateRect(infoPtr->Self, &infoPtr->parts[nPart].bound, FALSE);
++            InvalidateRect(infoPtr->Self, &infoPtr->parts[nPart].bound, TRUE);
+     }
+     return TRUE;
+ }
+@@ -670,7 +675,7 @@
+ 	}
+     }
+     STATUSBAR_SetPartBounds (infoPtr);
+-    InvalidateRect(infoPtr->Self, NULL, FALSE);
++    InvalidateRect(infoPtr->Self, NULL, TRUE);
+     return TRUE;
+ }
+ 
+@@ -750,7 +755,7 @@
+ 	    Free (part->text);
+ 	part->text = ntext;
+     }
+-    InvalidateRect(infoPtr->Self, &part->bound, FALSE);
++    InvalidateRect(infoPtr->Self, &part->bound, TRUE);
+     UpdateWindow(infoPtr->Self);
+ 
+     return TRUE;
+@@ -821,7 +826,7 @@
+     nmhdr.idFrom = GetWindowLongPtrW (infoPtr->Self, GWLP_ID);
+     nmhdr.code = SBN_SIMPLEMODECHANGE;
+     SendMessageW (infoPtr->Notify, WM_NOTIFY, 0, (LPARAM)&nmhdr);
+-    InvalidateRect(infoPtr->Self, NULL, FALSE);
++    InvalidateRect(infoPtr->Self, NULL, TRUE);
+     return TRUE;
+ }
+ 
+@@ -1010,9 +1015,13 @@
+     PAINTSTRUCT ps;
+ 
+     TRACE("\n");
+-    if (hdc) return STATUSBAR_Refresh (infoPtr, hdc);
++    if (hdc) return STATUSBAR_Refresh (infoPtr, hdc, TRUE);
+     hdc = BeginPaint (infoPtr->Self, &ps);
+-    STATUSBAR_Refresh (infoPtr, hdc);
++    /* The background belongs to WM_ERASEBKGND (the invalidations above ask
++       for it): an application that paints it itself there (Inventor's dark
++       status bar) must not be painted over. ps.fErase is still set if nobody
++       erased it. */
++    STATUSBAR_Refresh (infoPtr, hdc, ps.fErase);
+     EndPaint (infoPtr->Self, &ps);
+ 
+     return 0;
+@@ -1028,7 +1037,7 @@
+     infoPtr->height = STATUSBAR_ComputeHeight(infoPtr);
+     SendMessageW(infoPtr->Self, WM_SIZE, 0, 0);  /* update size */
+     if (redraw)
+-        InvalidateRect(infoPtr->Self, NULL, FALSE);
++        InvalidateRect(infoPtr->Self, NULL, TRUE);
+ 
+     return 0;
+ }
+@@ -1055,7 +1064,7 @@
+         lstrcpyW (part->text, (LPCWSTR)text);
+     }
+ 
+-    InvalidateRect(infoPtr->Self, &part->bound, FALSE);
++    InvalidateRect(infoPtr->Self, &part->bound, TRUE);
+ 
+     return TRUE;
+ }
+@@ -1086,7 +1095,7 @@
+     y = parent_rect.bottom - infoPtr->height;
+     MoveWindow(infoPtr->Self, x, y, width, infoPtr->height, FALSE);
+     STATUSBAR_SetPartBounds (infoPtr);
+-    InvalidateRect(infoPtr->Self, NULL, FALSE);
++    InvalidateRect(infoPtr->Self, NULL, TRUE);
+     return TRUE;
+ }
+ 
+@@ -1250,6 +1259,15 @@
+ 	case WM_NOTIFYFORMAT:
+ 	    return STATUSBAR_NotifyFormat(infoPtr, (HWND)wParam, (INT)lParam);
+ 
++	case WM_ERASEBKGND:
++	{
++	    RECT rect;
++
++	    GetClientRect (hwnd, &rect);
++	    STATUSBAR_DrawBackground (infoPtr, (HDC)wParam, &rect);
++	    return 1;
++	}
++
+ 	case WM_PRINTCLIENT:
+ 	case WM_PAINT:
+ 	    return STATUSBAR_WMPaint (infoPtr, (HDC)wParam);

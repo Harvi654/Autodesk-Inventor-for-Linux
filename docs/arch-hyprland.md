@@ -590,6 +590,21 @@ process. `patches/winex11-xinput-bad-device.patch` catches the error and uses
 the identity button mapping for such a device (part of the `winex11` build:
 `bash scripts/build-wine-dll.sh winex11 --install --hook`).
 
+## Status bar: white instead of dark
+
+Inventor's status bar (bottom strip with "Ready", coordinates, "Fully
+Constrained") is dark on Windows and white in Wine, with Inventor's light text
+invisible on it. A `+statusbar,+uxtheme` trace: it is a normal
+`msctls_statusbar32`, themed, with owner-drawn parts (`SB_SETTEXT` with
+`SBT_OWNERDRAW`); no `SB_SETBKCOLOR`, no dark theme. The status bar never sees
+`WM_ERASEBKGND` - Inventor handles it and paints the strip dark - but Wine's
+status bar paints its whole background again in `WM_PAINT` (and its own
+invalidations do not ask for an erase), and the light theme's opaque pane
+bitmap under every part. `patches/comctl32-statusbar-erase-background.patch`:
+the background is painted in `WM_ERASEBKGND`, `WM_PAINT` paints it only if
+nobody erased (`ps.fErase`), invalidations ask for an erase, and owner-drawn
+parts get no theme pane. Built into `comctl32` and `comctl32_v6`. Being tested.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's

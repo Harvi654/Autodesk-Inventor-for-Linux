@@ -21,7 +21,8 @@
 #                           of files larger than the LZXD window (8 MB) - needed
 #                           by Autodesk's MSP updates
 #                           (patches/mspatcha-pa19-32bit-and-large-files.patch)
-#               comctl32  - TB_SETROWS keeps its wrap points on a TBSTYLE_WRAPABLE
+#               comctl32  - status bar background in WM_ERASEBKGND (Inventor paints it
+#                           dark there); TB_SETROWS keeps its wrap points on a TBSTYLE_WRAPABLE
 #                           toolbar, so the symbol palette of the dimension text
 #                           editor is a grid, not one column
 #                           (patches/comctl32-toolbar-setrows-wrapable.patch)
