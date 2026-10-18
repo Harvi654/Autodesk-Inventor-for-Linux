@@ -79,16 +79,27 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 
 ### 1. Download Inventor from Autodesk
 
-In your Autodesk account (Products and Services → Inventor Professional 2026)
-pick your language and choose **Browser download** (not "Install"). You get a
-small `..._001_002.exe` and a large `..._002_002.7z`. Put both in one folder,
-e.g. `~/Downloads/Inventor`.
+In your Autodesk account (**Products and Services → Inventor Professional
+2026**) pick your language and choose **Browser download** (not "Install").
+Recommended: from the **Updates** tab also download the latest Inventor 2026
+update. Put everything in **one folder** - its name does not matter:
 
-Recommended: from the **Updates** tab download the latest Inventor 2026 update
-into the same folder.
+```
+~/Downloads/Inventor/
+├── Inventor_Professional_2026_English_Win_64bit_db_001_002.exe   16 MB    required
+├── Inventor_Professional_2026_English_Win_64bit_db_002_002.7z    5.7 GB   required
+└── Inventor_2026.4_Update.exe                                    1.3 GB   optional, recommended
+```
 
-You do **not** need the "Install" web installer or the `Create_Installer_*.exe`
-tools - they are for Windows.
+- Both `..._001_002.exe` and `..._002_002.7z` are needed (two parts of one
+  download). With another language, `English` in the names is different.
+- Keep the downloaded names; don't unpack anything yourself - the installer
+  does it (into `~/.cache/inventor-on-linux/media`, ~15 GB).
+- An already unpacked install image (a folder with `setup.xml` /
+  `manifest/`) works too.
+- You do **not** need the "Install" web installer or the
+  `Create_Installer_*.exe` tools - they are for Windows. If they are in the
+  folder, they are skipped.
 
 ### 2. Get this project
 
@@ -100,7 +111,7 @@ cd ~/inventor-on-linux
 ### 3. Install
 
 ```bash
-bash scripts/install.sh ~/Downloads/Inventor
+bash scripts/install.sh ~/Downloads/Inventor     # the folder from step 1
 ```
 
 Run it as your normal user; it asks for your password when it needs `sudo`
