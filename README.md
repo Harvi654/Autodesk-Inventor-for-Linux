@@ -27,7 +27,7 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
 <table>
   <tr>
     <td><img src="docs/images/part.png" alt="A part"></td>
-    <td><img src="docs/images/assembly.png" alt="An assembly with Content Center bolts and nuts"></td>
+    <td><img src="docs/images/assembly.png" alt="An assembly with constraints, shadows and reflections"></td>
   </tr>
   <tr>
     <td align="center">Part modelling</td>
