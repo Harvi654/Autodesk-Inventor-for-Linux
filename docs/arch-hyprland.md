@@ -506,9 +506,11 @@ Wine's TB_SETROWS set the wrap points and then wrapped again by the current
 (still tiny) window width, returning a one-column rectangle; Inventor sized
 the palette to it. `patches/comctl32-toolbar-setrows-wrapable.patch` (built
 into `comctl32` and `comctl32_v6` - Inventor loads the version-6 controls)
-keeps the TB_SETROWS wrap points: the palette is a grid now. Open: the groups
-do not start on new rows as on Windows (5 columns, a line between groups) and
-some symbols overlap.
+keeps the TB_SETROWS wrap points: the palette is a grid now. Second version:
+buttons per row are counted without separators, a separator starts a new
+group of rows (a line in a vertical toolbar), and a later resize keeps these
+rows instead of wrapping by width (the toolbar was sized from the rectangle
+minus its border and lost a column). Being tested.
 
 A freeze of the same dialog with `virtual_setup_exception stack overflow` was
 seen once and is not understood yet.
