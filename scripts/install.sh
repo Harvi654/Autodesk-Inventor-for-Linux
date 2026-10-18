@@ -91,7 +91,10 @@ unpack() {
         mkdir -p "$dest"
         for f in "${parts[@]}"; do
             info "unpacking $(basename "$f") (several minutes, ~10 GB)" >&2
-            7z x -y -o"$dest" "$f" >/dev/null || die "could not unpack $f"
+            if ! 7z x -y -o"$dest" "$f" >/dev/null 2>&1; then
+                # not a 7-Zip archive (e.g. Autodesk's web "Install" .exe): not ours
+                rm -rf "$dest"; return 0
+            fi
         done
         touch "$dest/.unpacked"
     fi
@@ -153,7 +156,10 @@ done
 for g in "${!DLGROUPS[@]}"; do
     mapfile -t parts < <(printf '%s' "${DLGROUPS[$g]}" | sed '/^$/d' | sort)
     img="$(unpack "${parts[@]}")"
-    [ -n "$img" ] || die "no Autodesk install image found in ${parts[*]}"
+    if [ -z "$img" ]; then
+        warn "skipped (not an Inventor download or update): $(printf '%s ' "${parts[@]##*/}")"
+        continue
+    fi
     if [ "$(kind_of "$img")" = product ]; then PRODUCT="$img"; else UPDATES+=("$img"); fi
 done
 if [ -z "$PRODUCT" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
