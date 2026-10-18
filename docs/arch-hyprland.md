@@ -603,7 +603,9 @@ invalidations do not ask for an erase), and the light theme's opaque pane
 bitmap under every part. `patches/comctl32-statusbar-erase-background.patch`:
 the background is painted in `WM_ERASEBKGND`, `WM_PAINT` paints it only if
 nobody erased (`ps.fErase`), invalidations ask for an erase, and owner-drawn
-parts get no theme pane. Built into `comctl32` and `comctl32_v6`. Being tested.
+parts get no theme pane. Built into `comctl32` and `comctl32_v6`. Confirmed:
+the status bar is dark with "Ready", coordinates and "Fully Constrained"
+as on Windows.
 
 ## Known harmless log messages
 
