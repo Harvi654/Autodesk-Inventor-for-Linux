@@ -1,3 +1,5 @@
+![Inventor for Linux - Autodesk Inventor 2026 on Linux with Wine, unofficial community project](docs/images/banner.png)
+
 # Autodesk Inventor 2026 on Linux
 
 Install and run **Autodesk Inventor Professional 2026** on Linux with Wine -
