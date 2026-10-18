@@ -34,6 +34,9 @@
 #                           waited for it - Stress Analysis hung on start
 #                           (patches/ntdll-actctx-threadingmodel-case.patch).
 #                           Only the PE ntdll.dll is replaced. Close all Wine programs before --install.
+#               rpcrt4    - NdrStubCall3 (stubs of interfaces MIDL built for NDR and
+#                           NDR64) was missing: Inventor aborted on Stress Analysis
+#                           Mesh View (patches/rpcrt4-ndrstubcall3.patch)
 #               server    - wineserver, not a DLL: a mouse move for the window under
 #                           the cursor when a window is shown or hidden (Windows does
 #                           this; Inventor redraws the sketch after a dimension edit
@@ -79,7 +82,8 @@ case "$DLL" in
     # the same source - takes the comctl32 patches
     comctl32_v6) CHECK=''; TEST=''; PATCH_DLL=comctl32 ;;
     ntdll)    CHECK=''; TEST=actctx; TESTDLL=kernel32 ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32|comctl32_v6|ntdll [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    rpcrt4)   CHECK='NdrStubCall3'; TEST=ndr_marshall ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32|comctl32_v6|ntdll|rpcrt4 [--install] [--hook] [--restore] [--diag] [--test]" ;;
 esac
 
 DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
@@ -292,7 +296,7 @@ if [ "$DO_HOOK" -eq 1 ]; then
     # one hook for all parts (older versions made one per DLL)
     HOOK=/etc/pacman.d/hooks/inventor-wine.hook
     sudo mkdir -p /etc/pacman.d/hooks
-    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11,comctl32,comctl32_v6,ntdll}.hook
+    sudo rm -f /etc/pacman.d/hooks/inventor-{wbemprox,shell32,oleaut32,kernelbase,riched20,msi,mspatcha,server,winex11,comctl32,comctl32_v6,ntdll,rpcrt4}.hook
     sudo tee "$HOOK" >/dev/null <<EOF
 [Trigger]
 Operation = Install

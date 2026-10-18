@@ -71,7 +71,7 @@ DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
 # This project's Wine fixes (scripts/build-wine-dll.sh targets), in build order
-WINE_FIX_PARTS=(wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha comctl32 comctl32_v6 ntdll server winex11)
+WINE_FIX_PARTS=(wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha comctl32 comctl32_v6 ntdll rpcrt4 server winex11)
 # Add-ins rebuild-prefix.sh disables (notes/disabled-addins.md). Some of them
 # are loaded through wine-mono instead of CoreCLR and abort Inventor
 # (SharedViews confirmed: mono assertion -> Environment.Exit).

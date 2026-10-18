@@ -659,3 +659,15 @@ which was the thread waiting for the worker: deadlock. Windows (and Wine for
 the same value in the registry) compares case-insensitively.
 Fix: `patches/ntdll-actctx-threadingmodel-case.patch` (`xmlstr_cmpi`), part
 `ntdll` of the Wine fixes (only the PE `ntdll.dll` is replaced).
+
+**2026-10-18 - Stress Analysis Mesh View: Inventor disappears (rpcrt4):**
+with the ntdll fix the Stress Analysis environment opens; Mesh View then ended
+Inventor without a message. `debug-crash.sh` (+seh): `EXCEPTION_WINE_STUB`,
+`Call ... to unimplemented function RPCRT4.dll.NdrStubCall3, aborting`, raised
+on the server side of a COM call (the client got `I_RpcReceive ... fault
+packet with status 0x80000100`). `NdrStubCall3` is what MIDL puts in the stub
+dispatch table of interfaces built for both NDR and NDR64 (`/protocol all`,
+the 64-bit default). Wine had the client side (`NdrClientCall3`, which picks
+the NDR syntax) but not the stub. Fix: `patches/rpcrt4-ndrstubcall3.patch`
+implements it the same way - the NDR format strings from `pSyntaxInfo`, then
+the existing `NdrStubCall2` interpreter (factored out as `ndr_stub_call`).

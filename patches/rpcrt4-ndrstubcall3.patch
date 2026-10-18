@@ -1,0 +1,112 @@
+--- a/dlls/rpcrt4/ndr_stubless.c
++++ b/dlls/rpcrt4/ndr_stubless.c
+@@ -1222,13 +1222,13 @@
+  * NOTES
+  *  Used by stubless MIDL-generated code.
+  */
+-LONG WINAPI NdrStubCall2(
++static LONG ndr_stub_call(
+     struct IRpcStubBuffer * pThis,
+     struct IRpcChannelBuffer * pChannel,
+     PRPC_MESSAGE pRpcMsg,
+-    DWORD * pdwStubPhase)
++    DWORD * pdwStubPhase,
++    const MIDL_SERVER_INFO *pServerInfo)
+ {
+-    const MIDL_SERVER_INFO *pServerInfo;
+     const MIDL_STUB_DESC *pStubDesc;
+     PFORMAT_STRING pFormat;
+     MIDL_STUB_MESSAGE stubMsg;
+@@ -1252,13 +1252,6 @@
+     /* correlation cache */
+     ULONG_PTR NdrCorrCache[256];
+ 
+-    TRACE("pThis %p, pChannel %p, pRpcMsg %p, pdwStubPhase %p\n", pThis, pChannel, pRpcMsg, pdwStubPhase);
+-
+-    if (pThis)
+-        pServerInfo = CStdStubBuffer_GetServerInfo(pThis);
+-    else
+-        pServerInfo = ((RPC_SERVER_INTERFACE *)pRpcMsg->RpcInterfaceInformation)->InterpreterInfo;
+-
+     pStubDesc = pServerInfo->pStubDesc;
+     pFormat = pServerInfo->ProcString + pServerInfo->FmtStringOffset[pRpcMsg->ProcNum];
+     pProcHeader = (const NDR_PROC_HEADER *)&pFormat[0];
+@@ -1476,6 +1469,24 @@
+     return S_OK;
+ }
+ 
++static const MIDL_SERVER_INFO *get_server_info( struct IRpcStubBuffer *This, PRPC_MESSAGE msg )
++{
++    if (This)
++        return CStdStubBuffer_GetServerInfo( This );
++    return ((RPC_SERVER_INTERFACE *)msg->RpcInterfaceInformation)->InterpreterInfo;
++}
++
++LONG WINAPI NdrStubCall2(
++    struct IRpcStubBuffer * pThis,
++    struct IRpcChannelBuffer * pChannel,
++    PRPC_MESSAGE pRpcMsg,
++    DWORD * pdwStubPhase)
++{
++    TRACE("pThis %p, pChannel %p, pRpcMsg %p, pdwStubPhase %p\n", pThis, pChannel, pRpcMsg, pdwStubPhase);
++
++    return ndr_stub_call( pThis, pChannel, pRpcMsg, pdwStubPhase, get_server_info( pThis, pRpcMsg ) );
++}
++
+ /***********************************************************************
+  *            NdrServerCall2 [RPCRT4.@]
+  */
+@@ -2199,6 +2210,43 @@
+     return 0;
+ }
+ 
++/***********************************************************************
++ *            NdrStubCall3 [RPCRT4.@]
++ *
++ * Stub of an interface MIDL built for both NDR and NDR64 (/protocol all).
++ * Our proxies always send NDR (see ndr64_client_call), so use the NDR
++ * format strings of the interface.
++ */
++LONG WINAPI NdrStubCall3( struct IRpcStubBuffer *This, struct IRpcChannelBuffer *channel,
++                          PRPC_MESSAGE msg, DWORD *phase )
++{
++    const MIDL_SERVER_INFO *info = get_server_info( This, msg );
++    MIDL_SERVER_INFO ndr_info;
++    ULONG_PTR i;
++
++    TRACE("This %p, channel %p, msg %p, phase %p\n", This, channel, msg, phase);
++
++    for (i = 0; i < info->nCount; ++i)
++    {
++        const MIDL_SYNTAX_INFO *syntax_info = &info->pSyntaxInfo[i];
++
++        if (!memcmp( &syntax_info->TransferSyntax, &ndr_syntax_id, sizeof(RPC_SYNTAX_IDENTIFIER) ))
++        {
++            ndr_info = *info;
++            ndr_info.ProcString = syntax_info->ProcString;
++            ndr_info.FmtStringOffset = syntax_info->FmtStringOffset;
++            return ndr_stub_call( This, channel, msg, phase, &ndr_info );
++        }
++    }
++
++    if (info->ProcString && info->FmtStringOffset)
++        return ndr_stub_call( This, channel, msg, phase, info );
++
++    FIXME("NDR64 syntax is not supported.\n");
++    RpcRaiseException( RPC_X_WRONG_STUB_VERSION );
++    return 0;
++}
++
+ #ifdef __aarch64__
+ __ASM_GLOBAL_FUNC( NdrClientCall3,
+                    "stp x29, x30, [sp, #-0x40]!\n\t"
+--- a/dlls/rpcrt4/rpcrt4.spec
++++ b/dlls/rpcrt4/rpcrt4.spec
+@@ -295,6 +295,7 @@
+ @ stdcall NdrSimpleTypeMarshall(ptr ptr long)
+ @ stdcall NdrSimpleTypeUnmarshall(ptr ptr long)
+ @ stdcall NdrStubCall2(ptr ptr ptr ptr)
++@ stdcall -arch=win64 NdrStubCall3(ptr ptr ptr ptr)
+ @ stdcall NdrStubCall(ptr ptr ptr ptr)
+ @ stdcall NdrStubForwardingFunction(ptr ptr ptr ptr)
+ @ stdcall NdrStubGetBuffer(ptr ptr ptr)
