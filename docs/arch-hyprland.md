@@ -421,9 +421,13 @@ shell32 reads `HKCR\Inventor.PartDocument\DefaultIcon` = `Inventor.exe,4`
 per user on start (`HKCU\Software\Classes\...\DefaultIcon` =
 `SrvRes.dll,N`), which on Windows win over HKLM in HKEY_CLASSES_ROOT; Wine's
 shell does not see them. `launch-inventor.sh` now copies these per-user
-DefaultIcon values to HKLM before each start (`scripts/lib/sync-class-icons.py`,
-only values mentioning Autodesk/Inventor), so the icons show from the second
-start on. Being tested.
+DefaultIcon values (only those mentioning Autodesk/Inventor) and the class of
+Inventor's extensions (`.idw` had none in HKLM) to HKLM before each start
+(`scripts/lib/sync-class-icons.py`), so they show from the second start on.
+First test: only the `.dwg` icons changed - Inventor writes the old
+`Inventor.exe,N` icons to HKCR (HKLM in Wine) again while it starts. So the
+launcher checks once more ~40 s after the start (live `reg query`/`reg add`,
+`INV_ICON_SYNC_DELAY`). Being tested.
 
 ## Design Accelerator (Shaft, gears, ...): "Failed to create shaft"
 

@@ -76,7 +76,7 @@ sandbox_fs   # again after wineboot, so nothing it does can bring Z: or the $HOM
 ICONREG="$P_C/windows/temp/inventor-class-icons.reg"
 N="$(python3 -I "$COMMON_DIR/sync-class-icons.py" "$WINEPREFIX" "$ICONREG" 2>/dev/null || echo 0)"
 if [ "${N:-0}" -gt 0 ] 2>/dev/null; then
-    import_reg_file "$ICONREG" && info "    $N file type icons updated"
+    import_reg_file "$ICONREG" && info "    $N file type entries updated"
 fi
 rm -f "$ICONREG"
 
@@ -114,6 +114,19 @@ else
     wine Inventor.exe "$@" >>"$LOG" 2>&1 &
 fi
 INV_PID=$!
+# Inventor writes the old icons to HKCR (= HKLM in Wine) again while it
+# starts: put the per-user icons back once it is up (live registry, the .reg
+# files on disk lag behind).
+(
+    sleep "${INV_ICON_SYNC_DELAY:-40}"
+    kill -0 "$INV_PID" 2>/dev/null || exit 0
+    python3 -I "$COMMON_DIR/sync-class-icons.py" --list "$WINEPREFIX" 2>/dev/null |
+    while IFS=$'\t' read -r SUBKEY VALUE; do
+        K="HKLM\\Software\\Classes\\$SUBKEY"
+        CUR="$(wine reg query "$K" /ve </dev/null 2>/dev/null | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
+        [ "$CUR" = "$VALUE" ] || wine reg add "$K" /ve /d "$VALUE" /f </dev/null >/dev/null 2>&1
+    done
+) >/dev/null 2>&1 &
 tail -n +1 -f --pid="$INV_PID" "$LOG" &
 wait "$INV_PID"
 RC=$?
