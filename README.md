@@ -79,10 +79,19 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 
 ### 1. Download Inventor from Autodesk
 
-In your Autodesk account (**Products and Services → Inventor Professional
-2026**) pick your language and choose **Browser download** (not "Install").
-Recommended: from the **Updates** tab also download the latest Inventor 2026
-update. Put everything in **one folder** - its name does not matter:
+Create a folder for the download, e.g. `~/Downloads/Inventor`. Then, signed in
+at [manage.autodesk.com](https://manage.autodesk.com):
+
+1. **Products and Services** → click **Inventor Professional**.
+2. Choose version **2026** and your **language**.
+3. Click the **arrow** next to the download button and pick **Direct
+   download** (called *Browser download* in some versions) - not "Install".
+4. Two files are downloaded - save both into the folder.
+5. Recommended: in the same place, under the available downloads / updates,
+   download **Inventor Professional 2026.4 Update** (or the newest 2026
+   update) into the same folder.
+
+The folder then looks like this (its name does not matter):
 
 ```
 ~/Downloads/Inventor/
