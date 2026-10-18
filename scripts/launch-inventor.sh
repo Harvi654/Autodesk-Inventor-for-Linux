@@ -115,17 +115,21 @@ else
 fi
 INV_PID=$!
 # Inventor writes the old icons to HKCR (= HKLM in Wine) again while it
-# starts: put the per-user icons back once it is up (live registry, the .reg
-# files on disk lag behind).
+# starts: keep putting the per-user icons back during the first minutes (live
+# registry; the .reg files on disk lag behind). A New dialog opened before
+# that shows the old icons once.
 (
-    sleep "${INV_ICON_SYNC_DELAY:-40}"
-    kill -0 "$INV_PID" 2>/dev/null || exit 0
-    python3 -I "$COMMON_DIR/sync-class-icons.py" --list "$WINEPREFIX" 2>/dev/null |
-    while IFS=$'\t' read -r SUBKEY VALUE; do
-        K="HKLM\\Software\\Classes\\$SUBKEY"
-        CUR="$(wine reg query "$K" /ve </dev/null 2>/dev/null | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
-        [ "$CUR" = "$VALUE" ] || wine reg add "$K" /ve /d "$VALUE" /f </dev/null >/dev/null 2>&1
+    python3 -I "$COMMON_DIR/sync-class-icons.py" --list "$WINEPREFIX" > "$LOGDIR/.class-icons-$TS" 2>/dev/null
+    END=$(( $(date +%s) + ${INV_ICON_SYNC_SECONDS:-180} ))
+    while [ "$(date +%s)" -lt "$END" ] && kill -0 "$INV_PID" 2>/dev/null; do
+        while IFS=$'\t' read -r SUBKEY VALUE; do
+            K="HKLM\\Software\\Classes\\$SUBKEY"
+            CUR="$(wine reg query "$K" /ve </dev/null 2>/dev/null | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
+            [ "$CUR" = "$VALUE" ] || wine reg add "$K" /ve /d "$VALUE" /f </dev/null >/dev/null 2>&1
+        done < "$LOGDIR/.class-icons-$TS"
+        sleep 3
     done
+    rm -f "$LOGDIR/.class-icons-$TS"
 ) >/dev/null 2>&1 &
 tail -n +1 -f --pid="$INV_PID" "$LOG" &
 wait "$INV_PID"
