@@ -68,7 +68,24 @@
      btnPtr = infoPtr->buttons;
      x  = infoPtr->nIndent;
      width = infoPtr->client_rect.right - infoPtr->client_rect.left;
-@@ -4924,89 +4971,36 @@
+@@ -1854,6 +1901,16 @@
+     /* infoPtr->nRows is the number of rows on the toolbar */
+     infoPtr->nRows = nRows + nSepRows + 1;
+ 
++    /* With TB_SETROWS rows in a vertical toolbar, a separator is a line
++       between groups of rows: make it as wide as the toolbar. */
++    if (infoPtr->nRowsColumns && (infoPtr->dwStyle & CCS_VERT))
++    {
++        for (i = 0, btnPtr = infoPtr->buttons; i < infoPtr->nNumButtons; i++, btnPtr++)
++            if ((btnPtr->fsStyle & BTNS_SEP) && (btnPtr->fsState & TBSTATE_WRAP) &&
++                !(btnPtr->fsState & TBSTATE_HIDDEN))
++                btnPtr->rect.right = infoPtr->rcBound.right;
++    }
++
+     TRACE("toolbar button width %d\n", infoPtr->nButtonWidth);
+ }
+ 
+@@ -4924,89 +4981,36 @@
  
      TRACE("Setting rows to %d (%d)\n", rows, bLarger);
  

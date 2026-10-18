@@ -1,0 +1,14 @@
+--- a/dlls/comctl32/toolbar.c
++++ b/dlls/comctl32/toolbar.c
+@@ -1669,7 +1669,10 @@
+     {
+         if (bHasBitmap)
+         {
+-            sizeButton.cy = infoPtr->nBitmapHeight + DEFPAD_CY;
++            /* the height padding is the one set with TB_SETPADDING, like the
++               width (DEFPAD_CY by default) - Inventor's symbol palette sets
++               0 for rows as tall as its 16 pixel symbols */
++            sizeButton.cy = infoPtr->nBitmapHeight + infoPtr->szPadding.cy;
+             if (sizeString.cy > 0)
+                 sizeButton.cy += 1 + sizeString.cy;
+             sizeButton.cx = infoPtr->szPadding.cx +

@@ -511,7 +511,12 @@ TB_SETROWS picks the fewest buttons per row with which the groups (between
 separators, each starting on a new row; separators not counted) fit into the
 requested rows - 47 buttons in 5 groups into 12 rows gives 5 columns, as on
 Windows - and later resizes and button changes (Inventor replaces buttons one
-by one after TB_SETROWS) keep that number of columns. Being tested.
+by one after TB_SETROWS) keep that number of columns. Confirmed: 5 columns
+and the groups as on Windows. Also: separator lines span the toolbar width,
+and `patches/comctl32-toolbar-padding-height.patch` takes the button height
+padding from TB_SETPADDING like the width (Inventor sets 0: rows as tall as
+the 16-pixel symbols instead of 22, so the palette fits without a scroll
+bar) - being tested.
 
 A freeze of the same dialog with `virtual_setup_exception stack overflow` was
 seen once and is not understood yet.
