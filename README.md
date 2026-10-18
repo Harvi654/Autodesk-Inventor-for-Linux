@@ -1,24 +1,45 @@
 # Autodesk Inventor 2026 on Linux
 
 Install and run **Autodesk Inventor Professional 2026** on Linux with Wine -
-from Autodesk's own download, without Windows, with one command.
+from Autodesk's own download, without Windows or a virtual machine, with one
+command.
 
-> **Status:** works for everyday part, assembly and Content Center work on
-> **Arch Linux + Hyprland** (tested on two machines: AMD RX 580, and an
-> Intel UHD 630 + NVIDIA GTX 1050 laptop). Other distributions and desktops
-> are not supported yet - reports are welcome.
+> **Status: early release (v0.1), in active development.** Works for everyday
+> part, assembly, drawing and Content Center work, iLogic and Stress Analysis
+> on **Arch Linux + Hyprland** (tested on two machines: AMD RX 580, and an
+> Intel UHD 630 + NVIDIA GTX 1050 laptop). More distributions and an easier
+> installer are planned - see [Roadmap](#roadmap). Reports are welcome.
 >
 > This is an unofficial community project. It is not made, supported or
 > endorsed by Autodesk. You need your own Inventor license (an education
 > license works). See [Disclaimer](#disclaimer).
 
-![A part in Inventor 2026 on Arch Linux + Hyprland](docs/images/part.png)
+**Quick start** (details in [Installation](#installation)):
 
-![A drawing with a section view](docs/images/drawing.png)
+```bash
+git clone https://github.com/Harvi654/inventor-on-linux.git ~/inventor-on-linux
+cd ~/inventor-on-linux
+bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's download
+```
 
-![An assembly with Content Center bolts and nuts](docs/images/assembly.png)
-
-![Stress Analysis: displacement of a pipe elbow under load](docs/images/stress-analysis.png)
+<table>
+  <tr>
+    <td><img src="docs/images/part.png" alt="A part"></td>
+    <td><img src="docs/images/assembly.png" alt="An assembly with Content Center bolts and nuts"></td>
+  </tr>
+  <tr>
+    <td align="center">Part modelling</td>
+    <td align="center">Assembly with Content Center parts</td>
+  </tr>
+  <tr>
+    <td><img src="docs/images/drawing.png" alt="A drawing with a section view"></td>
+    <td><img src="docs/images/stress-analysis.png" alt="Stress Analysis of a pipe elbow"></td>
+  </tr>
+  <tr>
+    <td align="center">Drawing with a section view</td>
+    <td align="center">Stress Analysis</td>
+  </tr>
+</table>
 
 ## What works
 
@@ -150,6 +171,20 @@ Inventor itself is not modified. The work is in three places:
 
 Details, background and every problem found on the way:
 [docs/arch-hyprland.md](docs/arch-hyprland.md).
+
+## Roadmap
+
+Planned, roughly in this order:
+
+- [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
+- [ ] other distributions: Ubuntu / Debian, Fedora, openSUSE
+- [ ] other desktops (KDE Plasma, GNOME) - Hyprland-specific parts are only window rules
+- [ ] prebuilt Wine fixes, so nothing has to be compiled
+- [ ] a simpler graphical installer
+- [ ] send the Wine fixes to Wine upstream
+- [ ] Frame Analysis, Dynamic Simulation, Inventor Studio, sheet metal - test and fix
+- [ ] Home page: the highlight of Recent rows follows the mouse wrongly
+- [ ] Inventor 2025 and 2027
 
 ## Reporting problems
 
