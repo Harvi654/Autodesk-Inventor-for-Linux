@@ -1,0 +1,39 @@
+name: Something does not work
+description: Installation fails, Inventor crashes, or a command misbehaves
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing! Please do not paste Autodesk account details,
+        license numbers or sign-in links.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, step by step, what you expected and what you got. Does it happen every time?
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: Distribution, desktop/compositor, GPU (e.g. Arch + Hyprland, RX 580)
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Report
+      description: |
+        Output of `bash scripts/report.sh` (after a problem in Inventor) or
+        `bash scripts/report.sh --install` (when the installation failed).
+        It removes e-mail addresses, tokens and your user name - read it before you post it.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images here.

@@ -153,7 +153,7 @@ Details, background and every problem found on the way:
 
 ## Reporting problems
 
-Open an issue with:
+Open an [issue](../../issues/new/choose) with:
 
 1. what you did, step by step, and whether it happens every time,
 2. a screenshot,
