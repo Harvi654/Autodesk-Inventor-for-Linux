@@ -46,13 +46,13 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
 
 ## Demo
 
-All videos are screen recordings on Arch Linux, not sped up.
+All videos are screen recordings on Arch Linux. Only "Creating a part" is sped up (2×); the others run in real time.
 
 ### Real-time viewport on Linux
 
 https://github.com/user-attachments/assets/d64e236a-c817-4076-bee3-72428a7bc288
 
-### Creating a part
+### Creating a part (2× speed)
 
 https://github.com/user-attachments/assets/bacf2d9a-e9ee-46bd-b2d7-e32260b04905
 
