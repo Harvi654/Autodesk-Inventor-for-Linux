@@ -49,7 +49,7 @@ if [ "$MODE" = build ]; then
     TARBALL="$TMP/$INV_WINE_NAME.tar.xz"
 else
     TARBALL="$TMP/$INV_WINE_NAME.tar.xz"
-    info "downloading $INV_WINE_NAME (~80 MB)"
+    info "downloading $INV_WINE_NAME (~220 MB)"
     curl -fL --retry 3 --progress-bar -o "$TARBALL" "$INV_WINE_URL/$TAG/$INV_WINE_NAME.tar.xz" \
         || die "download failed: $INV_WINE_URL/$TAG/$INV_WINE_NAME.tar.xz
     (no internet, or this Wine build is not published yet - then: bash $0 --build)"
