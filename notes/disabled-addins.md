@@ -18,7 +18,7 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.SharedViews.Inventor.addin` | **crashes Inventor**: loaded through wine-mono, which cannot load its .NET 10 references and ends the process |
 | `Autodesk.Feedback.Inventor.addin`, `Autodesk.PerfFeedbackAddin.Inventor.addin` | usage reporting |
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
-| `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | publishing / 3D PDF, untested |
+| `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | 3D PDF: the dialog opens, but Publish crashes Anark's `corewrapper.exe` (a .NET Framework program, so it runs on wine-mono): it calls into oleaut32's proxy tables as if they were code - most likely a COM interop gap in wine-mono. Inventor itself keeps running. Not fixed yet |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
 | `autodesk.frameanalysis.inventor.addin`, `autodesk.dynamicsimulation.inventor.addin` | heavy, untested |
 
