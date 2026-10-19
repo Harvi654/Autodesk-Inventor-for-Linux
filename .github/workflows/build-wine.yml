@@ -1,0 +1,85 @@
+# Builds this project's Wine (vanilla Wine + patches/) in public, so anyone can
+# see what the downloadable Wine is made of. On main it publishes the result as
+# a release "wine-<version>-<build>" (once per version/build, never "Latest").
+name: Build Wine
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'patches/*.patch'
+      - 'wine/version.env'
+      - 'scripts/build-wine.sh'
+      - '.github/workflows/build-wine.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-wine
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    timeout-minutes: 300
+    outputs:
+      name: ${{ steps.ver.outputs.name }}
+    steps:
+      - name: Build dependencies (official Arch repositories)
+        run: |
+          pacman-key --init
+          pacman -Syu --noconfirm --needed git mingw-w64-gcc \
+            alsa-lib libpulse gnutls krb5 dbus fontconfig freetype2 \
+            libx11 libxext libxi libxrandr libxrender libxcursor libxcomposite libxinerama libxxf86vm libxkbcommon \
+            wayland mesa libglvnd vulkan-icd-loader vulkan-headers \
+            gst-plugins-base-libs sdl2 libcups libgphoto2 sane libpcap v4l-utils pcsclite unixodbc ocl-icd opencl-headers \
+            giflib
+
+      - uses: actions/checkout@v4
+
+      - name: Version
+        id: ver
+        run: |
+          . wine/version.env
+          echo "name=wine-$WINE_VERSION-$WINE_BUILD" >> "$GITHUB_OUTPUT"
+          echo "Wine $WINE_VERSION, build $WINE_BUILD"
+
+      - name: Build
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          JOBS=$(nproc) WORK=/tmp/work bash scripts/build-wine.sh dist
+
+      - name: Logs on failure
+        if: failure()
+        run: tail -n 100 /tmp/work/*.log || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.ver.outputs.name }}
+          path: dist/*
+          retention-days: 30
+
+  release:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.build.outputs.name }}
+          path: dist
+      - name: Publish release (once per version/build)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.name }}
+        run: |
+          if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release $TAG exists - not replacing it (raise WINE_BUILD in wine/version.env for a new one)"
+            exit 0
+          fi
+          gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Wine for Inventor: $TAG" --latest=false \
+            --notes "Vanilla Wine with this project's patches (patches/ at $GITHUB_SHA), built by the \"Build Wine\" workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID - the install scripts download it and check its SHA-256. You do not need to download it yourself. Wine is LGPL 2.1+; BUILDINFO inside lists the source and patches."
