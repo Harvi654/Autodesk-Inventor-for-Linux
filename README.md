@@ -228,6 +228,23 @@ prefix cannot see the rest of your home folder.
 **Is it slow?** 3D runs through DXVK (Direct3D 11 on Vulkan) and feels like on
 Windows on the tested machines. The first start after installing takes longer.
 
+**Is it safe to run?** Read the scripts first - they are plain bash and
+Python, no compiled programs are in this repository. What they do:
+
+- `sudo` is used only for: `pacman` (packages from the official Arch
+  repositories), copying the built Wine fixes into `/usr/lib/wine` (the
+  originals are kept as `*.orig-<version>`) and one pacman hook
+  (`/etc/pacman.d/hooks/inventor-wine.hook`).
+- Downloads: Wine's source code from `dl.winehq.org` / `gitlab.winehq.org`
+  (the Wine fixes are built from it on your machine, from the patches in
+  `patches/`), DXVK 2.7.1 from its GitHub release (SHA-256 checked) and
+  Microsoft's WebView2 runtime. Inventor itself comes only from your own
+  Autodesk download.
+- Everything else stays in your home folder: the Wine prefix
+  (`~/.wine-inventor2026`), `~/.cache/inventor-on-linux`, the launcher entry.
+  Telemetry add-ins are switched off.
+- `scripts/uninstall.sh` undoes it.
+
 **Will Autodesk support it?** No - see [Disclaimer](#disclaimer). Report
 problems here.
 
