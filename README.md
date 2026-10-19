@@ -151,7 +151,7 @@ Run it as your normal user; it asks for your password when it needs `sudo`
 (system packages only). Arch does not support partial upgrades, so installing
 packages runs `pacman -Syu` - your system is updated too. It installs the
 system packages (official Arch repositories only), downloads this project's
-Wine (~100 MB, see [How it works](#how-it-works)), unpacks the download, runs
+Wine (~220 MB, see [How it works](#how-it-works)), unpacks the download, runs
 Autodesk's installers, sets up the Wine prefix and adds Inventor to your app
 launcher.
 
