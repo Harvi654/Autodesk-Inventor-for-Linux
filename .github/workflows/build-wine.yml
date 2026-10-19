@@ -13,8 +13,9 @@ on:
       - 'scripts/build-wine.sh'
       - '.github/workflows/build-wine.yml'
 
-permissions:
-  contents: write
+# Nothing by default; each job gets only what it needs (the build: read the
+# repository; the release: write the release and its provenance attestation).
+permissions: {}
 
 concurrency:
   group: build-wine
@@ -24,6 +25,8 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     container: archlinux:base-devel
+    permissions:
+      contents: read
     timeout-minutes: 300
     outputs:
       name: ${{ steps.ver.outputs.name }}
@@ -38,7 +41,7 @@ jobs:
             gst-plugins-base-libs sdl2 libcups libgphoto2 sane libpcap v4l-utils pcsclite unixodbc ocl-icd opencl-headers \
             giflib wine-mono wine-gecko
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Version
         id: ver
@@ -56,7 +59,7 @@ jobs:
         if: failure()
         run: tail -n 100 /tmp/work/*.log || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.ver.outputs.name }}
           path: dist/*
@@ -66,20 +69,37 @@ jobs:
     needs: build
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write       # create the release
+      id-token: write       # sign the attestation (Sigstore)
+      attestations: write   # store it
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: ${{ needs.build.outputs.name }}
           path: dist
-      - name: Publish release (once per version/build)
+      - name: Release already there?
+        id: exists
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.build.outputs.name }}
         run: |
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release $TAG exists - not replacing it (raise WINE_BUILD in wine/version.env for a new one)"
-            exit 0
+            echo "skip=1" >> "$GITHUB_OUTPUT"
           fi
+      # Signed build provenance for exactly the files that are published:
+      # gh attestation verify FILE -R Harvi654/Autodesk-Inventor-for-Linux
+      - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        if: steps.exists.outputs.skip != '1'
+        with:
+          subject-path: dist/*.tar.xz
+      - name: Publish release (once per version/build)
+        if: steps.exists.outputs.skip != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.name }}
+        run: |
           gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Wine for Inventor: $TAG" --latest=false \
             --notes "Vanilla Wine with this project's patches (patches/ at $GITHUB_SHA), built by the \"Build Wine\" workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID - the install scripts download it and check its SHA-256. You do not need to download it yourself. Wine is LGPL 2.1+; BUILDINFO inside lists the source and patches."
