@@ -22,11 +22,18 @@ COMMON_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$(dirname "$COMMON_DIR")"
 PROJECT_DIR="$(dirname "$SCRIPTS_DIR")"
 
+# INV_* variables already in the environment win over config.env (so that
+# "INV_PREFIX=... bash scripts/x.sh" and install.sh --prefix reach the scripts
+# it starts).
+_env_inv="$(compgen -e | grep '^INV_' || true)"
+_env_save=""
+[ -z "$_env_inv" ] || _env_save="$(declare -px $_env_inv)"
 for _cfg in "$PROJECT_DIR/config.env" "${XDG_CONFIG_HOME:-$HOME/.config}/inventor-on-linux/config.env"; do
     # shellcheck disable=SC1090
     [ -f "$_cfg" ] && source "$_cfg"
 done
-unset _cfg
+[ -z "$_env_save" ] || eval "$_env_save"
+unset _cfg _env_inv _env_save
 
 INV_YEAR="${INV_YEAR:-2026}"
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
