@@ -64,7 +64,7 @@ Exec=$BIN/adskidmgr-callback %u
 MimeType=x-scheme-handler/adskidmgr;
 NoDisplay=true
 EOF
-xdg-mime default adskidmgr-handler.desktop x-scheme-handler/adskidmgr
+xdg-mime default adskidmgr-handler.desktop x-scheme-handler/adskidmgr 2>/dev/null || true
 ok "adskidmgr:// -> $(xdg-mime query default x-scheme-handler/adskidmgr)"
 
 # Launcher + icon
