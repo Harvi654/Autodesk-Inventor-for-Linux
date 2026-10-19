@@ -8,8 +8,9 @@ command.
 
 > **Status: early release (v0.1), in active development.** Works for everyday
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
-> on **Arch Linux + Hyprland** (tested on two machines: AMD RX 580, and an
-> Intel UHD 630 + NVIDIA GTX 1050 laptop - the laptop with a slightly older version). More distributions and an easier
+> on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on two
+> machines: AMD RX 580, and an Intel UHD 630 + NVIDIA GTX 1050 laptop - the
+> laptop with a slightly older version). More distributions and an easier
 > installer are planned - see [Roadmap](#roadmap). Reports are welcome.
 >
 > This is an unofficial community project. It is not made, supported or
@@ -43,6 +44,10 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
   </tr>
 </table>
 
+## Demo
+
+All videos are screen recordings on Arch Linux, not sped up.
+
 ### Real-time viewport on Linux
 
 https://github.com/user-attachments/assets/d64e236a-c817-4076-bee3-72428a7bc288
@@ -55,7 +60,7 @@ https://github.com/user-attachments/assets/bacf2d9a-e9ee-46bd-b2d7-e32260b04905
 
 https://github.com/user-attachments/assets/a0b27cf0-6f8b-47d7-820c-8911989c78f7
 
-### Stress Analysis – I-beam under load (real-time)
+### Stress Analysis – I-beam under load
 
 https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 
@@ -227,7 +232,8 @@ Inventor itself is not modified. The work is in three places:
 
 - **Wine fixes** (`patches/`): small patches for Wine bugs Inventor runs into -
   a missing WMI class, the file dialog's folder view, type libraries, MSI
-  transforms and delta patches, COM details Stress Analysis needs, a sketch that only redrew on mouse movement,
+  transforms and delta patches, COM details Stress Analysis needs, a sketch
+  that only redrew on mouse movement, a home page that lagged behind the mouse,
   black boxes behind sketch inputs under Xwayland, a crash with some mouse
   devices. They are built from Wine's source for the Wine version you have
   installed and replace only the affected Wine files (originals are kept).
@@ -257,7 +263,7 @@ Planned, roughly in this order:
 
 ## Reporting problems
 
-Open an [issue](../../issues/new/choose) with:
+Open an [issue](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/new/choose) with:
 
 1. what you did, step by step, and whether it happens every time,
 2. a screenshot,
