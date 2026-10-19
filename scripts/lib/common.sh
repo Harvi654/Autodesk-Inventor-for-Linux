@@ -37,6 +37,37 @@ LOGDIR="${INV_LOGDIR:-$PROJECT_DIR/logs}"
 REG_FILE="${REG_FILE:-$PROJECT_DIR/registry/autodesk-full.reg}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
 
+# --- which Wine --------------------------------------------------------------
+# This project's own Wine (vanilla Wine + patches/, built in public by the
+# "Build Wine" workflow, downloaded by get-wine.sh) or the system's Wine with
+# the fixes copied into it (build-wine-dll.sh, the v0.1 way).
+#   INV_WINE=auto     own Wine when it is installed, else the system's (default)
+#   INV_WINE=bundled  own Wine only
+#   INV_WINE=system   the system's Wine
+INV_WINE="${INV_WINE:-auto}"
+INV_WINE_HOME="${INV_WINE_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/inventor-on-linux}"
+INV_WINE_VER="$(sed -n 's/^WINE_VERSION=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
+INV_WINE_BUILD="$(sed -n 's/^WINE_BUILD=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
+INV_WINE_NAME="wine-inventor-$INV_WINE_VER-$INV_WINE_BUILD-x86_64"
+# checksums of the published builds (added after the "Build Wine" workflow ran)
+INV_WINE_SHA256="$(awk -v f="$INV_WINE_NAME.tar.xz" '$2 == f || $2 == "*" f {print $1}' "$PROJECT_DIR/wine/SHA256SUMS" 2>/dev/null)"
+# Puts this project's Wine first in PATH when it is installed (and wanted).
+# Sets INV_WINE_ACTIVE (bundled|system), INV_WINE_DIR, and INV_WINE_OUTDATED=1
+# when only an older build than wine/version.env names is installed.
+select_wine() {
+    INV_WINE_ACTIVE=system INV_WINE_OUTDATED=0 INV_WINE_DIR=""
+    [ "$INV_WINE" = system ] && return 0
+    local d="$INV_WINE_HOME/$INV_WINE_NAME" newest
+    if [ ! -x "$d/bin/wine" ]; then
+        newest="$(ls -d "$INV_WINE_HOME"/wine-inventor-*-x86_64 2>/dev/null | sort -V | tail -1 || true)"
+        if [ -n "$newest" ] && [ -x "$newest/bin/wine" ]; then d="$newest"; INV_WINE_OUTDATED=1; else return 0; fi
+    fi
+    INV_WINE_ACTIVE=bundled INV_WINE_DIR="$d"
+    case ":$PATH:" in *":$d/bin:"*) ;; *) PATH="$d/bin:$PATH" ;; esac
+    export PATH WINE="$d/bin/wine" WINESERVER="$d/bin/wineserver" WINELOADER="$d/bin/wine"
+}
+select_wine
+
 # Isolation: 1 = prefix sees only C: (its own drive_c) and D: (INV_DATA_DIR).
 # No Z: -> /, no Desktop/Documents/... symlinks into $HOME. 0 = Wine defaults.
 INV_SANDBOX="${INV_SANDBOX:-1}"
@@ -261,6 +292,8 @@ wine_fix_file() {
 # no backup for this Wine version (Wine was updated), or the system file is the
 # original again (Wine was reinstalled). Prints the part names, one per line.
 wine_fixes_missing() {
+    # this project's own Wine has them built in
+    [ "$INV_WINE_ACTIVE" = bundled ] && return 0
     local wv p f; wv="$(wine_version)"; [ -n "$wv" ] || return 0
     for p in "${WINE_FIX_PARTS[@]}"; do
         f="$(wine_fix_file "$p")" || { echo "$p"; continue; }

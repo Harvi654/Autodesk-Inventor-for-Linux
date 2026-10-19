@@ -3,8 +3,9 @@
 #
 # Usage: bash scripts/uninstall.sh [--keep-prefix]
 #
-# Removes: the app-launcher entry and sign-in handler, the pacman hook, the
-# Wine fixes (by reinstalling the wine package, which puts Arch's files back)
+# Removes: the app-launcher entry and sign-in handler, the pacman hook, this
+# project's Wine (~/.local/share/inventor-on-linux), Wine fixes copied into the
+# system's Wine (by reinstalling the wine package, which puts Arch's files back)
 # and - after asking - the Wine prefix with Inventor in it.
 # Kept: your Inventor files (INV_DATA_DIR, by default ~/Inventor), this
 # folder, the downloads and the build cache (~/.cache/inventor-on-linux) -
@@ -25,11 +26,17 @@ info "pacman hook"
 sudo rm -f /etc/pacman.d/hooks/inventor-wine.hook
 ok "removed"
 
-info "Wine fixes: reinstalling the wine package (puts the original files back)"
-pkg="$(pacman -Qqo "$(command -v wine)" 2>/dev/null || echo wine)"
-sudo pacman -S --noconfirm "$pkg"
-sudo find /usr/lib/wine /usr/bin -maxdepth 3 -name '*.orig-*' -delete 2>/dev/null || true
-ok "Wine is back to Arch's $pkg"
+info "this project's Wine ($INV_WINE_HOME)"
+rm -rf "$INV_WINE_HOME"/wine-inventor-*-x86_64
+ok "removed"
+
+if find /usr/lib/wine /usr/bin -maxdepth 3 -name '*.orig-*' 2>/dev/null | grep -q .; then
+    info "Wine fixes in the system's Wine: reinstalling the wine package (puts the original files back)"
+    pkg="$(pacman -Qqo /usr/bin/wine 2>/dev/null || echo wine)"
+    sudo pacman -S --noconfirm "$pkg"
+    sudo find /usr/lib/wine /usr/bin -maxdepth 3 -name '*.orig-*' -delete 2>/dev/null || true
+    ok "Wine is back to Arch's $pkg"
+fi
 
 if [ "$KEEP_PREFIX" -eq 0 ] && [ -d "$INV_PREFIX" ]; then
     du -sh "$INV_PREFIX" 2>/dev/null || true

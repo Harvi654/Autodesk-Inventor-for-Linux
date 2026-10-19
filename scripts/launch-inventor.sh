@@ -32,6 +32,14 @@ fi
 
 # This project's Wine fixes are replaced when Arch updates Wine. Without them
 # parts of Inventor hang or crash (Stress Analysis, Home page, ...), so say so.
+if [ "$INV_WINE" = bundled ] && [ "$INV_WINE_ACTIVE" != bundled ]; then
+    err "INV_WINE=bundled but this project's Wine is not installed: bash $SCRIPTS_DIR/get-wine.sh"
+    notify "This project's Wine is not installed - run get-wine.sh"; exit 1
+fi
+if [ "$INV_WINE_OUTDATED" = 1 ]; then
+    warn "using $INV_WINE_DIR - a newer build ($INV_WINE_NAME) is available: bash $SCRIPTS_DIR/get-wine.sh"
+    notify "A newer Wine build for Inventor is available - run get-wine.sh"
+fi
 MISSING_FIXES="$(wine_fixes_missing | tr '\n' ' ')"
 if [ -n "$MISSING_FIXES" ]; then
     warn "Wine fixes not installed for Wine $(wine_version): $MISSING_FIXES"
@@ -48,7 +56,7 @@ cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; rm -f "
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-echo "=== Inventor $INV_YEAR | prefix $WINEPREFIX | logs $LOGDIR/*-$TS.log ==="
+echo "=== Inventor $INV_YEAR | prefix $WINEPREFIX | $(wine --version 2>/dev/null) ($INV_WINE_ACTIVE${INV_WINE_DIR:+: $INV_WINE_DIR}) | logs $LOGDIR/*-$TS.log ==="
 
 # 0. Stale Boost.Interprocess state deadlocks Identity Manager. Wipe ALL
 #    session dirs, not only 01000000 (README, Open Problem #4).

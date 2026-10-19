@@ -96,7 +96,7 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
 - an Autodesk account with an Inventor 2026 license
-- about an hour, most of it waiting (the first build of the Wine fixes takes 10-30 minutes)
+- about an hour, most of it waiting
 
 ## Installation
 
@@ -148,12 +148,12 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder from step 1
 ```
 
 Run it as your normal user; it asks for your password when it needs `sudo`
-(system packages, installing the Wine fixes, a pacman hook). Arch does not
-support partial upgrades, so installing packages runs `pacman -Syu` - your
-system is updated too. It installs the system packages (official Arch
-repositories only), builds
-this project's Wine fixes, unpacks the download, runs Autodesk's installers,
-sets up the Wine prefix and adds Inventor to your app launcher.
+(system packages only). Arch does not support partial upgrades, so installing
+packages runs `pacman -Syu` - your system is updated too. It installs the
+system packages (official Arch repositories only), downloads this project's
+Wine (~100 MB, see [How it works](#how-it-works)), unpacks the download, runs
+Autodesk's installers, sets up the Wine prefix and adds Inventor to your app
+launcher.
 
 If it stops, fix what it reports and run the same command again - finished
 steps are skipped. The log is in `logs/install-*.log`.
@@ -194,14 +194,14 @@ If it is the integrated one, add part of the name of the GPU you want to
 ### Keeping it working
 
 - Update this project: `cd ~/inventor-on-linux && git pull`
-- When Arch updates Wine, the Wine fixes are replaced by the new version's
-  files. A pacman hook reminds you, and Inventor's launcher shows a
-  notification while they are missing. Close Inventor and run
-  `bash ~/inventor-on-linux/scripts/rebuild-wine-fixes.sh`.
-- The Wine fixes replace files of the system's Wine (`/usr/lib/wine`), so
-  other Windows programs you run with Wine use them too. They only fix bugs,
-  but if you want the original Wine back: `sudo pacman -S wine`
-  (or `scripts/uninstall.sh`).
+- Inventor runs on this project's own Wine in `~/.local/share/inventor-on-linux`,
+  so Arch's Wine updates don't affect it, and other Wine programs don't use it.
+  When a `git pull` brings a newer build, the launcher tells you; then run
+  `bash ~/inventor-on-linux/scripts/get-wine.sh`.
+- Installed with v0.1 (fixes copied into the system's Wine)? Run
+  `bash scripts/get-wine.sh` once to switch; `sudo pacman -S wine` puts Arch's
+  original Wine back. `INV_WINE=system` in `config.env` keeps the old way
+  (then `scripts/rebuild-wine-fixes.sh` after every Wine update).
 
 ### Uninstall
 
@@ -209,8 +209,9 @@ If it is the integrated one, add part of the name of the GPU you want to
 bash ~/inventor-on-linux/scripts/uninstall.sh
 ```
 
-Removes the launcher entry, the Wine fixes (Arch's `wine` package is
-reinstalled) and, after asking, the Wine prefix. Your Inventor files in
+Removes the launcher entry, this project's Wine (and fixes copied into the
+system's Wine by v0.1, by reinstalling Arch's `wine` package) and, after
+asking, the Wine prefix. Your Inventor files in
 `~/Inventor` are kept.
 
 ## FAQ
@@ -231,17 +232,16 @@ Windows on the tested machines. The first start after installing takes longer.
 **Is it safe to run?** Read the scripts first - they are plain bash and
 Python, no compiled programs are in this repository. What they do:
 
-- `sudo` is used only for: `pacman` (packages from the official Arch
-  repositories), copying the built Wine fixes into `/usr/lib/wine` (the
-  originals are kept as `*.orig-<version>`) and one pacman hook
-  (`/etc/pacman.d/hooks/inventor-wine.hook`).
-- Downloads: Wine's source code from `dl.winehq.org` / `gitlab.winehq.org`
-  (the Wine fixes are built from it on your machine, from the patches in
-  `patches/`), DXVK 2.7.1 from its GitHub release (SHA-256 checked) and
-  Microsoft's WebView2 runtime. Inventor itself comes only from your own
-  Autodesk download.
+- `sudo` is used only for `pacman` (packages from the official Arch
+  repositories). Nothing outside your home folder is changed otherwise.
+- Downloads: this project's Wine from its GitHub releases - built in public
+  by the [Build Wine](.github/workflows/build-wine.yml) workflow from Wine's
+  source and `patches/`, checked against the SHA-256 in `wine/SHA256SUMS`
+  (you can build it yourself instead: `scripts/get-wine.sh --build`), DXVK
+  2.7.1 from its GitHub release (SHA-256 checked) and Microsoft's WebView2
+  runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
-  (`~/.wine-inventor2026`), `~/.cache/inventor-on-linux`, the launcher entry.
+  (`~/.wine-inventor2026`), this project's Wine, the launcher entry.
   Telemetry add-ins are switched off.
 - `scripts/uninstall.sh` undoes it.
 
@@ -257,9 +257,10 @@ Inventor itself is not modified. The work is in three places:
   transforms and delta patches, COM details Stress Analysis needs, a sketch
   that only redrew on mouse movement, a home page that lagged behind the mouse,
   black boxes behind sketch inputs under Xwayland, a crash with some mouse
-  devices. They are built from Wine's source for the Wine version you have
-  installed and replace only the affected files of the system's Wine
-  (originals are kept as `*.orig-<version>`).
+  devices. They are applied to vanilla Wine (version in `wine/version.env`)
+  and built into this project's Wine by a public GitHub workflow
+  (`scripts/build-wine.sh`); the result is installed in your home folder, next
+  to - not over - the system's Wine.
   They are meant to go to Wine upstream.
 - **Installation** (`scripts/install-from-image.py`, `scripts/lib/odis.py`):
   reads Autodesk's install image and runs its packages in the right order
@@ -278,7 +279,7 @@ Planned, roughly in this order:
 - [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
 - [ ] other distributions: Ubuntu / Debian, Fedora, openSUSE
 - [ ] other desktops: KDE Plasma (Wayland) works in a first test, GNOME untested - Hyprland-specific parts are only window rules
-- [ ] prebuilt Wine fixes, so nothing has to be compiled
+- [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
 - [ ] Frame Analysis, Dynamic Simulation, Inventor Studio, sheet metal - test and fix

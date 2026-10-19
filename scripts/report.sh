@@ -58,15 +58,21 @@ collect() {
     [ -n "$INV_GPU" ] && echo "INV_GPU=$INV_GPU"
 
     section "Wine"
-    echo "wine: $(wine --version 2>/dev/null) ($(pacman -Qo "$(command -v wine)" 2>/dev/null | awk '{print $(NF-1), $NF}'))"
+    echo "wine: $(wine --version 2>/dev/null) - $INV_WINE_ACTIVE${INV_WINE_DIR:+ ($(basename "$INV_WINE_DIR"))}${INV_WINE_OUTDATED:+, outdated=$INV_WINE_OUTDATED} (INV_WINE=$INV_WINE)"
+    echo "system wine: $(/usr/bin/wine --version 2>/dev/null) ($(pacman -Qo /usr/bin/wine 2>/dev/null | awk '{print $(NF-1), $NF}'))"
     local wv f sys
     wv="$(wine_version)"
+    if [ "$INV_WINE_ACTIVE" = bundled ]; then
+        echo "fixes: built into this project's Wine"
+        sed -n '/^patches/,/^$/p' "$INV_WINE_DIR/BUILDINFO" 2>/dev/null
+    else
     for f in "${WINE_FIX_PARTS[@]}"; do
         sys="$(wine_fix_file "$f")"
         if [ ! -f "$sys.orig-$wv" ]; then echo "  $f: NOT patched for Wine $wv"
         elif cmp -s "$sys" "$sys.orig-$wv"; then echo "  $f: original (patch removed?)"
         else echo "  $f: patched"; fi
     done
+    fi
 
     section "Prefix"
     echo "prefix: $WINEPREFIX ($(du -sh "$WINEPREFIX" 2>/dev/null | cut -f1))"

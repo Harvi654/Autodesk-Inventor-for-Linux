@@ -10,8 +10,9 @@
 #
 # Steps (each can be rerun - finished work is skipped):
 #   1. system packages (official Arch repos only)          phase0-setup.sh
-#   2. Wine with this project's fixes (built from Wine's    build-wine-dll.sh
-#      source for the installed Wine version, originals kept)
+#   2. this project's Wine (vanilla Wine + patches/,          get-wine.sh
+#      downloaded to ~/.local/share/inventor-on-linux;
+#      INV_WINE=system: fixes built into the system's Wine    build-wine-dll.sh)
 #   3. unpack the downloads
 #   4. install Inventor + Content Center libraries          install-from-image.py
 #   5. install the updates
@@ -22,7 +23,7 @@
 #   --prefix DIR       Wine prefix (default ~/.wine-inventor2026)
 #   --no-content       leave out the Content Center libraries (~12.7 GB)
 #   --skip-packages    don't run pacman (packages already there)
-#   --skip-wine        don't rebuild the Wine fixes
+#   --skip-wine        don't install/check Wine
 #   --no-desktop       no app-launcher entry (e.g. for a test prefix)
 #
 # A log of everything is written to logs/install-<date>.log.
@@ -113,22 +114,28 @@ FREE_GB=$(( $(df --output=avail -k "$HOME" | tail -1) / 1024 / 1024 ))
 [ "$FREE_GB" -ge 40 ] || warn "only $FREE_GB GB free in $HOME - Inventor with libraries needs ~40 GB (plus ~15 GB for the unpacked download)"
 info "prefix:  $PREFIX"
 info "log:     $LOG"
-sudo -v || die "sudo is needed for pacman and for installing the Wine fixes"
+sudo -v || die "sudo is needed for pacman (system packages)"
 ok "ok"
 
 step "System packages..."
 if [ "$SKIP_PKG" -eq 1 ]; then info "skipped (--skip-packages)"
 else bash "$SCRIPTS_DIR/phase0-setup.sh"; fi
 
-step "Wine with this project's fixes ($(wine --version 2>/dev/null))..."
+step "Wine with this project's fixes..."
 if [ "$SKIP_WINE" -eq 1 ]; then info "skipped (--skip-wine)"
-else
+elif [ "$INV_WINE" = system ]; then
+    info "INV_WINE=system: building the fixes into the system's Wine ($(wine --version 2>/dev/null))"
     info "built from Wine's source the first time (10-30 minutes), later only checked"
     wineserver -k 2>/dev/null || true
     for p in "${WINE_FIX_PARTS[@]}"; do
         info "-- $p"
         bash "$SCRIPTS_DIR/build-wine-dll.sh" "$p" --install --hook
     done
+else
+    bash "$SCRIPTS_DIR/get-wine.sh"
+    select_wine
+    [ "$INV_WINE_ACTIVE" = bundled ] || die "this project's Wine is not usable - see above"
+    ok "$(wine --version) from $INV_WINE_DIR"
 fi
 
 step "Looking at the downloads..."
