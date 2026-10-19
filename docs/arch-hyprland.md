@@ -607,6 +607,29 @@ parts get no theme pane. Built into `comctl32` and `comctl32_v6`. Confirmed:
 the status bar is dark with "Ready", coordinates and "Fully Constrained"
 as on Windows.
 
+## This project's own Wine (v0.2)
+
+Up to v0.1 the fixes were built per DLL and copied over the system's Wine
+(`build-wine-dll.sh --install`). Every Arch Wine update replaced them, and the
+prefix then ran without them until `rebuild-wine-fixes.sh`. Since v0.2 the
+whole Wine is built once, in public, by `.github/workflows/build-wine.yml`
+(`scripts/build-wine.sh`: vanilla source of the version in `wine/version.env`,
+all of `patches/`, `--enable-archs=x86_64,i386`, Arch Linux container) and
+published as release `wine-<version>-<build>`. `scripts/get-wine.sh` downloads
+it, checks it against `wine/SHA256SUMS` and unpacks it to
+`~/.local/share/inventor-on-linux/`; `common.sh` puts its `bin/` first in
+`PATH` (`INV_WINE=auto|bundled|system`). The system's Wine is not touched.
+The build also patches the 32-bit (i386) PE DLLs, which the per-DLL builds
+never did. A build made on Arch also runs on Ubuntu 24.04 (glibc 2.38 symbols).
+
+**Do not mix Wine versions on one prefix.** The first test used a 11.19 build
+while Arch had moved to 11.20: the launcher's `wineboot -u` then switched the
+prefix between the two versions on every start, and under KDE the maximized
+Inventor window lost its own title bar row (quick access toolbar, user name)
+behind a KDE title bar, and only part of the window was drawn. With the 11.20
+build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
+the version the prefix was last updated with, and move forward only.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
