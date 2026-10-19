@@ -98,6 +98,8 @@ OWN_ICONS="${!TYPE_ICON[*]}"
 } > "$MIME_XML"
 update-mime-database "$MIME_DIR" 2>/dev/null || warn "update-mime-database not found - file types not registered"
 MIMES="$(for t in "${INV_TYPES[@]}"; do printf '%s;' "${t%%|*}"; done)"
+# .dwg (AutoCAD, also Inventor drawings): offered, but not made the default
+MIMES+="image/vnd.dwg;application/acad;image/x-dwg;"
 cat > "$APPS/$NAME.desktop" <<EOF
 [Desktop Entry]
 Type=Application

@@ -11,8 +11,10 @@ Lookup, as Windows does it: HKCR\\.ext -> ProgID (default value, following
 CurVer) -> ProgID\\DefaultIcon = "path,index". A negative index is a resource
 id, a positive one the position among the file's icon groups.
 """
+import glob
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -49,6 +51,7 @@ def lookup(regs, key, name=""):
 
 def main():
     prefix, outdir, base, exts = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4:]
+    os.makedirs(outdir, exist_ok=True)
     regs = [("software\\classes\\", read_reg(os.path.join(prefix, "user.reg"))),
             ("software\\classes\\", read_reg(os.path.join(prefix, "system.reg")))]
     for ext in exts:
@@ -68,6 +71,21 @@ def main():
             m = re.match(r"^([A-Za-z]):\\(.*)$", path)
             if m and m.group(1).lower() == "c":
                 linux = os.path.join(prefix, "drive_c", *m.group(2).split("\\"))
+                out = os.path.join(outdir, "%s-%s.png" % (base, ext))
+                if linux.lower().endswith(".ico") and os.path.exists(linux):
+                    # a plain .ico file: its largest image
+                    im = shutil.which("magick") or shutil.which("convert")
+                    if im:
+                        tmpd = tempfile.mkdtemp()
+                        subprocess.run([im, linux, os.path.join(tmpd, "i.png")],
+                                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        pngs = sorted(glob.glob(os.path.join(tmpd, "i*.png")), key=os.path.getsize)
+                        if pngs:
+                            shutil.copyfile(pngs[-1], out)
+                            ok = True
+                        shutil.rmtree(tmpd, ignore_errors=True)
+                    print("%s %s %s" % (ext, "ok" if ok else "-", icon))
+                    continue
                 try:
                     n = int(idx)
                 except ValueError:
@@ -85,7 +103,6 @@ def main():
                         elif 0 <= n < len(names):
                             group = names[n]
                 if group:
-                    out = os.path.join(outdir, "%s-%s.png" % (base, ext))
                     r = subprocess.run([sys.executable, "-I", os.path.join(HERE, "exe-icon.py"), linux, out, group],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     ok = r.returncode == 0 and os.path.exists(out)
