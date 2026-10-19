@@ -88,6 +88,12 @@ cfg_wpf_stubs() {
 cfg_isolation() {
     if [ "$INV_SANDBOX" = 1 ]; then
         sandbox_reg
+        # "Documents" = D:, so Save/Open dialogs start in your Inventor folder
+        # instead of the hidden prefix (C:\users\<you>)
+        if [ -n "$INV_DATA_DIR" ]; then
+            wine_reg_add 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders' /v Personal /t REG_EXPAND_SZ /d 'D:\'
+            wine_reg_add 'HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders' /v Personal /t REG_SZ /d 'D:\'
+        fi
         wine_stop
         sandbox_fs
         ok "drives: $(cd "$WINEPREFIX/dosdevices" && ls -d ?: 2>/dev/null | while read -r d; do printf '%s->%s ' "$d" "$(readlink "$d")"; done)"
