@@ -47,6 +47,13 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
 
 https://github.com/user-attachments/assets/d64e236a-c817-4076-bee3-72428a7bc288
 
+### Demo - creating a part
+
+https://github.com/user-attachments/assets/bacf2d9a-e9ee-46bd-b2d7-e32260b04905
+
+### Demo - creating an assembly
+
+https://github.com/user-attachments/assets/2c46f594-919d-4a41-bcd6-55d3760fdce8
 
 ## What works
 
