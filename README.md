@@ -168,6 +168,19 @@ steps are skipped. The log is in `logs/install-*.log`.
 Options: `--no-content` (leave out Content Center), `--prefix DIR`,
 `--help` for the rest.
 
+**Or with a window (new, being tested):**
+
+```bash
+bash scripts/install-gui.sh
+```
+
+The same installation with a window: it checks your system, finds Autodesk's
+download in your Downloads folder, shows the eight phases with a progress bar
+and the installer's output, and asks for your password in a dialog. It needs
+GTK 4 for Python and installs it first if it is missing. With Inventor already
+installed it offers to start it, repair the installation or update this
+project and its Wine.
+
 ### 4. Hyprland only: window rules
 
 On other desktops skip this step. Add to `~/.config/hypr/hyprland.conf`:

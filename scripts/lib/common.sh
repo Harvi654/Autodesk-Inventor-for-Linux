@@ -190,6 +190,10 @@ warn() { printf '    %sWARN%s %s\n' "$_Y" "$_N" "$*" >&2; }
 err()  { printf '    %sERROR%s %s\n' "$_R" "$_N" "$*" >&2; }
 die()  { err "$*"; exit 1; }
 
+# sudo through a graphical password prompt when SUDO_ASKPASS is set (the
+# graphical installer, scripts/install-gui.sh); otherwise the terminal asks.
+sudo() { if [ -n "${SUDO_ASKPASS:-}" ]; then command sudo -A "$@"; else command sudo "$@"; fi; }
+
 # Run a command; on failure only warn (for optional steps under set -e).
 try() { "$@" || warn "failed (continuing): $*"; }
 

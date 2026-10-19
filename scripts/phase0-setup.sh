@@ -39,8 +39,8 @@ if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ]; then
             fonts-liberation fonts-noto-core fonts-dejavu-core
         )
         step "Installing packages (apt)..."
-        sudo apt-get update
-        sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get update
+        sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${PKGS[@]}"
     else
         PKGS=(
             libX11 libXext libXcomposite libXcursor libXfixes libXi libXinerama libXrandr libXrender
@@ -103,7 +103,7 @@ if pacman -Qq 2>/dev/null | grep -qE '^nvidia-[0-9]+xx-dkms$'; then
     warn "your NVIDIA driver comes from the AUR ($(pacman -Qq | grep -E '^nvidia-[0-9]+xx-dkms$')): if the kernel is updated,"
     warn "update the driver too (e.g. yay -Syu) and reboot - check with: nvidia-smi"
 fi
-sudo pacman -Syu --needed "${PKGS[@]}"
+sudo pacman -Syu --needed ${INV_NONINTERACTIVE:+--noconfirm} "${PKGS[@]}"
 
 step "Summary"
 info "$(wine --version 2>/dev/null || echo 'wine: not found')"

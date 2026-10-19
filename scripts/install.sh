@@ -55,6 +55,11 @@ exec > >(tee -a "$LOG") 2>&1
 trap 'err "installation stopped at line $LINENO: $BASH_COMMAND"; err "log: $LOG - fix the problem and run the same command again, finished steps are skipped"' ERR
 
 _STEPS=8
+# The graphical installer (scripts/install-gui.sh) follows the phases by these
+# lines; the human-readable line follows as usual.
+if [ -n "${INV_GUI:-}" ]; then
+    step() { _STEP=$((_STEP + 1)); printf '@@phase %d %d %s\n' "$_STEP" "$_STEPS" "$*"; printf '%s[%d/%d]%s %s\n' "$_B" "$_STEP" "$_STEPS" "$_N" "$*"; }
+fi
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/inventor-on-linux/media"
 
 kind_of() {   # product | update | ""
@@ -121,7 +126,8 @@ FREE_GB=$(( $(df --output=avail -k "$HOME" | tail -1) / 1024 / 1024 ))
 [ "$FREE_GB" -ge 40 ] || warn "only $FREE_GB GB free in $HOME - Inventor with libraries needs ~40 GB (plus ~15 GB for the unpacked download)"
 info "prefix:  $PREFIX"
 info "log:     $LOG"
-sudo -v || die "sudo is needed for the system packages"
+# (the graphical installer asks for the password when the packages are installed)
+[ -n "${INV_GUI:-}" ] || sudo -v || die "sudo is needed for the system packages"
 ok "ok"
 
 step "System packages..."
