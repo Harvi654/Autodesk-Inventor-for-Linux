@@ -37,6 +37,22 @@ LOGDIR="${INV_LOGDIR:-$PROJECT_DIR/logs}"
 REG_FILE="${REG_FILE:-$PROJECT_DIR/registry/autodesk-full.reg}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
 
+# --- distribution ------------------------------------------------------------
+# arch | debian (Debian, Ubuntu, Mint, Pop!_OS ...) | fedora | unknown
+detect_distro() {
+    local id="" like=""
+    if [ -f /etc/os-release ]; then
+        id="$(. /etc/os-release; echo "${ID:-}")"; like="$(. /etc/os-release; echo "${ID_LIKE:-}")"
+    fi
+    case " $id $like " in
+        *" arch "*) echo arch ;;
+        *" debian "*|*" ubuntu "*) echo debian ;;
+        *" fedora "*|*" rhel "*) echo fedora ;;
+        *) command -v pacman >/dev/null && echo arch || echo unknown ;;
+    esac
+}
+INV_DISTRO="${INV_DISTRO:-$(detect_distro)}"
+
 # --- which Wine --------------------------------------------------------------
 # This project's own Wine (vanilla Wine + patches/, built in public by the
 # "Build Wine" workflow, downloaded by get-wine.sh) or the system's Wine with

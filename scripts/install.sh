@@ -9,7 +9,7 @@
 #   UPDATE    optional update downloads (e.g. Inventor_2026.4_Update.exe)
 #
 # Steps (each can be rerun - finished work is skipped):
-#   1. system packages (official Arch repos only)          phase0-setup.sh
+#   1. system packages (pacman / apt / dnf)                 phase0-setup.sh
 #   2. this project's Wine (vanilla Wine + patches/,          get-wine.sh
 #      downloaded to ~/.local/share/inventor-on-linux;
 #      INV_WINE=system: fixes built into the system's Wine    build-wine-dll.sh)
@@ -22,7 +22,7 @@
 # Options:
 #   --prefix DIR       Wine prefix (default ~/.wine-inventor2026)
 #   --no-content       leave out the Content Center libraries (~12.7 GB)
-#   --skip-packages    don't run pacman (packages already there)
+#   --skip-packages    don't install system packages (already there)
 #   --skip-wine        don't install/check Wine
 #   --no-desktop       no app-launcher entry (e.g. for a test prefix)
 #
@@ -104,7 +104,14 @@ unpack() {
 
 step "Checking..."
 [ "$EUID" -ne 0 ] || die "run this as your normal user, not with sudo - it asks for the password itself"
-command -v pacman >/dev/null || die "this installer is for Arch Linux and its derivatives (pacman)"
+case "$INV_DISTRO" in
+    arch) ;;
+    debian|fedora)
+        [ "$INV_WINE" != system ] || die "INV_WINE=system (fixes built into the system's Wine) is only supported on Arch"
+        [ "$INV_DISTRO" = fedora ] && warn "Fedora support is new and not tested yet - please report how it went" ;;
+    *) die "unsupported distribution (supported: Arch, Debian/Ubuntu, Fedora)" ;;
+esac
+info "distribution: $INV_DISTRO ($(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-?}"))"
 [ ${#ARGS[@]} -gt 0 ] || die "tell me where Autodesk's download is: bash scripts/install.sh ~/Downloads/Inventor_Professional_2026_..._001_002.exe"
 for a in "${ARGS[@]}"; do [ -e "$a" ] || die "not found: $a"; done
 if [ -d "$PREFIX/drive_c" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
@@ -114,7 +121,7 @@ FREE_GB=$(( $(df --output=avail -k "$HOME" | tail -1) / 1024 / 1024 ))
 [ "$FREE_GB" -ge 40 ] || warn "only $FREE_GB GB free in $HOME - Inventor with libraries needs ~40 GB (plus ~15 GB for the unpacked download)"
 info "prefix:  $PREFIX"
 info "log:     $LOG"
-sudo -v || die "sudo is needed for pacman (system packages)"
+sudo -v || die "sudo is needed for the system packages"
 ok "ok"
 
 step "System packages..."

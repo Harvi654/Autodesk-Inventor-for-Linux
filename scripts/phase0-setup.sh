@@ -1,7 +1,10 @@
 #!/bin/bash
-# Phase 0: install system prerequisites on Arch Linux (and derivatives).
+# Phase 0: install system prerequisites.
 #
-# Only official Arch repositories are used - nothing from the AUR.
+#   Arch Linux and derivatives (pacman): official repositories only, no AUR.
+#   Debian / Ubuntu and derivatives (apt), Fedora (dnf): only the libraries
+#   this project's own Wine needs, plus the tools the scripts use - Wine itself
+#   comes from get-wine.sh, not from the distribution.
 # DXVK is downloaded later by rebuild-prefix.sh from the official DXVK GitHub
 # release and checked against a pinned SHA-256.
 #
@@ -17,6 +20,50 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 WINE_PKG=wine
 [ "${1:-}" = "--staging" ] && WINE_PKG=wine-staging
+
+if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ]; then
+    _STEPS=2
+    # Libraries this project's Wine (WoW64, 64-bit host only) loads, found
+    # with ldd/dlopen names on Ubuntu 24.04; tools used by the scripts.
+    if [ "$INV_DISTRO" = debian ]; then
+        t64() { if apt-cache show "${1}t64" >/dev/null 2>&1; then echo "${1}t64"; else echo "$1"; fi; }
+        PKGS=(
+            libx11-6 libxext6 libxcomposite1 libxcursor1 libxfixes3 libxi6 libxinerama1
+            libxrandr2 libxrender1 libxxf86vm1 libxkbcommon0 libxkbregistry0
+            libvulkan1 mesa-vulkan-drivers vulkan-tools libegl1 libgl1 libwayland-client0 libwayland-egl1
+            libfreetype6 libfontconfig1 "$(t64 libgnutls30)" "$(t64 libasound2)" libpulse0 libdbus-1-3
+            libkrb5-3 libgssapi-krb5-2 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0
+            libsdl2-2.0-0 libudev1 libusb-1.0-0 "$(t64 libcups2)" libpcsclite1 "$(t64 libv4l-0)"
+            python3 p7zip-full rsync curl xz-utils zstd cabextract unzip imagemagick
+            xdg-utils desktop-file-utils libnotify-bin git
+            fonts-liberation fonts-noto-core fonts-dejavu-core
+        )
+        step "Installing packages (apt)..."
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
+    else
+        PKGS=(
+            libX11 libXext libXcomposite libXcursor libXfixes libXi libXinerama libXrandr libXrender
+            libXxf86vm libxkbcommon vulkan-loader mesa-vulkan-drivers vulkan-tools mesa-libEGL mesa-libGL
+            libwayland-client libwayland-egl freetype fontconfig gnutls alsa-lib pulseaudio-libs dbus-libs
+            krb5-libs gstreamer1 gstreamer1-plugins-base SDL2 systemd-libs libusb1 cups-libs pcsc-lite-libs libv4l
+            python3 p7zip p7zip-plugins rsync curl xz zstd cabextract unzip ImageMagick
+            xdg-utils desktop-file-utils libnotify git
+            liberation-fonts google-noto-sans-fonts dejavu-sans-fonts
+        )
+        step "Installing packages (dnf) - not tested yet, please report problems..."
+        sudo dnf install -y "${PKGS[@]}"
+    fi
+    if lspci 2>/dev/null | grep -Ei 'vga|3d|display' | grep -qi nvidia; then
+        warn "NVIDIA GPU: install the proprietary driver with your distribution's tool"
+        warn "(Ubuntu: sudo ubuntu-drivers install) - Mesa's Vulkan does not cover it"
+    fi
+    step "Summary"
+    command -v vulkaninfo >/dev/null && info "$(vulkaninfo --summary 2>/dev/null | grep -m3 -E 'deviceName|driverName' | sed 's/^ *//' | tr '\n' ' ')"
+    info "Wine: this project's own (scripts/get-wine.sh)"
+    exit 0
+fi
+[ "$INV_DISTRO" = arch ] || die "unsupported distribution (supported: Arch, Debian/Ubuntu, Fedora) - see /etc/os-release"
 
 _STEPS=3
 

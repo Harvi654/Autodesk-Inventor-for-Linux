@@ -22,15 +22,17 @@ pgrep -x wineserver >/dev/null && die "close Inventor and all Wine programs firs
 info "app-launcher entry and adskidmgr:// handler"
 bash "$SCRIPTS_DIR/install-desktop-integration.sh" --uninstall
 
-info "pacman hook"
-sudo rm -f /etc/pacman.d/hooks/inventor-wine.hook
-ok "removed"
+if [ -f /etc/pacman.d/hooks/inventor-wine.hook ]; then
+    info "pacman hook"
+    sudo rm -f /etc/pacman.d/hooks/inventor-wine.hook
+    ok "removed"
+fi
 
 info "this project's Wine ($INV_WINE_HOME)"
 rm -rf "$INV_WINE_HOME"/wine-inventor-*-x86_64
 ok "removed"
 
-if find /usr/lib/wine /usr/bin -maxdepth 3 -name '*.orig-*' 2>/dev/null | grep -q .; then
+if [ "$INV_DISTRO" = arch ] && find /usr/lib/wine /usr/bin -maxdepth 3 -name '*.orig-*' 2>/dev/null | grep -q .; then
     info "Wine fixes in the system's Wine: reinstalling the wine package (puts the original files back)"
     pkg="$(pacman -Qqo /usr/bin/wine 2>/dev/null || echo wine)"
     sudo pacman -S --noconfirm "$pkg"
