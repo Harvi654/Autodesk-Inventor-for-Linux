@@ -6,12 +6,13 @@ Install and run **Autodesk Inventor Professional 2026** on Linux with Wine -
 from Autodesk's own download, without Windows or a virtual machine, with one
 command.
 
-> **Status: early release (v0.1), in active development.** Works for everyday
+> **Status: early release (v0.2), in active development.** Works for everyday
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
 > on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on two
 > machines: AMD RX 580, and an Intel UHD 630 + NVIDIA GTX 1050 laptop - the
-> laptop with a slightly older version). More distributions and an easier
-> installer are planned - see [Roadmap](#roadmap). Reports are welcome.
+> laptop with a slightly older version). **Ubuntu 26.04** installs and runs
+> too (first test, in a virtual machine); Fedora is untested. An easier
+> installer is planned - see [Roadmap](#roadmap). Reports are welcome.
 >
 > This is an unofficial community project. It is not made, supported or
 > endorsed by Autodesk. You need your own Inventor license (an education
@@ -91,7 +92,8 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 
 ## Requirements
 
-- **Arch Linux** (or a derivative with `pacman`), Wayland or X11
+- **Arch Linux** (or a derivative with `pacman`) or **Ubuntu 26.04 / Debian**
+  (`apt`, first tests); Fedora (`dnf`) is untested; Wayland or X11
 - tested desktops: **Hyprland** and **KDE Plasma** (Wayland); others will likely work too
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
@@ -277,7 +279,8 @@ Details, background and every problem found on the way:
 Planned, roughly in this order:
 
 - [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
-- [ ] other distributions: Ubuntu / Debian, Fedora, openSUSE
+- [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
+- [ ] Fedora (packages listed, untested), openSUSE
 - [ ] other desktops: KDE Plasma (Wayland) works in a first test, GNOME untested - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [ ] a simpler graphical installer

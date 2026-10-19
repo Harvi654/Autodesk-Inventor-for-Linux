@@ -176,6 +176,9 @@ for g in "${!DLGROUPS[@]}"; do
     fi
     if [ "$(kind_of "$img")" = product ]; then PRODUCT="$img"; else UPDATES+=("$img"); fi
 done
+if [ -z "$PRODUCT" ] && [ ${#EXES[@]} -eq 0 ] && [ ${#UPDATES[@]} -eq 0 ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
+    die "no Autodesk download found in: ${ARGS[*]} (expected the ..._db_..._002.7z / .exe files - see README, step 1)"
+fi
 if [ -z "$PRODUCT" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
     die "none of the downloads is the Inventor installer itself (only updates?)"
 fi
