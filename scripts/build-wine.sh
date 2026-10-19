@@ -116,6 +116,10 @@ https://dl.winehq.org/wine/source/ and the patches are in patches/ of the
 project above.
 INFO
 cp "$SRC/COPYING.LIB" "$ROOT/COPYING.LIB"
+# the exact build environment (compilers, libraries), for anyone rebuilding it
+if command -v pacman >/dev/null; then pacman -Q > "$ROOT/BUILDENV"
+elif command -v dpkg-query >/dev/null; then dpkg-query -W > "$ROOT/BUILDENV"
+elif command -v rpm >/dev/null; then rpm -qa | sort > "$ROOT/BUILDENV"; fi
 
 "$ROOT/bin/wine" --version >/dev/null 2>&1 || true   # needs no prefix; just a smoke test of the loader
 say "Packing"
