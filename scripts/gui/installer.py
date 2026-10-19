@@ -163,6 +163,8 @@ def find_downloads():
                 low = os.path.basename(p).lower()
                 if not os.path.isfile(p) or "inventor" not in low or not low.endswith((".exe", ".7z")):
                     continue
+                if "webinstall" in low or "create_installer" in low:  # Windows-only web installers
+                    continue
                 rp = os.path.realpath(p)
                 if rp in seen:
                     continue
@@ -326,7 +328,7 @@ class Installer(Gtk.ApplicationWindow):
             mark = {"ok": "✓", "warn": "!", "bad": "✗"}[state]
             grid.attach(label(mark, css="state-" + state, wrap=False), 0, row, 1, 1)
             grid.attach(label(title, wrap=False), 1, row, 1, 1)
-            grid.attach(label(detail, selectable=True), 2, row, 1, 1)
+            grid.attach(label(detail), 2, row, 1, 1)
         frame = Gtk.Frame(label="Your system")
         frame.set_child(margin(grid, 12))
         box.append(frame)
@@ -407,9 +409,16 @@ class Installer(Gtk.ApplicationWindow):
         for p, k in paths:
             if p not in [q for q, _ in uniq]:
                 uniq.append((p, k))
+        have_product = any(k == "product" for _, k in uniq)
+        names_on = set()
         for p, kind in uniq:
             check = Gtk.CheckButton()
-            check.set_active(old.get(p, kind != "unpacked earlier" or not any(k == "product" for _, k in uniq)))
+            # by default one copy of each file; an earlier unpacked download only without a fresh one
+            name = os.path.basename(p.rstrip("/")).lower()
+            default = (kind != "unpacked earlier" or not have_product) and name not in names_on
+            if default:
+                names_on.add(name)
+            check.set_active(old.get(p, default))
             check.connect("toggled", lambda *_: self.update_downloads_state())
             line = Gtk.Box(spacing=10)
             margin(line, 6)
