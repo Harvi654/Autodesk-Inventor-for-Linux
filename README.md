@@ -85,10 +85,12 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
 | iLogic | ✅ | rules, parameters driving the model |
 | Stress Analysis (mesh, simulate, results, animation) | ✅ | |
+| Sheet metal (face, flange, flat pattern, DXF export) | ✅ | |
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ❌ | study, constraints and loads work; Simulate crashes the solver (`rkernel.exe`) in Wine's compound-file code (ole32) - being looked into; off by default |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
+| Open dialog: browsing folders with DWG files | ⚠️ | can crash Inventor while the preview of a file loads (.NET fails while handling an exception in a background thread) - being looked into |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
@@ -289,7 +291,7 @@ Planned, roughly in this order:
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
-- [ ] Frame Analysis, 3D PDF, Inventor Studio, sheet metal - test and fix
+- [ ] Frame Analysis, 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
 - [ ] Inventor 2025 and 2027
 
 ## Reporting problems

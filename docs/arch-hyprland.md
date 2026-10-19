@@ -642,6 +642,19 @@ behind a KDE title bar, and only part of the window was drawn. With the 11.20
 build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
 the version the prefix was last updated with, and move forward only.
 
+## Open: crash while browsing (being looked into)
+
+Browsing folders in Open (filter "All files") can end Inventor with
+`Fatal error. 0xC0000005` from .NET. Reproducible; right before it the RealDWG
+preview libraries load (`acdb25.dll`, `DWGSERVICE.dll`, `dbxbridgePS.dll`).
+In a background thread an access violation is raised, then a second one at an
+odd address, and while .NET handles that, Wine's `RtlLocateExtendedFeature2`
+(ntdll) reads a `CONTEXT_EX` behind a `CONTEXT` that has none: its
+`XState.Offset` holds a stack address. So: a context flagged `CONTEXT_XSTATE`
+without the extended part reaches `LocateXStateFeature` - either Wine passes
+such a context to the handler or the copy .NET makes keeps the flag. To check
+against .NET's context handling next.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
