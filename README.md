@@ -87,7 +87,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Stress Analysis (mesh, simulate, results, animation) | ✅ | |
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
-| Frame Analysis | ⚠️ | off by default, untested - `bash scripts/addins.sh enable frameanalysis` |
+| Frame Analysis | ❌ | study, constraints and loads work; Simulate crashes the solver (`rkernel.exe`) in Wine's compound-file code (ole32) - being looked into; off by default |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 

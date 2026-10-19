@@ -20,7 +20,7 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
 | `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | 3D PDF: the dialog opens, but Publish crashes Anark's `corewrapper.exe` (a .NET Framework program, so it runs on wine-mono): it calls into oleaut32's proxy tables as if they were code - most likely a COM interop gap in wine-mono. Inventor itself keeps running. Not fixed yet |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `autodesk.frameanalysis.inventor.addin` | heavy, untested |
+| `autodesk.frameanalysis.inventor.addin` | the study, constraints and loads work; Simulate crashes the Robot solver `rkernel.exe` inside Wine's ole32 structured storage: StgStreamImpl_Write -> TransactedSnapshotImpl_StreamWriteAt -> stream resize (small -> big blocks) -> SmallBlockChainStream_ReadAt -> BlockChainStream_ReadAt -> BlockChainStream_GetSectorOfOffset reads past its index cache (stale block-chain cache in a transacted storage, most likely). Not fixed yet |
 
 Untested means: please try it with `addins.sh enable` and report what happens.
 
