@@ -24,7 +24,35 @@ notify() { command -v notify-send >/dev/null && notify-send -a "Inventor" "Autod
 [ -f "$P_INV/Bin/Inventor.exe" ] || { err "prefix not built: $P_INV"; notify "Prefix not built - run rebuild-prefix.sh"; exit 1; }
 [ -n "$LIC_VER" ] || { err "AdskLicensing not found in prefix"; exit 1; }
 
+# Files to open (from the file manager or the command line): Linux paths ->
+# the Windows paths the prefix sees. With isolation that is only D: (your
+# Inventor folder) and C: (the prefix itself).
+WIN_ARGS=()
+for a in "$@"; do
+    # options and Windows paths pass through unchanged
+    case "$a" in -*) WIN_ARGS+=("$a"); continue ;; esac
+    if [ ! -e "$a" ]; then WIN_ARGS+=("$a"); continue; fi
+    p="$(realpath "$a")" w=""
+    dd="$(realpath -m "${INV_DATA_DIR:-/nonexistent}")" cd_="$(realpath -m "$WINEPREFIX/drive_c")"
+    if [ -n "$INV_DATA_DIR" ] && [ "${p#"$dd"/}" != "$p" ]; then w="D:/${p#"$dd"/}"
+    elif [ "${p#"$cd_"/}" != "$p" ]; then w="C:/${p#"$cd_"/}"
+    elif [ "$INV_SANDBOX" != 1 ]; then w="$(winepath -w "$p" 2>/dev/null)"
+    fi
+    if [ -z "$w" ]; then
+        err "$p is outside the folders Inventor can see - move it into ${INV_DATA_DIR:-the prefix} (D:)"
+        notify "Inventor can only open files in ${INV_DATA_DIR:-~/Inventor} (drive D:). Move $(basename "$p") there."
+        continue
+    fi
+    WIN_ARGS+=("${w//\//\\}")
+done
+[ $# -eq 0 ] || [ ${#WIN_ARGS[@]} -gt 0 ] || exit 1
+
 if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
+    if [ ${#WIN_ARGS[@]} -gt 0 ]; then
+        # hand the files to the running Inventor (Windows' "open" for the file type)
+        for w in "${WIN_ARGS[@]}"; do info "opening $w in the running Inventor"; wine start "$w" >/dev/null 2>&1 & done
+        exit 0
+    fi
     warn "Inventor is already running"
     notify "Inventor is already running"
     exit 0
@@ -126,9 +154,9 @@ cd "$P_INV/Bin" || exit 1
 LOG="$LOGDIR/inventor-$TS.log"
 if [ -n "$INV_VDESKTOP" ]; then
     info "    inside Wine virtual desktop $INV_VDESKTOP"
-    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "$@" >>"$LOG" 2>&1 &
+    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
 else
-    wine Inventor.exe "$@" >>"$LOG" 2>&1 &
+    wine Inventor.exe "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
 fi
 INV_PID=$!
 # Inventor writes the old icons to HKCR (= HKLM in Wine) again while it
