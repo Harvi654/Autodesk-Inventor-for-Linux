@@ -68,7 +68,7 @@ elif [ -n "$IM" ] && [ -f "$ICO" ]; then
     "$IM" "${ICO}[0]" -thumbnail 256x256 -flatten "$ICONS/$NAME.png" 2>/dev/null && ok "icon extracted" \
         || warn "icon extraction failed"
 fi
-gtk-update-icon-cache -q -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+gtk-update-icon-cache -q -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
 EXEC="$BIN/launch-inventor"
 # a prefix other than the default has to be passed on
 [ "$(realpath -m "$INV_PREFIX")" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ] \
@@ -83,7 +83,7 @@ declare -A TYPE_ICON=()
 while read -r ext res _; do
     [ "$res" = ok ] && TYPE_ICON[$ext]="$NAME-$ext"
 done < <(python3 -I "$COMMON_DIR/file-type-icons.py" "$WINEPREFIX" "$ICONS" "$NAME" ipt iam idw ipn ipj 2>/dev/null || true)
-gtk-update-icon-cache -q -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+gtk-update-icon-cache -q -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
 OWN_ICONS="${!TYPE_ICON[*]}"
 {
     echo '<?xml version="1.0" encoding="UTF-8"?>'
@@ -118,6 +118,7 @@ update-desktop-database "$APPS" 2>/dev/null || true
 for t in "${INV_TYPES[@]}"; do xdg-mime default "$NAME.desktop" "${t%%|*}" 2>/dev/null || true; done
 ok "launcher entry: $APPS/$NAME.desktop"
 ok "file types: .ipt .iam .idw .ipn .ipj open in Inventor ($(xdg-mime query default application/x-autodesk-inventor-part 2>/dev/null)), own icons: ${OWN_ICONS:-none found}"
+info "(a file manager that is open shows the new icons after a restart, e.g. nautilus -q)"
 
 BROWSER_DEFAULT="$(xdg-settings get default-web-browser 2>/dev/null || true)"
 info "Default browser (used for the Autodesk login): ${BROWSER_DEFAULT:-<not set - run: xdg-settings set default-web-browser firefox.desktop>}"
