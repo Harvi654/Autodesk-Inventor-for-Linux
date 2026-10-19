@@ -94,7 +94,7 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 
 - **Arch Linux** (or a derivative with `pacman`) or **Ubuntu 26.04 / Debian**
   (`apt`, first tests); Fedora (`dnf`) is untested; Wayland or X11
-- tested desktops: **Hyprland** and **KDE Plasma** (Wayland); others will likely work too
+- tested desktops: **Hyprland**, **KDE Plasma** and **GNOME** (Wayland); others will likely work too
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
 - an Autodesk account with an Inventor 2026 license
@@ -281,7 +281,7 @@ Planned, roughly in this order:
 - [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
 - [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
 - [ ] Fedora (packages listed, untested), openSUSE
-- [ ] other desktops: KDE Plasma (Wayland) works in a first test, GNOME untested - Hyprland-specific parts are only window rules
+- [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
