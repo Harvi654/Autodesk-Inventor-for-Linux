@@ -59,14 +59,10 @@ collect() {
 
     section "Wine"
     echo "wine: $(wine --version 2>/dev/null) ($(pacman -Qo "$(command -v wine)" 2>/dev/null | awk '{print $(NF-1), $NF}'))"
-    local wv pe f sys
-    wv="$(wine_version)"; pe="$(wine_pe_dir)"
+    local wv f sys
+    wv="$(wine_version)"
     for f in "${WINE_FIX_PARTS[@]}"; do
-        case "$f" in
-            server)  sys="$(readlink -f "$(command -v wineserver)")" ;;
-            winex11) sys="$(dirname "$pe")/x86_64-unix/winex11.so" ;;
-            *)       sys="$pe/$f.dll" ;;
-        esac
+        sys="$(wine_fix_file "$f")"
         if [ ! -f "$sys.orig-$wv" ]; then echo "  $f: NOT patched for Wine $wv"
         elif cmp -s "$sys" "$sys.orig-$wv"; then echo "  $f: original (patch removed?)"
         else echo "  $f: patched"; fi

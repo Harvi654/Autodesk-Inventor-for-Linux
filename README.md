@@ -195,8 +195,13 @@ If it is the integrated one, add part of the name of the GPU you want to
 
 - Update this project: `cd ~/inventor-on-linux && git pull`
 - When Arch updates Wine, the Wine fixes are replaced by the new version's
-  files and a pacman hook reminds you to rebuild them. Before starting
-  Inventor run `bash ~/inventor-on-linux/scripts/rebuild-wine-fixes.sh`.
+  files. A pacman hook reminds you, and Inventor's launcher shows a
+  notification while they are missing. Close Inventor and run
+  `bash ~/inventor-on-linux/scripts/rebuild-wine-fixes.sh`.
+- The Wine fixes replace files of the system's Wine (`/usr/lib/wine`), so
+  other Windows programs you run with Wine use them too. They only fix bugs,
+  but if you want the original Wine back: `sudo pacman -S wine`
+  (or `scripts/uninstall.sh`).
 
 ### Uninstall
 
@@ -236,7 +241,8 @@ Inventor itself is not modified. The work is in three places:
   that only redrew on mouse movement, a home page that lagged behind the mouse,
   black boxes behind sketch inputs under Xwayland, a crash with some mouse
   devices. They are built from Wine's source for the Wine version you have
-  installed and replace only the affected Wine files (originals are kept).
+  installed and replace only the affected files of the system's Wine
+  (originals are kept as `*.orig-<version>`).
   They are meant to go to Wine upstream.
 - **Installation** (`scripts/install-from-image.py`, `scripts/lib/odis.py`):
   reads Autodesk's install image and runs its packages in the right order

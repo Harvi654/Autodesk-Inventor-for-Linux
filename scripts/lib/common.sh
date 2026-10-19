@@ -247,6 +247,27 @@ wine_pe_dir() {
     done
 }
 
+# System file that a WINE_FIX_PARTS part replaces (build-wine-dll.sh installs it)
+wine_fix_file() {
+    local pe; pe="$(wine_pe_dir)"; [ -n "$pe" ] || return 1
+    case "$1" in
+        server)  readlink -f "$(command -v wineserver)" ;;
+        winex11) echo "$(dirname "$pe")/x86_64-unix/winex11.so" ;;
+        *)       echo "$pe/$1.dll" ;;
+    esac
+}
+
+# Parts of this project's Wine fixes that are NOT active in the installed Wine:
+# no backup for this Wine version (Wine was updated), or the system file is the
+# original again (Wine was reinstalled). Prints the part names, one per line.
+wine_fixes_missing() {
+    local wv p f; wv="$(wine_version)"; [ -n "$wv" ] || return 0
+    for p in "${WINE_FIX_PARTS[@]}"; do
+        f="$(wine_fix_file "$p")" || { echo "$p"; continue; }
+        if [ ! -f "$f.orig-$wv" ] || cmp -s "$f" "$f.orig-$wv"; then echo "$p"; fi
+    done
+}
+
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)
 # to P_ADDINS_OFF. Safe to call any time.
 migrate_disabled_addins() {

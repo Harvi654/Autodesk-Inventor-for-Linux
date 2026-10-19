@@ -104,14 +104,9 @@ done
 
 WV="$(wine_version)"; [ -n "$WV" ] || die "wine not installed"
 PE_DIR="$(wine_pe_dir)"; [ -n "$PE_DIR" ] || die "can't find Wine's PE DLL directory"
-SYS_DLL="$PE_DIR/$DLL.dll"
-if [ "$DLL" = server ]; then
-    # wineserver is a native program next to the wine binary, not a PE DLL
-    SYS_DLL="$(readlink -f "$(command -v wineserver)")"; [ -x "$SYS_DLL" ] || die "can't find wineserver"
-elif [ "$DLL" = winex11 ]; then
-    # the X11 driver's code is the native winex11.so, next to the PE directory
-    SYS_DLL="$(dirname "$PE_DIR")/x86_64-unix/winex11.so"; [ -f "$SYS_DLL" ] || die "can't find $SYS_DLL"
-fi
+# wineserver is a native program next to the wine binary, winex11 the native
+# winex11.so next to the PE directory; everything else a PE DLL
+SYS_DLL="$(wine_fix_file "$DLL")"; [ -f "$SYS_DLL" ] || die "can't find $SYS_DLL"
 BACKUP="$SYS_DLL.orig-$WV"
 
 if [ "$DO_RESTORE" -eq 1 ]; then

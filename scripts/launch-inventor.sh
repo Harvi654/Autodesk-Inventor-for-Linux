@@ -30,6 +30,15 @@ if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
     exit 0
 fi
 
+# This project's Wine fixes are replaced when Arch updates Wine. Without them
+# parts of Inventor hang or crash (Stress Analysis, Home page, ...), so say so.
+MISSING_FIXES="$(wine_fixes_missing | tr '\n' ' ')"
+if [ -n "$MISSING_FIXES" ]; then
+    warn "Wine fixes not installed for Wine $(wine_version): $MISSING_FIXES"
+    warn "Wine was probably updated. Close Inventor and run: bash $SCRIPTS_DIR/rebuild-wine-fixes.sh"
+    notify "Wine was updated - this project's Wine fixes are missing. Run rebuild-wine-fixes.sh (see README, Keeping it working)."
+fi
+
 # The adskidmgr:// login callback (adskidmgr-callback.sh, started by the
 # browser) must reach THIS prefix - tell it which one is running.
 ACTIVE_PREFIX_FILE="${XDG_RUNTIME_DIR:-/tmp}/inventor-on-linux.prefix"
