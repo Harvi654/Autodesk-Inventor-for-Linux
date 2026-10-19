@@ -36,7 +36,7 @@ jobs:
             libx11 libxext libxi libxrandr libxrender libxcursor libxcomposite libxinerama libxxf86vm libxkbcommon \
             wayland mesa libglvnd vulkan-icd-loader vulkan-headers \
             gst-plugins-base-libs sdl2 libcups libgphoto2 sane libpcap v4l-utils pcsclite unixodbc ocl-icd opencl-headers \
-            giflib
+            giflib wine-mono wine-gecko
 
       - uses: actions/checkout@v4
 

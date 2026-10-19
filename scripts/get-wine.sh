@@ -68,8 +68,8 @@ fi
 
 tar -xJf "$TARBALL" -C "$TMP"
 [ -x "$TMP/$INV_WINE_NAME/bin/wine" ] || die "unexpected archive layout"
-# wine-mono / wine-gecko: use the system's copies when there are some
-# (Arch: wine-mono, wine-gecko); otherwise Wine downloads them when needed.
+# wine-mono / wine-gecko are in the archive since build 2; for older builds use
+# the system's copies when there are some (Arch: wine-mono, wine-gecko).
 for c in mono gecko; do
     if [ ! -e "$TMP/$INV_WINE_NAME/share/wine/$c" ] && [ -d "/usr/share/wine/$c" ]; then
         ln -s "/usr/share/wine/$c" "$TMP/$INV_WINE_NAME/share/wine/$c"

@@ -85,6 +85,18 @@ find "$ROOT" -type f \( -name '*.so' -o -path '*/bin/*' \) -exec strip --strip-u
 find "$ROOT/lib/wine/x86_64-windows" -type f -exec x86_64-w64-mingw32-strip --strip-unneeded {} + 2>/dev/null || true
 find "$ROOT/lib/wine/i386-windows" -type f -exec i686-w64-mingw32-strip --strip-unneeded {} + 2>/dev/null || true
 
+# wine-mono (.NET Framework for Wine) and wine-gecko (HTML engine): Wine would
+# otherwise ask to download them into every new prefix. Taken from the build
+# system's packages when present (Arch: wine-mono, wine-gecko), like the
+# system's Wine would use them.
+ADDONS=""
+for c in mono gecko; do
+    if [ -d "/usr/share/wine/$c" ]; then
+        cp -a "/usr/share/wine/$c" "$ROOT/share/wine/$c"
+        ADDONS+="$c: $(ls "/usr/share/wine/$c" | tr '\n' ' ')"$'\n'
+    fi
+done
+
 cat > "$ROOT/BUILDINFO" <<INFO
 Wine for Autodesk Inventor on Linux
 https://github.com/Harvi654/Autodesk-Inventor-for-Linux
@@ -95,6 +107,8 @@ build:       $WINE_BUILD
 project:     $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null || echo unknown)
 built:       $(date -u +%Y-%m-%dT%H:%M:%SZ) on $(. /etc/os-release && echo "$PRETTY_NAME")
 configure:   --enable-archs=x86_64,i386 (WoW64)
+add-ons (share/wine):
+$ADDONS
 patches (sha256 prefix, file):
 $PATCH_LIST
 Wine is licensed under the LGPL 2.1 or later; its source is at
