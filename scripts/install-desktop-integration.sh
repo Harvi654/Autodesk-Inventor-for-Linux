@@ -43,6 +43,16 @@ while IFS= read -r -d '' f; do
 done < <(grep -rlZF -e "WINEPREFIX=$INV_PREFIX\"" -e "WINEPREFIX=\"$INV_PREFIX\"" "$APPS" 2>/dev/null || true)
 find "$APPS/wine" -type d -empty -delete 2>/dev/null || true
 [ "$removed" -eq 0 ] || ok "removed $removed Wine menu entries of $INV_PREFIX"
+# ...and the file types it registered for Inventor's own extensions: same
+# patterns as ours below, but Wine's icons and no default app
+oldtypes=0
+for e in ipt iam idw ipn ipj; do
+    for f in "$MIME_DIR/packages/x-wine-extension-$e.xml" \
+             "${XDG_DATA_HOME:-$HOME/.local/share}"/icons/hicolor/*/apps/application-x-wine-extension-$e.png; do
+        [ -e "$f" ] && { rm -f "$f"; oldtypes=$((oldtypes + 1)); }
+    done
+done
+[ "$oldtypes" -eq 0 ] || ok "removed Wine's own registrations of .ipt/.iam/.idw/.ipn/.ipj ($oldtypes files)"
 
 # OAuth2 callback handler
 ln -sfn "$SCRIPTS_DIR/adskidmgr-callback.sh" "$BIN/adskidmgr-callback"
@@ -118,9 +128,11 @@ Keywords=CAD;3D;Modeling;Engineering;Inventor;Autodesk;
 EOF
 update-desktop-database "$APPS" 2>/dev/null || true
 for t in "${INV_TYPES[@]}"; do xdg-mime default "$NAME.desktop" "${t%%|*}" 2>/dev/null || true; done
+# KDE (Dolphin) reads its own cache of file types and apps
+for k in kbuildsycoca6 kbuildsycoca5; do command -v "$k" >/dev/null && { "$k" >/dev/null 2>&1 || true; break; }; done
 ok "launcher entry: $APPS/$NAME.desktop"
 ok "file types: .ipt .iam .idw .ipn .ipj open in Inventor ($(xdg-mime query default application/x-autodesk-inventor-part 2>/dev/null)), own icons: ${OWN_ICONS:-none found}"
-info "(a file manager that is open shows the new icons after a restart, e.g. nautilus -q)"
+info "(a file manager that is open shows the new icons after a restart: close Dolphin, or nautilus -q)"
 
 BROWSER_DEFAULT="$(xdg-settings get default-web-browser 2>/dev/null || true)"
 info "Default browser (used for the Autodesk login): ${BROWSER_DEFAULT:-<not set - run: xdg-settings set default-web-browser firefox.desktop>}"
