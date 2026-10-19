@@ -125,7 +125,7 @@ WINE_FIX_PARTS=(wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha comct
 INV_DEFAULT_DISABLED_ADDINS=(
     Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
     Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
-    Autodesk.Publisher.Inventor.addin autodesk.dynamicsimulation.inventor.addin
+    Autodesk.Publisher.Inventor.addin
     autodesk.frameanalysis.inventor.addin
     autodesk.translatorfusion.inventor.addin
 )

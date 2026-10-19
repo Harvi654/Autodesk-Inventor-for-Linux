@@ -85,7 +85,9 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
 | iLogic | ✅ | rules, parameters driving the model |
 | Stress Analysis (mesh, simulate, results, animation) | ✅ | |
-| Frame Analysis, Dynamic Simulation | ⚠️ | off by default, untested - `bash scripts/addins.sh enable NAME` |
+| Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
+| Frame Generator / Frame Analysis | ⚠️ | Insert Frame needs Wine build `wine-11.20-3`; Frame Analysis off by default, untested - `bash scripts/addins.sh enable frameanalysis` |
+| 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
@@ -286,7 +288,7 @@ Planned, roughly in this order:
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
-- [ ] Frame Analysis, Dynamic Simulation, Inventor Studio, sheet metal - test and fix
+- [ ] Frame Analysis, 3D PDF, Inventor Studio, sheet metal - test and fix
 - [ ] Inventor 2025 and 2027
 
 ## Reporting problems

@@ -20,7 +20,7 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
 | `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | 3D PDF: the dialog opens, but Publish crashes Anark's `corewrapper.exe` (a .NET Framework program, so it runs on wine-mono): it calls into oleaut32's proxy tables as if they were code - most likely a COM interop gap in wine-mono. Inventor itself keeps running. Not fixed yet |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `autodesk.frameanalysis.inventor.addin`, `autodesk.dynamicsimulation.inventor.addin` | heavy, untested |
+| `autodesk.frameanalysis.inventor.addin` | heavy, untested |
 
 Untested means: please try it with `addins.sh enable` and report what happens.
 
@@ -30,3 +30,8 @@ driving the model) and is on. An existing prefix: `bash scripts/addins.sh enable
 Stress Analysis was off until 2026-10-18; with the ntdll, rpcrt4 and combase
 Wine fixes it works (mesh, simulate, results) and is on. An existing prefix:
 `bash scripts/addins.sh enable simulationstressanalysis`.
+
+Dynamic Simulation was off until 2026-10-20; it works (joints from
+constraints, gravity, Run, Replay, Construction Mode) and is on. An existing
+prefix: `bash scripts/addins.sh enable dynamicsimulation`. The Simulation
+Player panel can end up behind Inventor's main window - Alt+Tab brings it back.
