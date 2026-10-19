@@ -108,7 +108,7 @@ case "$INV_DISTRO" in
     arch) ;;
     debian|fedora)
         [ "$INV_WINE" != system ] || die "INV_WINE=system (fixes built into the system's Wine) is only supported on Arch"
-        [ "$INV_DISTRO" = fedora ] && warn "Fedora support is new and not tested yet - please report how it went" ;;
+        ;;
     *) die "unsupported distribution (supported: Arch, Debian/Ubuntu, Fedora)" ;;
 esac
 info "distribution: $INV_DISTRO ($(. /etc/os-release 2>/dev/null; echo "${PRETTY_NAME:-?}"))"

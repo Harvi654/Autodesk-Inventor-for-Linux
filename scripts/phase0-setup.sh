@@ -51,7 +51,7 @@ if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ]; then
             xdg-utils desktop-file-utils libnotify git
             liberation-fonts google-noto-sans-fonts dejavu-sans-fonts
         )
-        step "Installing packages (dnf) - not tested yet, please report problems..."
+        step "Installing packages (dnf)..."
         sudo dnf install -y "${PKGS[@]}"
     fi
     if lspci 2>/dev/null | grep -Ei 'vga|3d|display' | grep -qi nvidia; then

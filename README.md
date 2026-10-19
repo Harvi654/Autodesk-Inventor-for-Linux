@@ -10,8 +10,8 @@ command.
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
 > on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on two
 > machines: AMD RX 580, and an Intel UHD 630 + NVIDIA GTX 1050 laptop - the
-> laptop with a slightly older version). **Ubuntu 26.04** installs and runs
-> too (first test, in a virtual machine); Fedora is untested. An easier
+> laptop with a slightly older version). **Ubuntu 26.04** and **Fedora 44**
+> install and run too (first tests, in a virtual machine). An easier
 > installer is planned - see [Roadmap](#roadmap). Reports are welcome.
 >
 > This is an unofficial community project. It is not made, supported or
@@ -92,8 +92,8 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 
 ## Requirements
 
-- **Arch Linux** (or a derivative with `pacman`) or **Ubuntu 26.04 / Debian**
-  (`apt`, first tests); Fedora (`dnf`) is untested; Wayland or X11
+- **Arch Linux** (or a derivative with `pacman`), **Ubuntu 26.04 / Debian**
+  (`apt`) or **Fedora 44** (`dnf`) - Ubuntu and Fedora in first tests; Wayland or X11
 - tested desktops: **Hyprland**, **KDE Plasma** and **GNOME** (Wayland); others will likely work too
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
@@ -280,7 +280,8 @@ Planned, roughly in this order:
 
 - [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
 - [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
-- [ ] Fedora (packages listed, untested), openSUSE
+- [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
+- [ ] openSUSE
 - [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [ ] a simpler graphical installer
