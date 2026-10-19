@@ -82,7 +82,7 @@ mkdir -p "$MIME_DIR/packages"
 declare -A TYPE_ICON=()
 while read -r ext res _; do
     [ "$res" = ok ] && TYPE_ICON[$ext]="$NAME-$ext"
-done < <(python3 -I "$COMMON_DIR/file-type-icons.py" "$WINEPREFIX" "$ICONS" "$NAME" ipt iam idw ipn ipj 2>/dev/null || true)
+done < <(python3 -I "$COMMON_DIR/file-type-icons.py" "$WINEPREFIX" "$ICONS" "$NAME" ipt iam idw ipn ipj dwg 2>/dev/null || true)
 gtk-update-icon-cache -q -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
 OWN_ICONS="${!TYPE_ICON[*]}"
 {
@@ -94,6 +94,8 @@ OWN_ICONS="${!TYPE_ICON[*]}"
         ext="${pat#*.}"; icon="${TYPE_ICON[$ext]:-$NAME}"
         echo "  <mime-type type=\"$mt\"><comment>$desc</comment><sub-class-of type=\"$base\"/><icon name=\"$icon\"/><glob pattern=\"$pat\" weight=\"80\"/></mime-type>"
     done
+    # .dwg keeps the system's type; only its icon becomes Inventor's DWG icon
+    [ -n "${TYPE_ICON[dwg]:-}" ] && echo "  <mime-type type=\"image/vnd.dwg\"><icon name=\"${TYPE_ICON[dwg]}\"/></mime-type>"
     echo '</mime-info>'
 } > "$MIME_XML"
 update-mime-database "$MIME_DIR" 2>/dev/null || warn "update-mime-database not found - file types not registered"
