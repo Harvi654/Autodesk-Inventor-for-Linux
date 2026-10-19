@@ -43,17 +43,21 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
   </tr>
 </table>
 
-### Demo - real-time viewport on Linux
+### Real-time viewport on Linux
 
 https://github.com/user-attachments/assets/d64e236a-c817-4076-bee3-72428a7bc288
 
-### Demo - creating a part
+### Creating a part
 
 https://github.com/user-attachments/assets/bacf2d9a-e9ee-46bd-b2d7-e32260b04905
 
-### Demo - creating an assembly
+### Creating an assembly
 
-https://github.com/user-attachments/assets/2c46f594-919d-4a41-bcd6-55d3760fdce8
+https://github.com/user-attachments/assets/a0b27cf0-6f8b-47d7-820c-8911989c78f7
+
+### Stress Analysis – I-beam under load (real-time)
+
+https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 
 ## What works
 
