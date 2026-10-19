@@ -1,0 +1,162 @@
+diff --git a/dlls/msxml3/domdoc.c b/dlls/msxml3/domdoc.c
+index 678e00e..ed85d30 100644
+--- a/dlls/msxml3/domdoc.c
++++ b/dlls/msxml3/domdoc.c
+@@ -1962,9 +1962,21 @@ static HRESULT WINAPI domdoc_validateNode(IXMLDOMDocument3 *iface, IXMLDOMNode *
+ 
+ static HRESULT WINAPI domdoc_importNode(IXMLDOMDocument3 *iface, IXMLDOMNode *node, VARIANT_BOOL deep, IXMLDOMNode **clone)
+ {
+-    FIXME("%p, %p, %d, %p: stub\n", iface, node, deep, clone);
++    domdoc *doc = impl_from_IXMLDOMDocument3(iface);
++    struct domnode *src;
+ 
+-    return E_NOTIMPL;
++    TRACE("%p, %p, %d, %p.\n", iface, node, deep, clone);
++
++    if (!clone)
++        return E_INVALIDARG;
++    *clone = NULL;
++    if (!node)
++        return E_INVALIDARG;
++
++    if (!(src = get_node_obj(node)))
++        return E_FAIL;
++
++    return node_import(doc->node, src, deep, clone);
+ }
+ 
+ static const struct IXMLDOMDocument3Vtbl XMLDOMDocument3Vtbl =
+diff --git a/dlls/msxml3/msxml_private.h b/dlls/msxml3/msxml_private.h
+index 6314fd1..4e4ac8e 100644
+--- a/dlls/msxml3/msxml_private.h
++++ b/dlls/msxml3/msxml_private.h
+@@ -408,6 +408,7 @@ extern HRESULT node_insert_before(struct domnode*,IXMLDOMNode*,const VARIANT*,IX
+ extern HRESULT node_replace_child(struct domnode*,IXMLDOMNode*,IXMLDOMNode*,IXMLDOMNode**);
+ extern HRESULT node_get_xml(struct domnode *, BSTR*);
+ extern HRESULT node_clone(struct domnode*,VARIANT_BOOL,IXMLDOMNode**);
++extern HRESULT node_import(struct domnode*,struct domnode*,VARIANT_BOOL,IXMLDOMNode**);
+ extern HRESULT node_get_prefix(struct domnode*,BSTR*);
+ extern HRESULT node_get_base_name(struct domnode*,BSTR*);
+ extern HRESULT node_get_namespaceURI(struct domnode*, BSTR *);
+diff --git a/dlls/msxml3/node.c b/dlls/msxml3/node.c
+index 1faa66d..fb8556d 100644
+--- a/dlls/msxml3/node.c
++++ b/dlls/msxml3/node.c
+@@ -1511,6 +1511,32 @@ HRESULT node_clone(struct domnode *node, VARIANT_BOOL deep, IXMLDOMNode **out)
+     return hr;
+ }
+ 
++/* IXMLDOMDocument3::importNode(): a copy of a node, possibly from another
++   document, that belongs to 'doc' and has no parent yet. */
++HRESULT node_import(struct domnode *doc, struct domnode *node, VARIANT_BOOL deep, IXMLDOMNode **out)
++{
++    struct domnode *cloned_node;
++    HRESULT hr;
++
++    if (!out)
++        return E_INVALIDARG;
++
++    *out = NULL;
++
++    if (node->type == NODE_DOCUMENT)
++        return E_FAIL;
++
++    if (FAILED(hr = node_clone_domnode(node, !!deep, &cloned_node)))
++        return hr;
++
++    domnode_set_owner(cloned_node, doc);
++
++    if (FAILED(hr = create_node(cloned_node, out)))
++        domnode_destroy_tree(cloned_node);
++
++    return hr;
++}
++
+ static bool is_preserving_whitespace(const struct domnode *node)
+ {
+     const struct domnode *doc = node->owner ? node->owner : node;
+diff --git a/dlls/msxml3/tests/domdoc.c b/dlls/msxml3/tests/domdoc.c
+index 295a610..9531f75 100644
+--- a/dlls/msxml3/tests/domdoc.c
++++ b/dlls/msxml3/tests/domdoc.c
+@@ -19037,6 +19037,72 @@ static void test_document_stream(void)
+     IXMLDOMDocument_Release(doc);
+ }
+ 
++static void test_importNode(void)
++{
++    IXMLDOMDocument3 *doc, *doc2;
++    IXMLDOMNode *node, *imported, *parent, *appended;
++    IXMLDOMElement *root;
++    IXMLDOMDocument *owner;
++    VARIANT_BOOL b;
++    HRESULT hr;
++    BSTR str;
++
++    if (!is_clsid_supported(&CLSID_DOMDocument60, &IID_IXMLDOMDocument3)) return;
++    doc = create_document_version(60, &IID_IXMLDOMDocument3);
++    doc2 = create_document_version(60, &IID_IXMLDOMDocument3);
++
++    hr = IXMLDOMDocument3_loadXML(doc, _bstr_("<a x=\"1\"><b>t</b></a>"), &b);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    hr = IXMLDOMDocument3_get_documentElement(doc, &root);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    hr = IXMLDOMElement_QueryInterface(root, &IID_IXMLDOMNode, (void **)&node);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    IXMLDOMElement_Release(root);
++
++    /* shallow: the attributes, no children */
++    hr = IXMLDOMDocument3_importNode(doc2, node, VARIANT_FALSE, &imported);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    hr = IXMLDOMNode_get_xml(imported, &str);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    ok(!wcsncmp(str, L"<a x=\"1\"", 8) && !wcsstr(str, L"<b>"), "Unexpected xml %s.\n", wine_dbgstr_w(str));
++    SysFreeString(str);
++    IXMLDOMNode_Release(imported);
++
++    /* deep */
++    hr = IXMLDOMDocument3_importNode(doc2, node, VARIANT_TRUE, &imported);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    IXMLDOMNode_Release(node);
++    /* the source document is not needed any more */
++    IXMLDOMDocument3_Release(doc);
++
++    parent = (void *)0xdeadbeef;
++    hr = IXMLDOMNode_get_parentNode(imported, &parent);
++    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
++    ok(!parent, "Unexpected parent %p.\n", parent);
++
++    /* owned by the (still empty) importing document, not by the source */
++    hr = IXMLDOMNode_get_ownerDocument(imported, &owner);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    root = (void *)0xdeadbeef;
++    hr = IXMLDOMDocument_get_documentElement(owner, &root);
++    ok(hr == S_FALSE, "Unexpected hr %#lx.\n", hr);
++    ok(!root, "Unexpected document element %p.\n", root);
++    IXMLDOMDocument_Release(owner);
++
++    hr = IXMLDOMDocument3_appendChild(doc2, imported, &appended);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    IXMLDOMNode_Release(appended);
++    IXMLDOMNode_Release(imported);
++
++    hr = IXMLDOMDocument3_get_xml(doc2, &str);
++    ok(hr == S_OK, "Unexpected hr %#lx.\n", hr);
++    ok(!wcsncmp(str, L"<a x=\"1\"><b>t</b></a>", 21), "Unexpected xml %s.\n", wine_dbgstr_w(str));
++    SysFreeString(str);
++
++    IXMLDOMDocument3_Release(doc2);
++    free_bstrs();
++}
++
+ START_TEST(domdoc)
+ {
+     HRESULT hr;
+@@ -19073,6 +19139,7 @@ START_TEST(domdoc)
+     test_XPath();
+     test_XSLPattern();
+     test_cloneNode();
++    test_importNode();
+     test_xmlTypes();
+     test_save();
+     test_testTransforms();

@@ -478,6 +478,18 @@ bash scripts/build-wine-dll.sh kernelbase --install --hook
 
 Confirmed: Place from Content Center lists and places parts (ISO screws).
 
+## Frame Generator: Insert Frame creates nothing
+
+Insert Frame showed the preview and the naming dialogs, then created only an
+empty `Frame` folder - no members, no frame sub-assembly, no message. With
+`WINEDEBUG=+seh` the step ends in
+`fixme:msxml:domdoc_importNode ... stub` followed at once by a C++ `_com_error`:
+Frame Generator copies XML between documents with
+`IXMLDOMDocument3::importNode`, which Wine's msxml3 did not implement
+(`E_NOTIMPL`). `patches/msxml3-domdoc-importnode.patch` implements it (a clone
+of the node that belongs to the importing document and has no parent), with a
+Wine test. In this project's Wine since `wine-11.20-3`.
+
 ## Drawings: editing dimension text
 
 Editing a dimension's text aborted Inventor with
