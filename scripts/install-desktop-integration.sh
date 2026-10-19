@@ -23,7 +23,7 @@ INV_TYPES=(
 )
 
 if [ "${1:-}" = "--uninstall" ]; then
-    rm -f "$APPS/adskidmgr-handler.desktop" "$APPS/$NAME.desktop" "$ICONS/$NAME.png" \
+    rm -f "$APPS/adskidmgr-handler.desktop" "$APPS/$NAME.desktop" "$ICONS/$NAME.png" "$ICONS/$NAME"-*.png \
           "$BIN/adskidmgr-callback" "$BIN/launch-inventor" "$MIME_XML"
     update-desktop-database "$APPS" 2>/dev/null || true
     update-mime-database "$MIME_DIR" 2>/dev/null || true
@@ -77,13 +77,22 @@ EXEC="$BIN/launch-inventor"
 # managers call them "document" and offer an office suite. Sub-class of
 # application/x-ole-storage: the file name decides, not the content sniffing.
 mkdir -p "$MIME_DIR/packages"
+# each type's own icon, as Inventor registered it (DefaultIcon); the program
+# icon where none is found
+declare -A TYPE_ICON=()
+while read -r ext res _; do
+    [ "$res" = ok ] && TYPE_ICON[$ext]="$NAME-$ext"
+done < <(python3 -I "$COMMON_DIR/file-type-icons.py" "$WINEPREFIX" "$ICONS" "$NAME" ipt iam idw ipn ipj 2>/dev/null || true)
+gtk-update-icon-cache -q -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+OWN_ICONS="${!TYPE_ICON[*]}"
 {
     echo '<?xml version="1.0" encoding="UTF-8"?>'
     echo '<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">'
     for t in "${INV_TYPES[@]}"; do
         IFS='|' read -r mt pat desc <<<"$t"
         base=application/x-ole-storage; [ "$pat" = "*.ipj" ] && base=application/xml   # projects are XML
-        echo "  <mime-type type=\"$mt\"><comment>$desc</comment><sub-class-of type=\"$base\"/><icon name=\"$NAME\"/><glob pattern=\"$pat\" weight=\"80\"/></mime-type>"
+        ext="${pat#*.}"; icon="${TYPE_ICON[$ext]:-$NAME}"
+        echo "  <mime-type type=\"$mt\"><comment>$desc</comment><sub-class-of type=\"$base\"/><icon name=\"$icon\"/><glob pattern=\"$pat\" weight=\"80\"/></mime-type>"
     done
     echo '</mime-info>'
 } > "$MIME_XML"
@@ -106,7 +115,7 @@ EOF
 update-desktop-database "$APPS" 2>/dev/null || true
 for t in "${INV_TYPES[@]}"; do xdg-mime default "$NAME.desktop" "${t%%|*}" 2>/dev/null || true; done
 ok "launcher entry: $APPS/$NAME.desktop"
-ok "file types: .ipt .iam .idw .ipn .ipj open in Inventor ($(xdg-mime query default application/x-autodesk-inventor-part 2>/dev/null))"
+ok "file types: .ipt .iam .idw .ipn .ipj open in Inventor ($(xdg-mime query default application/x-autodesk-inventor-part 2>/dev/null)), own icons: ${OWN_ICONS:-none found}"
 
 BROWSER_DEFAULT="$(xdg-settings get default-web-browser 2>/dev/null || true)"
 info "Default browser (used for the Autodesk login): ${BROWSER_DEFAULT:-<not set - run: xdg-settings set default-web-browser firefox.desktop>}"

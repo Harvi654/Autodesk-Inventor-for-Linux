@@ -401,13 +401,30 @@ sandbox_fs() {
     done
     # Desktop, Documents, Downloads, ... are symlinks into $HOME by default:
     # replace every directory symlink that leaves the prefix with a real directory.
-    local prefix_real; prefix_real="$(readlink -f "$WINEPREFIX")"
+    local prefix_real data_real=""; prefix_real="$(readlink -f "$WINEPREFIX")"
+    [ -n "$INV_DATA_DIR" ] && data_real="$(readlink -f "$INV_DATA_DIR")"
     while IFS= read -r -d '' l; do
         case "$(readlink -f "$l")" in
             "$prefix_real"/*) ;;
+            "${data_real:-/nonexistent}") ;;                  # Documents -> your Inventor folder (below)
             *) if [ -d "$l" ]; then rm -f -- "$l"; mkdir -p -- "$l"; fi ;;
         esac
     done < <(find "$P_C/users" -maxdepth 4 -type l -print0 2>/dev/null)
+    # Documents = your Inventor folder (D:): Inventor's Save/Open dialogs start
+    # there, so files don't end up hidden in the prefix. What is already in the
+    # prefix's Documents is moved over (nothing is overwritten).
+    local docs="$P_USER/Documents" e
+    if [ -n "$data_real" ] && [ -d "$P_USER" ] && [ "$(readlink -f "$docs")" != "$data_real" ]; then
+        if [ -d "$docs" ] && [ ! -L "$docs" ]; then
+            for e in "$docs"/* "$docs"/.[!.]*; do
+                [ -e "$e" ] || continue
+                [ -e "$data_real/$(basename "$e")" ] || mv -- "$e" "$data_real/"
+            done
+            rmdir -- "$docs" 2>/dev/null || mv -- "$docs" "$docs.old-$(date +%s)"
+        fi
+        rm -f -- "$docs"
+        ln -s "$data_real" "$docs"
+    fi
     # Don't let wineboot re-create the links/drives automatically after a Wine
     # update; launch-inventor.sh runs the update itself and re-applies this.
     echo disable > "$WINEPREFIX/.update-timestamp"
