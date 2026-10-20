@@ -1,0 +1,13 @@
+diff --git a/gsf/gsf-infile-msole.c b/gsf/gsf-infile-msole.c
+--- a/gsf/gsf-infile-msole.c
++++ b/gsf/gsf-infile-msole.c
+@@ -942,7 +942,8 @@ ole_child_init (GsfInfileMSOle *parent, MSOleDirent *dirent, GError **err)
+ 			return NULL;
+ 		}
+ 
+-		child->stream.buf = g_try_new (guint8, child->stream.buf_size);
++		/* GLib returns NULL for a zero-byte allocation: empty streams are valid. */
++		child->stream.buf = g_try_new (guint8, MAX ((size_t)1, child->stream.buf_size));
+ 		if (!child->stream.buf) {
+ 			if (err != NULL)
+ 				*err = g_error_new (gsf_input_error_id (), 0,
