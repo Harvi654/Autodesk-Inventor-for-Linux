@@ -49,13 +49,13 @@ find_fonts() {
 
 mapfile -t FILES < <(
     # Noto comes as static (NotoSans-Regular.ttf) or variable fonts
-    # (NotoSans[wdth,wght].ttf, NotoSans-Italic[wdth,wght].ttf - Arch)
+    # (NotoSans[wdth,wght].ttf on Arch, NotoSans.ttf on Nixpkgs)
     find_fonts 'Liberation*.ttf' \
                'DejaVuSans*.ttf' 'DejaVuSerif*.ttf' \
-               'NotoSans-*.ttf' 'NotoSans\[*.ttf' 'NotoSerif-*.ttf' 'NotoSerif\[*.ttf' \
-               'NotoSansMono-*.ttf' 'NotoSansMono\[*.ttf' \
-               'NotoSansSymbols-*.ttf' 'NotoSansSymbols\[*.ttf' 'NotoSansSymbols2-*.ttf' \
-               'NotoSansMath-*.ttf' \
+               'NotoSans.ttf' 'NotoSans-*.ttf' 'NotoSans\[*.ttf' 'NotoSerif.ttf' 'NotoSerif-*.ttf' 'NotoSerif\[*.ttf' \
+               'NotoSansMono.ttf' 'NotoSansMono-*.ttf' 'NotoSansMono\[*.ttf' \
+               'NotoSansSymbols.ttf' 'NotoSansSymbols2.ttf' 'NotoSansSymbols-*.ttf' 'NotoSansSymbols\[*.ttf' 'NotoSansSymbols2-*.ttf' \
+               'NotoSansMath.ttf' 'NotoSansMath-*.ttf' \
                'Carlito-*.ttf' 'Caladea-*.ttf'
     find "$WINE_DATA_DIR/fonts" -maxdepth 1 -type f -name '*.ttf' 2>/dev/null
 )
@@ -73,7 +73,7 @@ have() {
 }
 MISSING=()
 have 'LiberationSans-Regular.ttf'                 || MISSING+=(ttf-liberation)
-have 'NotoSans-Regular.ttf' 'NotoSans\[*.ttf'      || MISSING+=(noto-fonts)
+have 'NotoSans.ttf' 'NotoSans-Regular.ttf' 'NotoSans\[*.ttf'      || MISSING+=(noto-fonts)
 have 'DejaVuSans.ttf'                             || MISSING+=(ttf-dejavu)
 if [ ${#MISSING[@]} -gt 0 ]; then
     die "missing fonts - install them first: sudo pacman -S --needed ${MISSING[*]}"

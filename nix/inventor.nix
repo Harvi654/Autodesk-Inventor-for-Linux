@@ -119,6 +119,9 @@ overlayfsLib.mkWindowsPackage {
     ${session.commands.normalizeReparsePoints} "$WINEPREFIX"
     bash "$TMPDIR/inventor-project/scripts/finish-install.sh" --no-sandbox
     ${session.commands.wineserver} --wait
+    test -s "$WINEPREFIX/drive_c/windows/Fonts/NotoSans.ttf"
+    test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
+    test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
     test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor 2026/Bin/Inventor.exe"
   '';
   runtimeEnvVars = {
