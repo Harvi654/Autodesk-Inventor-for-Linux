@@ -177,7 +177,11 @@ sudo nixos-rebuild switch --flake /path/to/system-flake#your-host
 inventor
 ```
 
-Or select **Autodesk Inventor 2026** in your application menu. Complete first
+Or select **Autodesk Inventor 2026** in your application menu. The separate
+**Autodesk Inventor 2026 (Wayland)** entry unsets `DISPLAY` to select Wine’s
+native Wayland driver in a Wayland session. Close Inventor before switching
+entries: both use the same persistent state and running Wine session. Native
+Wayland has not yet been runtime-validated for Inventor. Complete first
 sign-in in your normal browser and allow the Autodesk callback to open Inventor.
 
 For a build/run without adding the system module, from this checkout:

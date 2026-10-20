@@ -27,6 +27,17 @@ let
     ];
     mimeTypes = [ "x-scheme-handler/adskidmgr" ];
   };
+  waylandDesktop = pkgs.makeDesktopItem {
+    name = "autodesk-inventor-wayland";
+    desktopName = "Autodesk Inventor 2026 (Wayland)";
+    icon = "inventor-on-linux";
+    exec = "${pkgs.coreutils}/bin/env -u DISPLAY ${cfg.package}/bin/inventor %U";
+    terminal = false;
+    categories = [
+      "Graphics"
+      "Engineering"
+    ];
+  };
 in
 {
   options.programs.autodesk-inventor = {
@@ -47,6 +58,7 @@ in
     environment.systemPackages = [
       cfg.package
       desktop
+      waylandDesktop
       icons
     ];
     hardware.graphics.enable = true;
