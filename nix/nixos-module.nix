@@ -31,7 +31,7 @@ let
     name = "autodesk-inventor-wayland";
     desktopName = "Autodesk Inventor 2026 (Wayland)";
     icon = "inventor-on-linux";
-    exec = "${pkgs.coreutils}/bin/env -u DISPLAY ${cfg.package}/bin/inventor %U";
+    exec = "${pkgs.coreutils}/bin/env INVENTOR_WINE_DRIVER=wayland ${cfg.package}/bin/inventor %U";
     terminal = false;
     categories = [
       "Graphics"

@@ -1,4 +1,19 @@
 # Runs inside the supervised nix-overlayfs session, with its composed WINEPREFIX.
+inventor_driver="${INVENTOR_WINE_DRIVER:-x11}"
+case "$inventor_driver" in
+    x11) ;;
+    wayland)
+        if [ -z "${WAYLAND_DISPLAY:-}" ]; then
+            echo "Inventor: the Wayland launcher requires a Wayland session" >&2
+            exit 1
+        fi
+        ;;
+    *) echo "Inventor: unsupported Wine display driver: $inventor_driver" >&2; exit 1 ;;
+esac
+wine reg add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d "$inventor_driver" /f || exit 1
+if [ "$inventor_driver" = wayland ]; then
+    unset DISPLAY
+fi
 licensing_root="$WINEPREFIX/drive_c/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
 licensing_version=$(find "$licensing_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
     grep -E '^[0-9]+(\.[0-9]+)+$' | sort -V | tail -1)
