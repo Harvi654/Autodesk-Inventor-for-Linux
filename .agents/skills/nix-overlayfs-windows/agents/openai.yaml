@@ -1,0 +1,4 @@
+interface:
+  display_name: "Windows apps with nix-overlayfs"
+  short_description: "Build reproducible Wine apps with Nix prefix layers"
+  default_prompt: "Use $nix-overlayfs-windows to package this Windows application with reproducible Wine prefix layers."
