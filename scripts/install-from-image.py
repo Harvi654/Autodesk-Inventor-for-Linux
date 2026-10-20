@@ -303,6 +303,11 @@ class Installer:
         return False
 
     def finish_licensing(self):
+        # Declarative builders may store Wine reparse records as sidecar files.
+        # Normalize them before this native filesystem repair inspects the links.
+        normalizer = self.env.get("INV_NORMALIZE_REPARSE")
+        if normalizer:
+            subprocess.check_call([normalizer, self.prefix], env=self.env)
         base = self.unix(r"C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing")
         vers = sorted((d for d in os.listdir(base)
                        if d[:1].isdigit() and os.path.isdir(os.path.join(base, d))),

@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/1452487394ae0b36cb82fd889657331e12f296cb";
+      url = "github:krokosik/nix-overlayfs/df35cc43f9d3c7e5605636455c8f3119407e7f27";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };

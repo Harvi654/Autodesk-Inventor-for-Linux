@@ -129,17 +129,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1792507203,
-        "narHash": "sha256-E0tUiApb4hOHh3y7oYSZO9bX5wEo7gIYmBVSU4PTYNE=",
+        "lastModified": 1792509147,
+        "narHash": "sha256-WY7PGSnPDgXiWXQRTbm+w0k7M6wlFUWZLge+zvS2pTA=",
         "owner": "krokosik",
         "repo": "nix-overlayfs",
-        "rev": "1452487394ae0b36cb82fd889657331e12f296cb",
+        "rev": "df35cc43f9d3c7e5605636455c8f3119407e7f27",
         "type": "github"
       },
       "original": {
         "owner": "krokosik",
         "repo": "nix-overlayfs",
-        "rev": "1452487394ae0b36cb82fd889657331e12f296cb",
+        "rev": "df35cc43f9d3c7e5605636455c8f3119407e7f27",
         "type": "github"
       }
     },

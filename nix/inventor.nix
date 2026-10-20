@@ -83,6 +83,7 @@ in
 overlayfsLib.mkWindowsPackage {
   inherit runtime;
   inherit version;
+  portableReparsePoints = true;
   pname = "inventor";
   packageName = "autodesk-inventor-2026";
   executableName = "inventor";
@@ -94,6 +95,7 @@ overlayfsLib.mkWindowsPackage {
     set -euo pipefail
     export PATH=${lib.makeBinPath tools}:${modules.runtime.toolsPackage}/bin:$PATH
     export INV_WINE=system INV_SANDBOX=0 INV_DATA_DIR="" INV_FONTS=linux
+    export INV_NORMALIZE_REPARSE=${session.commands.normalizeReparsePoints}
     export INV_PREFIX="$WINEPREFIX" INV_LOGDIR="$TMPDIR/inventor-logs"
     export XDG_CACHE_HOME="$TMPDIR/inventor-cache"
     mkdir -p "$INV_LOGDIR" "$TMPDIR/inventor-project" "$TMPDIR/inventor-downloads"
@@ -114,6 +116,7 @@ overlayfsLib.mkWindowsPackage {
       python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" ${lib.escapeShellArg (toString update)} \
         --prefix "$WINEPREFIX"
     '') updates}
+    ${session.commands.normalizeReparsePoints} "$WINEPREFIX"
     bash "$TMPDIR/inventor-project/scripts/finish-install.sh" --no-sandbox
     ${session.commands.wineserver} --wait
     test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor 2026/Bin/Inventor.exe"
