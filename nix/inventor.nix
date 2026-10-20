@@ -107,7 +107,9 @@ overlayfsLib.mkWindowsPackage {
     export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
     ln -s ${dxvkArchive} "$DOWNLOAD_DIR/dxvk-2.7.1.tar.gz"
     python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
-      --prefix "$WINEPREFIX" --prepared-prefix ${lib.optionalString (!contentCenter) "--no-content"}
+      --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 ${
+        lib.optionalString (!contentCenter) "--no-content"
+      }
     ${lib.concatMapStringsSep "\n" (update: ''
       python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" ${lib.escapeShellArg (toString update)} \
         --prefix "$WINEPREFIX"
