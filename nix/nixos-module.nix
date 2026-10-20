@@ -16,8 +16,8 @@ let
       "$out/share/icons/hicolor/scalable/apps/inventor-on-linux.svg"
   '';
   defaultPackages = {
-    "2026" = self.packages.x86_64-linux.inventor;
-    "2027" = self.packages.x86_64-linux.inventor-2027;
+    "2026" = self.packages.x86_64-linux.${if cfg.gpuRayTracing then "inventor-rt" else "inventor"};
+    "2027" = self.packages.x86_64-linux.${if cfg.gpuRayTracing then "inventor-2027-rt" else "inventor-2027"};
   };
   packageFor =
     year: if year == "2026" then cfg.package else cfg.packages.${year} or defaultPackages.${year};
@@ -56,6 +56,11 @@ in
 {
   options.programs.autodesk-inventor = {
     enable = lib.mkEnableOption "Autodesk Inventor through Wine and nix-overlayfs";
+    gpuRayTracing = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Enable experimental GPU ray tracing through the system Vulkan driver. Custom packages must use lib.mkInventor { gpuRayTracing = true; ...; }.";
+    };
     versions = lib.mkOption {
       type = lib.types.listOf (
         lib.types.enum [
