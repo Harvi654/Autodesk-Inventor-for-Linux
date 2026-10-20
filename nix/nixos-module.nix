@@ -7,9 +7,18 @@
 }:
 let
   cfg = config.programs.autodesk-inventor;
+  icons = pkgs.runCommand "autodesk-inventor-icons" { } ''
+    for size in 16 24 32 48 64 128 256; do
+      install -Dm644 ${../config/icons}/hicolor/''${size}x''${size}/inventor-on-linux.png \
+        "$out/share/icons/hicolor/''${size}x''${size}/apps/inventor-on-linux.png"
+    done
+    install -Dm644 ${../config/icons/inventor-on-linux.svg} \
+      "$out/share/icons/hicolor/scalable/apps/inventor-on-linux.svg"
+  '';
   desktop = pkgs.makeDesktopItem {
     name = "autodesk-inventor";
     desktopName = "Autodesk Inventor 2026";
+    icon = "inventor-on-linux";
     exec = "${cfg.package}/bin/inventor %U";
     terminal = false;
     categories = [
@@ -38,6 +47,7 @@ in
     environment.systemPackages = [
       cfg.package
       desktop
+      icons
     ];
     hardware.graphics.enable = true;
     programs.fuse.enable = true;
