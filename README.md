@@ -2,6 +2,9 @@
 
 # Autodesk Inventor 2026 on Linux
 
+**NixOS:** a declarative flake migration is in progress. See
+[NixOS setup and validation status](docs/nixos.md).
+
 Install and run **Autodesk Inventor Professional 2026** on Linux with Wine -
 from Autodesk's own download, without Windows or a virtual machine, with one
 command.
