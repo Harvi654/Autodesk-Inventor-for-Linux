@@ -177,12 +177,18 @@ sudo nixos-rebuild switch --flake /path/to/system-flake#your-host
 inventor
 ```
 
-Or select **Autodesk Inventor 2026** in your application menu. The separate
-**Autodesk Inventor 2026 (Wayland)** entry selects Wine’s native Wayland driver
-and unsets `DISPLAY` inside the application session. Close Inventor before switching
-entries: both use the same persistent state and running Wine session. Native
-Wayland has not yet been runtime-validated for Inventor. Complete first
+Or select **Autodesk Inventor 2026** in your application menu. Complete first
 sign-in in your normal browser and allow the Autodesk callback to open Inventor.
+
+**Use the regular launcher on Wayland desktops:** it runs through XWayland and
+is the validated setup. Native fractional scaling is currently unavailable with
+this setup.
+
+The separate **Autodesk Inventor 2026 (Wayland)** entry is experimental and
+**not working yet**. It selects Wine’s native Wayland driver, but testing on
+2026-10-20 produced an unresponsive Inventor window after resolving sign-in.
+The earlier licensing error was a separate sign-in issue. Close Inventor before
+switching entries: both use the same persistent state and running Wine session.
 
 For a build/run without adding the system module, from this checkout:
 

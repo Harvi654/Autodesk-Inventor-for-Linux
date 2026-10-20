@@ -130,3 +130,16 @@ The hidden Xvfb desktop still stops at “Loading…” when creating a standard
 with either graphics setup. Its cause remains undetermined; the successful
 normal-desktop test establishes the supported smoke-test result. The isolated
 desktop was stopped, and the authenticated test state was preserved.
+
+## Native Wayland limitation
+
+Use the regular **Autodesk Inventor 2026** desktop entry on Wayland desktops;
+it runs through XWayland and is the validated configuration. Native fractional
+scaling is currently unavailable with this setup.
+
+**Autodesk Inventor 2026 (Wayland)** remains an experimental entry and is not
+working yet. It explicitly selects Wine’s `wayland` driver. On 2026-10-20 the
+user confirmed that a window appears, but remains unresponsive after resolving
+a separate sign-in/licensing issue. Native Wayland is therefore not a usable
+alternative to the regular launcher at present. Close Inventor before changing
+launchers because they share persistent state and the running Wine session.
