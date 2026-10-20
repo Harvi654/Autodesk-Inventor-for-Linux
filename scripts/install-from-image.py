@@ -267,7 +267,33 @@ class Installer:
     def do_exe(self, s, logname, media=None):
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
-        rc = self.run(["wine", exe] + win_split(self.expand(s["params"], extra, s)), logname)
+        argv = ["wine", exe] + win_split(self.expand(s["params"], extra, s))
+        rc = self.run(argv, logname)
+        if rc == 250 and s["name"].lower() == "adsklicensing":
+            # Some filesystems cannot represent the installer's NTFS junction.
+            # Repair only this diagnosed failure, then rerun the vendor installer
+            # so its remaining service/registration actions still execute.
+            installer_log = self.unix(r"C:\users\%s\AppData\Local\Temp\AdskLicensing-install.log" % USER)
+            try:
+                with open(installer_log, encoding="utf-8", errors="replace") as f:
+                    details = f.read()
+            except OSError:
+                details = ""
+            if ("Error code=LIC-INST-ERROR-250." in details and
+                    "Creating 'Current' link to" in details and
+                    glob.glob(self.unix(QUIRKS["adsklicensing"][1]))):
+                self.log("        licensing junction failed; repairing links and retrying once")
+                if not self.finish_licensing():
+                    return False
+                rc = self.run(argv, "retry-" + logname)
+                if rc == 63:
+                    with open(installer_log, encoding="utf-8", errors="replace") as f:
+                        details = f.read()
+                    if ("Error code=LIC-INST-ERROR-69009471." in details and
+                            "Starting Windows service during installation-skip workflow failed" in details and
+                            "(error code 1053)" in details):
+                        self.log("        licensing registered; Wine cannot report the service as running")
+                        return self.finish_licensing()
         if rc in (0, 1641, 3010):
             return True
         q = QUIRKS.get(s["name"].lower())

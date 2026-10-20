@@ -60,6 +60,47 @@ class PreparedPrefixTests(unittest.TestCase):
             instance.a.preinstalled_webview2 = False
             self.assertFalse(instance.use_preinstalled_webview2({"name": "WebView2"}))
 
+    def test_licensing_junction_recovery_retries_vendor_installer(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as directory:
+            instance = installer.Installer(Namespace(image=directory, prefix=directory, lang="en-US"))
+            base = Path(instance.c) / "Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
+            service = base / "15.1.0.12339/AdskLicensingService/AdskLicensingService.exe"
+            service.parent.mkdir(parents=True)
+            service.write_bytes(b"MZ")
+            log = Path(instance.c) / f"users/{installer.USER}/AppData/Local/Temp/AdskLicensing-install.log"
+            log.parent.mkdir(parents=True)
+            step = {"name": "AdskLicensing", "file": "setup.exe", "params": "--mode unattended"}
+            with patch.object(instance, "log"), patch.object(instance, "run", side_effect=[250, 0]) as run:
+                self.assertFalse(instance.do_exe(step, "licensing.log"))
+                self.assertEqual(run.call_count, 1)
+            log.write_text("Error code=LIC-INST-ERROR-250. Creating 'Current' link to version failed.")
+            with patch.object(instance, "log"), patch.object(instance, "run", side_effect=[250, 0]) as run:
+                self.assertTrue(instance.do_exe(step, "licensing.log"))
+                self.assertEqual(run.call_count, 2)
+                self.assertEqual(run.call_args_list[0].args[0], run.call_args_list[1].args[0])
+            self.assertEqual(os.readlink(base / "Current"), "15.1.0.12339")
+            self.assertEqual(os.readlink(base / "CurrentSDK"), "15.1.0.12339/AdskLicensingSDK")
+            with patch.object(instance, "log"), patch.object(instance, "run", side_effect=[250, 7]) as run:
+                self.assertFalse(instance.do_exe(step, "licensing.log"))
+                self.assertEqual(run.call_count, 2)
+            with patch.object(instance, "log"), patch.object(instance, "run", side_effect=[250, 63]):
+                self.assertFalse(instance.do_exe(step, "licensing.log"))
+            calls = []
+
+            def vendor_retry(argv, logname):
+                calls.append(argv)
+                if len(calls) == 1:
+                    return 250
+                log.write_text("Error code=LIC-INST-ERROR-69009471. "
+                               "Starting Windows service during installation-skip workflow failed: "
+                               "Calling system API failed, (error code 1053)")
+                return 63
+
+            with patch.object(instance, "log"), patch.object(instance, "run", side_effect=vendor_retry):
+                self.assertTrue(instance.do_exe(step, "licensing.log"))
+            self.assertEqual(len(calls), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
