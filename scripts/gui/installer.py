@@ -583,6 +583,11 @@ class Installer(Gtk.ApplicationWindow):
         box.append(exp)
 
         row = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        # after the run: back to the result page ("Show details" leads here)
+        self.result_btn = Gtk.Button(label="Back to the result", visible=False)
+        self.result_btn.add_css_class("suggested-action")
+        self.result_btn.connect("clicked", lambda *_: self.show_page("done"))
+        row.append(self.result_btn)
         self.cancel_btn = Gtk.Button(label="Stop")
         self.cancel_btn.add_css_class("destructive-action")
         self.cancel_btn.connect("clicked", self.on_cancel)
@@ -707,6 +712,8 @@ class Installer(Gtk.ApplicationWindow):
         self.detail.set_text("")
         self.run_title = title
         self.cancel_btn.set_sensitive(True)
+        self.cancel_btn.set_visible(True)
+        self.result_btn.set_visible(False)
         if install:
             self.set_phase(1, PHASES[0][0])
         env = dict(os.environ)
@@ -813,7 +820,8 @@ class Installer(Gtk.ApplicationWindow):
 
     def finish(self, success, reason):
         self.running_install = False
-        self.cancel_btn.set_sensitive(False)
+        self.cancel_btn.set_visible(False)
+        self.result_btn.set_visible(True)
         child = self.done_buttons.get_first_child()
         while child:
             nxt = child.get_next_sibling()
