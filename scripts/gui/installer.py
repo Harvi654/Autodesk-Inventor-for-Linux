@@ -181,6 +181,99 @@ def cached_media():
                   if os.path.isfile(os.path.join(d, ".unpacked")))
 
 
+def dir_size(path):
+    """Bytes in a folder (du), None if it is not there."""
+    if not os.path.exists(path):
+        return None
+    try:
+        out = subprocess.run(["du", "-sb", path], capture_output=True, text=True, timeout=600).stdout
+        return int(out.split()[0])
+    except (OSError, subprocess.SubprocessError, ValueError, IndexError):
+        return None
+
+
+def fmt_bytes(n):
+    if n is None:
+        return "not there"
+    if n >= GB:
+        return "%.1f GB" % (n / GB)
+    return "%.0f MB" % (n / 1024 / 1024)
+
+
+def wine_running():
+    try:
+        return subprocess.run(["pgrep", "-x", "wineserver"], capture_output=True).returncode == 0
+    except OSError:
+        return False
+
+
+def project_version():
+    try:
+        out = subprocess.run(["git", "-C", REPO, "describe", "--tags", "--always"],
+                             capture_output=True, text=True, timeout=10).stdout.strip()
+        return out or "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
+def prefix_not_ours(settings):
+    """A prefix folder exists that this installer did not make (install.sh refuses it)."""
+    pre = settings["INV_PREFIX"]
+    return os.path.isdir(os.path.join(pre, "drive_c")) and \
+        not os.path.isfile(os.path.join(pre, ".odis-install-state.json"))
+
+
+PART = re.compile(r"^(.*)_(\d{3})_(\d{3})\.(exe|7z)$", re.I)
+
+
+def download_problems(paths):
+    """Warnings about the selected downloads: missing parts, unfinished browser downloads."""
+    problems = []
+    groups = {}
+    for p in paths:
+        m = PART.match(os.path.basename(p))
+        if m:
+            key = (os.path.dirname(p), m.group(1).lower(), int(m.group(3)))
+            groups.setdefault(key, (m.group(1), set()))[1].add(int(m.group(2)))
+    for (folder, _, total), (base, have) in groups.items():
+        missing = [i for i in range(1, total + 1) if i not in have]
+        if missing:
+            problems.append("part %s of %d of %s is not selected - Autodesk's download comes in %d files"
+                            % (", ".join(str(i) for i in missing), total, base, total))
+    for folder in {os.path.dirname(p) for p in paths if os.path.isfile(p)}:
+        for f in glob.glob(os.path.join(folder, "*")):
+            low = f.lower()
+            if "inventor" in low and low.endswith((".part", ".crdownload", ".download", ".partial")):
+                problems.append("unfinished browser download: %s - wait until it is complete"
+                                % os.path.basename(f))
+    return problems
+
+
+# known failures -> what to do (matched against the installer's output)
+HINTS = [
+    ("No space left on device", "The disk is full. Free some space (see the Uninstall page for what the "
+                                "installation uses) and try again."),
+    ("no password was provided", "The password prompt was closed. Try again and enter your password."),
+    ("incorrect password", "The password was wrong. Try again."),
+    ("a password is required", "sudo needs your password. Try again and enter it in the password window."),
+    ("is not in the sudoers file", "Your user may not use sudo. Ask the administrator of this computer, "
+                                   "or add your user to the 'wheel' (Arch, Fedora) / 'sudo' (Ubuntu) group."),
+    ("Could not resolve host", "No internet connection (or GitHub is not reachable). Check the network "
+                               "and try again."),
+    ("curl: (7)", "The download server could not be reached. Check the network and try again."),
+    ("checksum mismatch", "A download was damaged or changed. Try again; if it repeats, open an issue."),
+    ("enable [multilib]", "Arch: enable the [multilib] repository in /etc/pacman.conf, run "
+                          "'sudo pacman -Syu', then try again."),
+    ("was not made by this installer", "A Wine prefix with this name already exists. Remove or rename it, "
+                                       "or set another INV_PREFIX in config.env."),
+    ("close Inventor", "Close Inventor (and other Wine programs) first, then try again."),
+    ("none of the downloads is the Inventor installer", "Select the Inventor download itself, not only "
+                                                         "the update."),
+    ("not an Inventor download", "One of the selected files is not an Inventor download (e.g. the web "
+                                 "installer). Select the ..._db_... files."),
+]
+
+
 def human_size(path):
     try:
         if os.path.isdir(path):
@@ -263,9 +356,14 @@ class Installer(Gtk.ApplicationWindow):
         self.back_btn = Gtk.Button(label="Back")
         self.next_btn = Gtk.Button(label="Next")
         self.next_btn.add_css_class("suggested-action")
+        self.quit_btn = Gtk.Button(label="Cancel")
+        self.quit_btn.connect("clicked", lambda *_: self.close())
         spacer = Gtk.Box(hexpand=True)
+        self.nav_hint = label("", css="dim-label caption")
         self.nav.append(self.back_btn)
+        self.nav.append(self.nav_hint)
         self.nav.append(spacer)
+        self.nav.append(self.quit_btn)
         self.nav.append(self.next_btn)
         outer.append(Gtk.Separator())
         outer.append(self.nav)
@@ -280,6 +378,10 @@ class Installer(Gtk.ApplicationWindow):
         self.stack.add_named(self.page_summary(), "summary")
         self.stack.add_named(self.page_progress(), "progress")
         self.stack.add_named(self.page_done(), "done")
+        self.stack.add_named(self.page_uninstall(), "uninstall")
+        self.mode = "install"
+        self.inhibit_cookie = 0
+        self.recent = []
         self.show_page("welcome")
         self.connect("close-request", self.on_close_request)
 
@@ -287,28 +389,75 @@ class Installer(Gtk.ApplicationWindow):
 
     def show_page(self, name):
         self.stack.set_visible_child_name(name)
-        self.back_btn.set_visible(name in ("downloads", "options", "summary"))
-        self.next_btn.set_visible(name in ("welcome", "downloads", "options", "summary"))
-        self.next_btn.set_label("Install" if name == "summary" else "Next")
+        wizard = name in ("welcome", "downloads", "options", "summary", "uninstall")
+        self.back_btn.set_visible(name in ("downloads", "options", "summary", "uninstall"))
+        self.next_btn.set_visible(wizard)
+        self.quit_btn.set_visible(wizard)
+        self.nav_hint.set_text("")
+        self.next_btn.remove_css_class("destructive-action")
+        self.next_btn.add_css_class("suggested-action")
+        self.next_btn.set_label({"summary": "Install", "uninstall": "Uninstall…"}.get(name, "Next"))
         if name == "summary":
             self.fill_summary()
         if name == "welcome":
             self.next_btn.set_sensitive(self.checks_ok)
         elif name == "downloads":
             self.update_downloads_state()
+        elif name == "summary":
+            self.next_btn.set_sensitive(self.summary_ok)
+        elif name == "uninstall":
+            self.next_btn.remove_css_class("suggested-action")
+            self.next_btn.add_css_class("destructive-action")
+            self.refresh_uninstall()
         else:
             self.next_btn.set_sensitive(True)
 
     def on_back(self, *_):
         cur = self.stack.get_visible_child_name()
+        if cur == "uninstall":
+            self.show_page("welcome")
+            return
         self.show_page(self.pages[self.pages.index(cur) - 1])
 
     def on_next(self, *_):
         cur = self.stack.get_visible_child_name()
         if cur == "summary":
-            self.start_install()
+            self.check_wine_then(self.start_install)
+        elif cur == "uninstall":
+            self.confirm_uninstall()
         else:
             self.show_page(self.pages[self.pages.index(cur) + 1])
+
+    def alert(self, message, detail, buttons, callback):
+        dlg = Gtk.AlertDialog(message=message, detail=detail, buttons=buttons,
+                              cancel_button=0, default_button=0)
+
+        def done(d, res):
+            try:
+                idx = d.choose_finish(res)
+            except GLib.Error:
+                return
+            callback(idx)
+        dlg.choose(self, None, done)
+
+    def check_wine_then(self, action):
+        """Inventor (Wine) must not run while installing or removing."""
+        if not wine_running():
+            action()
+            return
+
+        def chosen(idx):
+            if idx == 1:
+                self.kill_wine()
+                GLib.timeout_add(2500, lambda: (action(), False)[1])
+        self.alert("Inventor or another Wine program is running",
+                   "Close Inventor first (save your work), or let the installer end all Wine programs.",
+                   ["Cancel", "End Wine programs and continue"], chosen)
+
+    def kill_wine(self):
+        subprocess.Popen(["bash", "-c", 'source "$1/lib/common.sh" >/dev/null 2>&1; select_wine >/dev/null 2>&1; '
+                          'wineserver -k 2>/dev/null; true', "bash", SCRIPTS],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     # ---------------------------------------------------------------- welcome
 
@@ -334,6 +483,13 @@ class Installer(Gtk.ApplicationWindow):
         box.append(frame)
         if not self.checks_ok:
             box.append(label(markup="<b>This system can't run the installation</b> - see the ✗ above."))
+        if prefix_not_ours(self.settings) and not installed_inventor(self.settings):
+            box.append(label(markup="<b>Note:</b> %s already exists but was not made by this installer. "
+                             "The installation refuses to use it - remove or rename it first, or set another "
+                             "INV_PREFIX in config.env." % esc(self.settings["INV_PREFIX"])))
+        if wine_running():
+            box.append(label(markup="<b>Note:</b> Inventor or another Wine program is running. "
+                             "Close it before you install, repair or uninstall."))
 
         if installed_inventor(self.settings):
             inst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
@@ -353,9 +509,106 @@ class Installer(Gtk.ApplicationWindow):
             frame2.set_child(margin(inst, 12))
             box.append(frame2)
 
+        foot = Gtk.Box(spacing=8)
+        foot.append(label("Version %s" % project_version(), css="dim-label caption", wrap=False))
+        foot.append(Gtk.Box(hexpand=True))
+        help_btn = Gtk.Button(label="Help")
+        help_btn.connect("clicked", lambda *_: self.open_web(README))
+        foot.append(help_btn)
+        if self.anything_installed():
+            uninst = Gtk.Button(label="Uninstall…")
+            uninst.connect("clicked", lambda *_: self.show_page("uninstall"))
+            foot.append(uninst)
+        box.append(Gtk.Box(vexpand=True))
+        box.append(foot)
+
         scroll = Gtk.ScrolledWindow(vexpand=True)
         scroll.set_child(box)
         return scroll
+
+    def anything_installed(self):
+        return any(os.path.exists(p) for _, _, p, _ in self.uninstall_items())
+
+    # -------------------------------------------------------------- uninstall
+
+    def uninstall_items(self):
+        s = self.settings
+        data_home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
+        cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "inventor-on-linux")
+        return [
+            ("desktop", "App menu entries, file types, browser sign-in handler",
+             os.path.join(data_home, "applications", "autodesk-inventor-%s.desktop" % s["INV_YEAR"]), True),
+            ("prefix", "Inventor itself (the Wine prefix)", s["INV_PREFIX"], True),
+            ("wine", "This project's Wine", os.path.join(data_home, "inventor-on-linux"), True),
+            ("cache", "Unpacked downloads (Autodesk's files in Downloads stay)", cache, True),
+            ("data", "YOUR Inventor files - parts, assemblies, drawings", s["INV_DATA_DIR"], False),
+            ("project", "This installer and its scripts (the one-command line brings it back)", REPO, False),
+        ]
+
+    def page_uninstall(self):
+        box = margin(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12), 24)
+        box.append(label(markup="<span size='large' weight='bold'>Uninstall</span>"))
+        box.append(label("Choose what to remove. Your own Inventor files are kept unless you tick them. "
+                         "System packages installed for Wine stay - they are ordinary packages of your "
+                         "distribution."))
+        grid = Gtk.Grid(column_spacing=12, row_spacing=8)
+        self.un_checks = {}
+        self.un_sizes = {}
+        for row, (key, title, path, default) in enumerate(self.uninstall_items()):
+            check = Gtk.CheckButton(active=default)
+            check.connect("toggled", lambda *_: self.update_uninstall_state())
+            text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            text.append(label(markup=("<b>%s</b>" if key == "data" else "%s") % esc(title)))
+            text.append(label(path, css="dim-label caption"))
+            size = label("…", css="dim-label", wrap=False, xalign=1.0)
+            grid.attach(check, 0, row, 1, 1)
+            grid.attach(text, 1, row, 1, 1)
+            grid.attach(size, 2, row, 1, 1)
+            text.set_hexpand(True)
+            self.un_checks[key] = check
+            self.un_sizes[key] = size
+        box.append(grid)
+        self.un_note = label("")
+        box.append(self.un_note)
+        return box
+
+    def refresh_uninstall(self):
+        items = self.uninstall_items()
+        for key, _, path, _ in items:
+            self.un_sizes[key].set_text("…")
+
+        def work():
+            for key, _, path, _ in items:
+                n = None if key == "desktop" and not os.path.exists(path) else \
+                    (0 if key == "desktop" else dir_size(path))
+                txt = ("in the menu" if os.path.exists(path) else "not there") if key == "desktop" else fmt_bytes(n)
+                GLib.idle_add(self.un_sizes[key].set_text, txt)
+        threading.Thread(target=work, daemon=True).start()
+        self.update_uninstall_state()
+
+    def update_uninstall_state(self):
+        chosen = [k for k, c in self.un_checks.items() if c.get_active()]
+        self.next_btn.set_sensitive(bool(chosen))
+        if "data" in chosen:
+            self.un_note.set_markup("<b>Your own Inventor files will be deleted.</b> Copy what you want to keep first.")
+        elif "project" in chosen:
+            self.un_note.set_text("The installer removes itself last; this window closes then.")
+        else:
+            self.un_note.set_text("")
+
+    def confirm_uninstall(self):
+        chosen = [k for k, c in self.un_checks.items() if c.get_active()]
+        titles = {k: t for k, t, _, _ in self.uninstall_items()}
+        detail = "\n".join("• " + titles[k] for k in chosen)
+        if "data" in chosen:
+            detail += "\n\nYOUR INVENTOR FILES (%s) WILL BE DELETED - this cannot be undone." % self.settings["INV_DATA_DIR"]
+
+        def chosen_cb(idx):
+            if idx == 1:
+                args = ["bash", os.path.join(SCRIPTS, "uninstall.sh"), "--yes"] + ["--" + k for k in chosen]
+                self.last_args = args
+                self.check_wine_then(lambda: self.run_command(args, "Uninstalling", mode="uninstall"))
+        self.alert("Remove these?", detail, ["Cancel", "Remove"], chosen_cb)
 
     # -------------------------------------------------------------- downloads
 
@@ -442,7 +695,10 @@ class Installer(Gtk.ApplicationWindow):
         ok = bool(sel) or installed
         if self.stack.get_visible_child_name() == "downloads":
             self.next_btn.set_sensitive(ok)
-        if sel:
+        problems = download_problems(sel)
+        if sel and problems:
+            self.dl_hint.set_markup("<b>Check:</b> " + esc("; ".join(problems)))
+        elif sel:
             self.dl_hint.set_text("%d selected." % len(sel))
         elif installed:
             self.dl_hint.set_text("Nothing selected - fine for a repair of the existing installation "
@@ -518,6 +774,7 @@ class Installer(Gtk.ApplicationWindow):
         box = margin(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12), 24)
         box.append(label(markup="<span size='large' weight='bold'>Ready to install</span>"))
         self.summary = label("", selectable=True)
+        self.summary_ok = True
         box.append(self.summary)
         return box
 
@@ -540,7 +797,19 @@ class Installer(Gtk.ApplicationWindow):
             "",
             "You can stop at any time; running the installer again continues where it stopped.",
         ]
+        # disk space: prefix (with or without Content Center), unpacked download, Wine
+        need = (25 if self.sw_content.get_active() else 12) + 1
+        if not any(os.path.isdir(p) for p in cached_media()) or any(not os.path.isdir(p) for p in sel):
+            need += 15
+        if installed_inventor(self.settings):
+            need = 2
+        free = shutil.disk_usage(os.path.expanduser("~")).free / GB
+        self.summary_ok = free >= need
+        lines += ["", "<b>Disk space</b>: about %d GB needed, %.0f GB free%s" %
+                  (need, free, "" if self.summary_ok else
+                   " - <b>not enough</b>. Free some space, or turn off Content Center.")]
         self.summary.set_markup("\n".join(lines))
+        self.next_btn.set_sensitive(self.summary_ok)
 
     # --------------------------------------------------------------- progress
 
@@ -679,6 +948,9 @@ class Installer(Gtk.ApplicationWindow):
         elif line.startswith("    ") and not self.sub_known:
             self.sub_label.set_text(line.strip()[:160])
         self.detail.set_text(line.strip()[:200])
+        self.recent.append(line)
+        if len(self.recent) > 600:
+            del self.recent[:200]
         self.log(line)
 
     def tick(self):
@@ -690,7 +962,9 @@ class Installer(Gtk.ApplicationWindow):
             self.sub.pulse()
         return True
 
-    def run_command(self, args, title, install=False):
+    def run_command(self, args, title, install=False, mode=None):
+        self.mode = mode or ("install" if install else "update")
+        self.recent = []
         self.show_page("progress")
         self.prog_title.set_text(title)
         self.phase_box.set_visible(install)
@@ -729,6 +1003,10 @@ class Installer(Gtk.ApplicationWindow):
             self.finish(False, str(e))
             return
         self.started = time.time()
+        app = self.get_application()
+        if app and not self.inhibit_cookie:   # no sleep or screen lock in the middle of it
+            self.inhibit_cookie = app.inhibit(self, Gtk.ApplicationInhibitFlags.SUSPEND |
+                                              Gtk.ApplicationInhibitFlags.IDLE, title)
         GLib.timeout_add(250, self.tick)
         threading.Thread(target=self.reader, args=(self.proc,), daemon=True).start()
 
@@ -777,14 +1055,13 @@ class Installer(Gtk.ApplicationWindow):
         self.cancelled = True
         self.cancel_btn.set_sensitive(False)
         self.sub_label.set_text("stopping…")
+        self.recent.append("(stopped by you)")
         try:
             os.killpg(self.proc.pid, signal.SIGTERM)
         except OSError:
             pass
         # Wine programs started by the installer keep running in the background
-        subprocess.Popen(["bash", "-c", 'source "$1/lib/common.sh" >/dev/null 2>&1; select_wine >/dev/null 2>&1; '
-                          'wineserver -k 2>/dev/null; true', "bash", SCRIPTS],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        self.kill_wine()
 
     def start_install(self):
         args = ["bash", os.path.join(SCRIPTS, "install.sh")]
@@ -797,14 +1074,14 @@ class Installer(Gtk.ApplicationWindow):
             sel = cached_media()
         args += sel
         self.last_args = args
-        self.run_command(args, "Installing Inventor", install=True)
+        self.run_command(args, "Installing Inventor", install=True, mode="install")
 
     def start_update(self):
         script = ('set -e; cd "$1"; echo "Updating this project..."; bash scripts/update-project.sh; '
                   'echo "Wine..."; bash scripts/get-wine.sh; '
                   'echo "App launcher and file types..."; bash scripts/install-desktop-integration.sh')
         self.last_args = ["bash", "-c", script, "bash", REPO]
-        self.run_command(self.last_args, "Updating", install=False)
+        self.check_wine_then(lambda: self.run_command(self.last_args, "Updating", mode="update"))
 
     # ------------------------------------------------------------------- done
 
@@ -820,6 +1097,17 @@ class Installer(Gtk.ApplicationWindow):
 
     def finish(self, success, reason):
         self.running_install = False
+        app = self.get_application()
+        if app and self.inhibit_cookie:
+            app.uninhibit(self.inhibit_cookie)
+            self.inhibit_cookie = 0
+        if app and not self.is_active():   # the user may be elsewhere after 20-40 minutes
+            try:
+                n = Gio.Notification.new("Inventor on Linux: " + ("done" if success else "did not finish"))
+                n.set_body(self.run_title if success else reason)
+                app.send_notification("finished", n)
+            except Exception:  # noqa: BLE001 - a notification is a nicety
+                pass
         self.cancel_btn.set_visible(False)
         self.result_btn.set_visible(True)
         child = self.done_buttons.get_first_child()
@@ -835,27 +1123,48 @@ class Installer(Gtk.ApplicationWindow):
             b.connect("clicked", lambda *_: cb())
             self.done_buttons.append(b)
 
+        if success and self.mode == "uninstall":
+            self.done_title.set_text("Removed")
+            gone_self = "--project" in (self.last_args or [])
+            self.done_text.set_text("The selected parts are removed." + (
+                "\n\nThe installer itself is removed as well. To install again later:\n"
+                "bash <(curl -fsSL https://raw.githubusercontent.com/Harvi654/Autodesk-Inventor-for-Linux/main/get.sh)"
+                if gone_self else ""))
+            button("Close", self.close, suggested=True)
+            self.show_page("done")
+            return
         if success:
             self.done_title.set_text("Done")
-            if self.last_args and "install.sh" in " ".join(self.last_args):
-                self.done_text.set_text("Inventor is installed. The first start asks you to sign in with your "
-                                        "Autodesk account in your web browser.\n\nYour files go to %s "
-                                        "(drive D: in Inventor)." % self.settings["INV_DATA_DIR"])
+            if self.mode == "install":
+                text = ("Inventor is installed. The first start asks you to sign in with your Autodesk account "
+                        "in your web browser.\n\nYour files go to %s (drive D: in Inventor)." % self.settings["INV_DATA_DIR"])
+                if "hyprland" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower():
+                    text += ("\n\nHyprland: add this line to ~/.config/hypr/hyprland.conf for Inventor's windows:\n"
+                             "source = %s/config/hyprland-inventor.conf" % REPO)
+                self.done_text.set_text(text)
             else:
                 self.done_text.set_text("Finished.")
             button("Start Inventor", self.launch_inventor, suggested=True)
             button("Open my Inventor folder", lambda: self.open_uri(self.settings["INV_DATA_DIR"]))
         else:
-            self.done_title.set_text("Stopped" if self.cancelled else "The installation did not finish")
+            what = {"install": "The installation", "update": "The update", "uninstall": "Uninstalling"}[self.mode]
+            self.done_title.set_text("Stopped" if self.cancelled else "%s did not finish" % what)
             msg = reason if not self.cancelled else "You stopped it."
+            text = "\n".join(self.recent[-80:])
+            hints = [h for pat, h in HINTS if pat.lower() in text.lower()]
+            if hints and not self.cancelled:
+                msg += "\n\nWhat to do: " + hints[-1]
             self.done_text.set_text(msg + "\n\nRunning it again continues where it stopped. If it fails again, "
                                     "open an issue on GitHub with the report (button below).")
-            button("Try again", lambda: self.run_command(self.last_args, self.run_title,
-                                                         install="install.sh" in " ".join(self.last_args)),
-                   suggested=True)
+            mode = self.mode
+            button("Try again", lambda: self.check_wine_then(
+                lambda: self.run_command(self.last_args, self.run_title, install=mode == "install", mode=mode)),
+                suggested=True)
             if self.logfile:
                 button("Open the log", lambda: self.open_uri(self.logfile))
             button("Create a report", self.make_report)
+            button("Open an issue", lambda: self.open_web(
+                "https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/new"))
         button("Show details", lambda: self.show_page("progress"))
         button("Close", self.close)
         self.show_page("done")
@@ -874,6 +1183,12 @@ class Installer(Gtk.ApplicationWindow):
         except GLib.Error as e:
             self.log("could not open %s: %s" % (path, e.message))
 
+    def open_web(self, url):
+        try:
+            Gio.AppInfo.launch_default_for_uri(url, None)
+        except GLib.Error as e:
+            self.log("could not open %s: %s" % (url, e.message))
+
     def launch_inventor(self):
         subprocess.Popen(["bash", os.path.join(SCRIPTS, "launch-inventor.sh")], cwd=REPO,
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
@@ -882,7 +1197,7 @@ class Installer(Gtk.ApplicationWindow):
     def on_close_request(self, *_):
         if not self.proc:
             return False
-        dlg = Gtk.AlertDialog(message="The installation is still running",
+        dlg = Gtk.AlertDialog(message="The installer is still working",
                               detail="Stop it and close? Running the installer again continues where it stopped.",
                               buttons=["Keep running", "Stop and close"], cancel_button=0, default_button=0)
 
