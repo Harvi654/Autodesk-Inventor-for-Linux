@@ -41,6 +41,25 @@ class PreparedPrefixTests(unittest.TestCase):
             instance = installer.Installer(Namespace(image="/tmp/media", prefix="/tmp/prefix", lang="en-US"))
         self.assertEqual(Path(instance.logdir).parent, Path("/tmp/inventor-build-logs"))
 
+    def test_preinstalled_webview2_requires_an_actual_executable(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as directory:
+            instance = installer.Installer(Namespace(image=directory, prefix=directory,
+                                                    lang="en-US", preinstalled_webview2=True))
+            with self.assertRaisesRegex(RuntimeError, "requires msedgewebview2.exe"):
+                instance.use_preinstalled_webview2({"name": "WebView2"})
+            executable = Path(instance.c) / "Program Files (x86)/Microsoft/EdgeWebView/Application/154.0.4258.62/msedgewebview2.exe"
+            executable.mkdir(parents=True)
+            with self.assertRaises(RuntimeError):
+                instance.use_preinstalled_webview2({"name": "WebView2"})
+            executable.rmdir()
+            executable.write_bytes(b"MZ")
+            with patch.object(instance, "log"):
+                self.assertTrue(instance.use_preinstalled_webview2({"name": "WebView2"}))
+            self.assertFalse(instance.use_preinstalled_webview2({"name": "AdskLicensing"}))
+            instance.a.preinstalled_webview2 = False
+            self.assertFalse(instance.use_preinstalled_webview2({"name": "WebView2"}))
+
 
 if __name__ == "__main__":
     unittest.main()

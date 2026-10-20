@@ -429,6 +429,16 @@ class Installer:
         return ok
 
     # --- driver -------------------------------------------------------------
+    def use_preinstalled_webview2(self, step):
+        if not self.a.preinstalled_webview2 or step["name"].lower() != "webview2":
+            return False
+        runtime = os.path.join(self.c, "Program Files (x86)", "Microsoft", "EdgeWebView",
+                               "Application", "*", "msedgewebview2.exe")
+        if not any(os.path.isfile(path) for path in glob.glob(runtime)):
+            raise RuntimeError("--preinstalled-webview2 requires msedgewebview2.exe in the prefix")
+        self.log("      using the preinstalled WebView2 runtime")
+        return True
+
     def install_step(self, s, tag, img, media=None):
         self.log("  -> %s %s %s" % (s["type"], s["display"], s["version"]))
         path = img.find(s["file"])
@@ -436,6 +446,8 @@ class Installer:
             self.log("     ERROR %s not in image" % s["file"]); return False
         logname = tag + ".log"
         try:
+            if self.use_preinstalled_webview2(s):
+                return True
             return self._install(s, logname, path, media)
         except Exception as e:  # noqa: BLE001 - report and stop cleanly
             self.log("     ERROR %s: %s" % (type(e).__name__, e))
@@ -613,6 +625,8 @@ def main():
     ap.add_argument("--prefix", default="~/.wine-invtest")
     ap.add_argument("--prepared-prefix", action="store_true",
                     help="allow installation into a prepared Wine base prefix (for declarative builds)")
+    ap.add_argument("--preinstalled-webview2", action="store_true",
+                    help="reuse an existing WebView2 runtime after verifying its executable")
     ap.add_argument("--lang", default="en-US")
     ap.add_argument("--from", dest="start", type=int, default=1)
     ap.add_argument("--only")
