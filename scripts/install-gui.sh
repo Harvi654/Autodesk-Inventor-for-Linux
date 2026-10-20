@@ -48,6 +48,7 @@ Type=Application
 Name=Inventor on Linux - Setup
 Comment=Install, repair or update Autodesk Inventor on Linux
 Exec=bash "$SCRIPTS_DIR/install-gui.sh"
+TryExec=$SCRIPTS_DIR/install-gui.sh
 Icon=inventor-on-linux
 Terminal=false
 Categories=System;Settings;
