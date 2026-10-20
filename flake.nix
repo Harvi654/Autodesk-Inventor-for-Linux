@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/9342964a7344d93d75fdda0adcbbbba1a36994c7";
+      url = "github:krokosik/nix-overlayfs/614b1f28484afd0e2a14cbd09c713ee32f4d341c";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -13,12 +13,6 @@
     inputs@{ self, nixpkgs, ... }:
     let
       system = "x86_64-linux";
-      bootstrapPkgs = import nixpkgs { inherit system; };
-      overlayfsSource = bootstrapPkgs.applyPatches {
-        name = "nix-overlayfs-inventor-source";
-        src = inputs.nix-overlayfs;
-        patches = [ ./nix/nix-overlayfs-wine-11.20.patch ];
-      };
       pkgs = import nixpkgs {
         inherit system;
         overlays = [
@@ -28,12 +22,7 @@
               patches = (old.patches or [ ]) ++ [ ./nix/libgsf-empty-stream.patch ];
             });
           })
-          (final: prev: {
-            nix-overlayfs = import "${overlayfsSource}/pkgs/top-level" {
-              pkgs = final;
-              inputs = inputs.nix-overlayfs.inputs;
-            };
-          })
+          inputs.nix-overlayfs.overlays.default
         ];
       };
       wine = pkgs.callPackage ./nix/wine.nix { };

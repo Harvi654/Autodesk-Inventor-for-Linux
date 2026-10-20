@@ -8,9 +8,10 @@ The default target is Inventor Professional 2026 English with the 2026.4 update
 and Content Center, on x86_64 Linux. The runtime builds Wine 11.20 with every
 top-level patch in `patches/`. Nixpkgs and the nix-overlayfs fork are pinned in
 `flake.lock`; no local checkout is required by the committed input definitions.
-The consumer applies a checked-in patch to that pinned nix-overlayfs source to
-register Wine 11.20's Mono 11.3.0 dependency. The same change is present in the
-local development fork. A separate libgsf patch fixes empty OLE streams; it was
+The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
+mapping and sandbox MSI link-action fix, published from the local development
+fork. That base environment builds successfully with the patched Wine runtime.
+A separate libgsf patch fixes empty OLE streams; it was
 verified by rebuilding msitools with all 29 of its tests enabled and passing.
 
 ## Installation media
