@@ -80,6 +80,8 @@ Check dlls/appwiz.cpl/addons.c in the selected Wine source for its required Mono
 
 When a Nixpkgs dependency fails its own tests, inspect the retained test output before disabling tests or changing versions. For example, libgsf 1.14.59 treated a valid zero-length OLE stream's NULL allocation result as an out-of-memory error, causing msitools to crash. A focused allocation fix passed all 29 msitools tests. Keep third-party dependency fixes distinct from nix-overlayfs library changes.
 
+Preserve Wine registry key metadata through both JSON conversion and runtime layer merging. Dropping the #link marker while retaining SymbolicLinkValue turns aliases such as CurrentControlSet into ordinary keys; symptoms include missing RpcSs/SamSs services and unregistered COM classes. Verify registry-link round trips and merges, not only ordinary registry values. Fix the converters and merger in the library instead of adding application-specific duplicate registry keys.
+
 Use --keep-failed for expensive installer builds when retained logs will help diagnose failures. Keep and poll an existing live build handle rather than launching additional builds just to observe progress. Prefer bounded log excerpts over streaming an entire Wine compilation into the conversation.
 
 ## Integrating existing installer scripts
