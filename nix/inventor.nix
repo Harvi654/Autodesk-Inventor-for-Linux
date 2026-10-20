@@ -158,7 +158,11 @@ overlayfsLib.mkWindowsPackage {
   '';
   extraPreLaunchCommands = ''
     export PATH=${modules.runtime.toolsPackage}/bin:${lib.makeBinPath tools}:$PATH
-    ${(overlayfsLib.mkGraphicsBootstrap { inherit (modules) runtime; }).extraPreLaunchCommands}
+    ${(overlayfsLib.mkGraphicsBootstrap {
+      inherit (modules) runtime;
+      defaultMode = "system";
+    }).extraPreLaunchCommands
+    }
     ${builtins.readFile ./launch-services.sh}
   '';
 }

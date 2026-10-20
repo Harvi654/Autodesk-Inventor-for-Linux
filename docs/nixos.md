@@ -54,9 +54,16 @@ programs.autodesk-inventor.enable = true;
 ```
 
 The module installs the application and desktop entry, enables NixOS graphics
-support, and associates `adskidmgr://` links with the launcher. nix-overlayfs
+and FUSE support, and associates `adskidmgr://` links with the launcher. nix-overlayfs
 forwards callbacks to Identity Manager in the active composed prefix and
 provides browser integration. Sign-in requires your Autodesk account and license.
+
+If Home Manager already manages your user MIME defaults, set its association
+too; a user default takes precedence over the system default:
+
+```nix
+xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor.desktop";
+```
 
 For other fixed-output media sources or to omit Content Center, use a package
 constructed with the flake library:
@@ -78,28 +85,40 @@ Service logs are under `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-2026
 Do not delete existing writable state when testing upgrades. Use temporary XDG
 data/cache/state directories for clean smoke tests.
 
-The launcher defaults to automatic namespace selection. Keep the default host
-security policy. For diagnostics, nix-overlayfs supports
-`NIX_OVERLAYFS_NAMESPACE_MODE=direct` and opt-in
-`NIX_OVERLAYFS_GRAPHICS_STACK=system` for `/run/opengl-driver`.
+The launcher defaults to automatic namespace selection and the system graphics
+stack at `/run/opengl-driver`. Keep the default host security policy. Diagnostics
+can select `NIX_OVERLAYFS_NAMESPACE_MODE=direct` or
+`NIX_OVERLAYFS_GRAPHICS_STACK=auto`.
 
 ## Build evidence
 
 Validated on 2026-10-20 with the library pinned to
-`df35cc43f9d3c7e5605636455c8f3119407e7f27`:
+`8bf7c5cfa2541cf1478b87b519dcdc4c75831407`:
 
 - `nix flake check`: passed, including seven installer boundary/regression tests.
 - `nix build .#inventor --no-link --keep-failed -L`: passed.
-- Application layer: `/nix/store/7aajsbka0cqb3pnyyx6hamzqccg82sqg-inventor-2026.4`.
-- Launcher: `/nix/store/n3d8lmy6c0m5pvivslsbk81j4dzrdmax-inventor-overlay-2026.4/bin/inventor`.
+- Application layer: `/nix/store/38y9yn20sg5nxi06fr6pfgh78v0a8g7l-inventor-2026.4`.
+- Launcher: `/nix/store/kbrqwdmy6g8qmzd82s82x2fs137w6pgv-inventor-overlay-2026.4/bin/inventor`.
 - `Inventor.exe`: PE signature and x86-64 machine type verified; 1,587,032 bytes.
 - Required Noto Sans, Liberation Sans, and DejaVu Sans font files verified.
+- All ten DXVK replacement DLLs retained in the captured layer.
+- NixOS module evaluation confirms graphics, FUSE, and callback defaults.
 - Relative `Current` links resolve to installed licensing and Identity Manager versions.
 - Library tests: portable reparse metadata, installer failure propagation, direct
-  builds, and namespace/FUSE ownership VM checks passed.
+  builds, namespace/FUSE ownership, shared helper/application credentials,
+  runtime cleanup, and browser callback VM checks passed.
 
-## Validation remaining
+## Runtime evidence and remaining validation
 
-The GUI acceptance check must launch with fresh state, exercise the browser
-sign-in handoff, create a part, save and reopen it, and exit cleanly. Passing
-`nix flake check` alone does not establish Inventor compatibility.
+A fresh test state under `/tmp/inventor-flake-qa/data4` launched Inventor 2026.4,
+displayed its licensing UI, handed sign-in to the user's normal browser, and
+received the callback. Identity Manager reported a valid login, and the main
+Inventor window opened. The user's original browser callback association was
+restored afterward. Normal exit returned status 0 in both software-graphics and
+system-graphics tests. System graphics detected the NVIDIA RTX 3060.
+
+Creating a standard part in the hidden Xvfb desktop stops at “Loading…” with
+both graphics setups. Part creation, save, and reopen therefore remain
+unverified; normal-desktop manual validation is pending. The cause has not yet
+been established. Passing the build, sign-in, or flake checks does not prove
+this remaining acceptance gate.
