@@ -40,6 +40,7 @@ in
       desktop
     ];
     hardware.graphics.enable = true;
+    programs.fuse.enable = true;
     xdg.mime.enable = true;
     xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor.desktop";
   };
