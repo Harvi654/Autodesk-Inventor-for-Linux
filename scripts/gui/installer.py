@@ -373,12 +373,13 @@ class Installer(Gtk.ApplicationWindow):
 
         self.pages = ["welcome", "downloads", "options", "summary", "progress", "done"]
         self.stack.add_named(self.page_welcome(), "welcome")
-        self.stack.add_named(self.page_downloads(), "downloads")
-        self.stack.add_named(self.page_options(), "options")
-        self.stack.add_named(self.page_summary(), "summary")
-        self.stack.add_named(self.page_progress(), "progress")
-        self.stack.add_named(self.page_done(), "done")
-        self.stack.add_named(self.page_uninstall(), "uninstall")
+        # every page scrolls, so the window fits small screens (and GTK does not complain)
+        for name, page in (("downloads", self.page_downloads()), ("options", self.page_options()),
+                           ("summary", self.page_summary()), ("progress", self.page_progress()),
+                           ("done", self.page_done()), ("uninstall", self.page_uninstall())):
+            scroll = Gtk.ScrolledWindow(vexpand=True, hscrollbar_policy=Gtk.PolicyType.NEVER)
+            scroll.set_child(page)
+            self.stack.add_named(scroll, name)
         self.mode = "install"
         self.inhibit_cookie = 0
         self.recent = []
@@ -396,7 +397,8 @@ class Installer(Gtk.ApplicationWindow):
         self.nav_hint.set_text("")
         self.next_btn.remove_css_class("destructive-action")
         self.next_btn.add_css_class("suggested-action")
-        self.next_btn.set_label({"summary": "Install", "uninstall": "Uninstall…"}.get(name, "Next"))
+        self.next_btn.set_label({"summary": "Repair" if installed_inventor(self.settings) else "Install",
+                                 "uninstall": "Uninstall…"}.get(name, "Next"))
         if name == "summary":
             self.fill_summary()
         if name == "welcome":
@@ -783,8 +785,14 @@ class Installer(Gtk.ApplicationWindow):
         pk = {"arch": "pacman (updates the system together with the new packages, as Arch requires)",
               "debian": "apt", "fedora": "dnf"}.get(distro, "your package manager")
         sel = self.selected_downloads()
+        repair = installed_inventor(self.settings)
         lines = [
-            "<b>What happens</b>",
+            "<b>Inventor is already installed</b> in %s - this run checks every step and does only what is "
+            "missing or broken (a repair). Finished parts are skipped, your files are not touched." %
+            esc(self.settings["INV_PREFIX"]), "",
+        ] if repair else []
+        lines += [
+            "<b>What happens</b>" if not repair else "<b>The steps</b>",
             "1. System packages are installed with %s - this asks for your password once." % esc(pk),
             "2. This project's Wine (~220 MB) is downloaded and checked against its SHA-256.",
             "3. The downloads are unpacked (~10 GB, several minutes).",
