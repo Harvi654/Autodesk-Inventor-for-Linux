@@ -7,6 +7,8 @@
 set -euo pipefail
 cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.."
 
+# the scripts chmod +x each other - not a change worth blocking an update for
+git config core.fileMode false
 git fetch --quiet --tags origin
 if git symbolic-ref -q HEAD >/dev/null; then
     echo "    on branch $(git symbolic-ref --short HEAD): git pull"
