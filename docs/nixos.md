@@ -108,7 +108,7 @@ Validated on 2026-10-20 with the library pinned to
   builds, namespace/FUSE ownership, shared helper/application credentials,
   runtime cleanup, and browser callback VM checks passed.
 
-## Runtime evidence and remaining validation
+## Runtime evidence
 
 A fresh test state under `/tmp/inventor-flake-qa/data4` launched Inventor 2026.4,
 displayed its licensing UI, handed sign-in to the user's normal browser, and
@@ -117,8 +117,16 @@ Inventor window opened. The user's original browser callback association was
 restored afterward. Normal exit returned status 0 in both software-graphics and
 system-graphics tests. System graphics detected the NVIDIA RTX 3060.
 
-Creating a standard part in the hidden Xvfb desktop stops at “Loading…” with
-both graphics setups. Part creation, save, and reopen therefore remain
-unverified; normal-desktop manual validation is pending. The cause has not yet
-been established. Passing the build, sign-in, or flake checks does not prove
-this remaining acceptance gate.
+The user then ran the exact launcher above on the normal desktop with system
+graphics and the separate authenticated test state. They confirmed creating a
+basic part, saving it, closing and reopening it, and exiting Inventor. The saved
+`nix-flake-smoke.ipt` is 132,608 bytes with the expected OLE compound-file header
+(`d0cf11e0a1b11ae1`), SHA-256
+`74e1513cb8c460b12322162e08f83bf45a33a20b295008d62c36164998f7ad1a`.
+This completes the basic runtime smoke test; broader Inventor features and
+performance have not been validated.
+
+The hidden Xvfb desktop still stops at “Loading…” when creating a standard part
+with either graphics setup. Its cause remains undetermined; the successful
+normal-desktop test establishes the supported smoke-test result. The isolated
+desktop was stopped, and the authenticated test state was preserved.
