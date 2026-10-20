@@ -33,22 +33,24 @@ chmod +x "$SCRIPTS_DIR/gui/askpass.py"
 # "Inventor on Linux - Setup" in the app menu: this installer again later
 # (repair, update). Removed by install-desktop-integration.sh --uninstall.
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
-ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
-mkdir -p "$APPS" "$ICON_DIR"
-cp -f "$PROJECT_DIR/config/icons/inventor-on-linux.svg" "$ICON_DIR/inventor-on-linux.svg"
+HICOLOR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
+mkdir -p "$APPS" "$HICOLOR/scalable/apps" "$HICOLOR/256x256/apps"
+cp -f "$PROJECT_DIR/config/icons/inventor-on-linux.svg" "$HICOLOR/scalable/apps/inventor-on-linux.svg"
+cp -f "$PROJECT_DIR/config/icons/inventor-on-linux.png" "$HICOLOR/256x256/apps/inventor-on-linux.png"
 cat > "$APPS/io.github.harvi654.InventorInstaller.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Inventor on Linux - Setup
 Comment=Install, repair or update Autodesk Inventor on Linux
 Exec=bash "$SCRIPTS_DIR/install-gui.sh"
-Icon=inventor-on-linux
+Icon=$HICOLOR/256x256/apps/inventor-on-linux.png
 Terminal=false
 Categories=System;Settings;
 Keywords=Inventor;Autodesk;CAD;install;update;
 StartupWMClass=io.github.harvi654.InventorInstaller
 DESKTOP
 update-desktop-database "$APPS" 2>/dev/null || true
-gtk-update-icon-cache -q -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+gtk-update-icon-cache -q -f -t "$HICOLOR" 2>/dev/null || true
+for k in kbuildsycoca6 kbuildsycoca5; do command -v "$k" >/dev/null && { "$k" >/dev/null 2>&1 || true; break; }; done
 
 exec python3 -I "$SCRIPTS_DIR/gui/installer.py" "$@"

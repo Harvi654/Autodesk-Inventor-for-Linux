@@ -2,16 +2,57 @@
 <defs>
 <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a3140"/><stop offset="1" stop-color="#161b24"/></linearGradient>
 <radialGradient id="glow" cx="0.5" cy="0.45" r="0.5"><stop offset="0" stop-color="#f2b824" stop-opacity="0.18"/><stop offset="1" stop-color="#f2b824" stop-opacity="0"/></radialGradient>
-<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#f2b824" fill-opacity="0.12"/><line x1="0" y1="0" x2="0" y2="8" stroke="#f2b824" stroke-opacity="0.55" stroke-width="2"/></pattern>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line x1="0" y1="0" x2="0" y2="8" stroke="#f2b824" stroke-opacity="0.5" stroke-width="2"/></pattern>
 </defs>
 <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
 <rect x="8" y="8" width="240" height="240" rx="52" fill="url(#glow)"/>
 <rect x="8.5" y="8.5" width="239" height="239" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
-<polygon points="54.0,73.5 180.0,73.5 202.0,56.5 76.0,56.5" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
-<polygon points="180.0,73.5 180.0,102.9 202.0,85.9 202.0,56.5" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
-<polygon points="131.7,102.9 131.7,170.1 153.7,153.1 153.7,85.9" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
-<polygon points="180.0,170.1 180.0,199.5 202.0,182.5 202.0,153.1" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
-<polygon points="180.0,199.5 54.0,199.5 76.0,182.5 202.0,182.5" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
-<polygon points="54.0,73.5 180.0,73.5 180.0,102.9 131.7,102.9 131.7,170.1 180.0,170.1 180.0,199.5 54.0,199.5 54.0,170.1 102.3,170.1 102.3,102.9 54.0,102.9" fill="url(#hatch)" stroke="#f2b824" stroke-width="4.0" stroke-linejoin="round"/>
-
+<polygon points="49.0,154.0 92.7,154.0 112.7,138.8 69.0,138.8" fill="#4a4022" stroke="none"/>
+<polygon points="119.3,154.0 163.0,154.0 183.0,138.8 139.3,138.8" fill="#4a4022" stroke="none"/>
+<polygon points="119.3,93.2 119.3,154.0 139.3,138.8 139.3,78.0" fill="#4a4022" stroke="none"/>
+<polygon points="163.0,154.0 163.0,180.6 183.0,165.4 183.0,138.8" fill="#4a4022" stroke="none"/>
+<polygon points="163.0,66.6 163.0,93.2 183.0,78.0 183.0,51.4" fill="#4a4022" stroke="none"/>
+<polygon points="49.0,66.6 163.0,66.6 183.0,51.4 69.0,51.4" fill="#4a4022" stroke="none"/>
+<polygon points="49.0,66.6 163.0,66.6 163.0,93.2 119.3,93.2 119.3,154.0 163.0,154.0 163.0,180.6 49.0,180.6 49.0,154.0 92.7,154.0 92.7,93.2 49.0,93.2" fill="#2b2a24" stroke="none"/>
+<polygon points="49.0,66.6 163.0,66.6 163.0,93.2 119.3,93.2 119.3,154.0 163.0,154.0 163.0,180.6 49.0,180.6 49.0,154.0 92.7,154.0 92.7,93.2 49.0,93.2" fill="url(#hatch)" stroke="none"/>
+<line x1="183.0" y1="78.0" x2="139.3" y2="78.0" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="183.0" y1="165.4" x2="69.0" y2="165.4" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="69.0" y1="165.4" x2="69.0" y2="138.8" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="112.7" y1="138.8" x2="112.7" y2="78.0" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="112.7" y1="78.0" x2="69.0" y2="78.0" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="69.0" y1="78.0" x2="69.0" y2="51.4" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="119.3" y1="93.2" x2="139.3" y2="78.0" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="49.0" y1="180.6" x2="69.0" y2="165.4" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="92.7" y1="154.0" x2="112.7" y2="138.8" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="92.7" y1="93.2" x2="112.7" y2="78.0" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="49.0" y1="93.2" x2="69.0" y2="78.0" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="92.7" y1="138.8" x2="112.7" y2="138.8" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="139.3" y1="78.0" x2="139.3" y2="93.2" stroke="#f2b824" stroke-opacity="0.75" stroke-width="2" stroke-dasharray="5 4" stroke-linecap="butt"/>
+<line x1="69.0" y1="51.4" x2="183.0" y2="51.4" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="183.0" y1="51.4" x2="183.0" y2="78.0" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="139.3" y1="138.8" x2="183.0" y2="138.8" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="183.0" y1="138.8" x2="183.0" y2="165.4" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="69.0" y1="138.8" x2="92.7" y2="138.8" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="139.3" y1="93.2" x2="139.3" y2="138.8" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="49.0" y1="66.6" x2="69.0" y2="51.4" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="66.6" x2="183.0" y2="51.4" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="93.2" x2="183.0" y2="78.0" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="119.3" y1="154.0" x2="139.3" y2="138.8" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="154.0" x2="183.0" y2="138.8" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="180.6" x2="183.0" y2="165.4" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="49.0" y1="154.0" x2="69.0" y2="138.8" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="49.0" y1="66.6" x2="163.0" y2="66.6" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="66.6" x2="163.0" y2="93.2" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="93.2" x2="119.3" y2="93.2" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="119.3" y1="93.2" x2="119.3" y2="154.0" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="119.3" y1="154.0" x2="163.0" y2="154.0" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="154.0" x2="163.0" y2="180.6" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="163.0" y1="180.6" x2="49.0" y2="180.6" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="49.0" y1="180.6" x2="49.0" y2="154.0" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="49.0" y1="154.0" x2="92.7" y2="154.0" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="92.7" y1="154.0" x2="92.7" y2="93.2" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="92.7" y1="93.2" x2="49.0" y2="93.2" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<line x1="49.0" y1="93.2" x2="49.0" y2="66.6" stroke="#f2b824" stroke-width="3.6" stroke-linecap="round"/>
+<circle cx="192" cy="192" r="46" fill="#161b24"/>
+<path d="M192.0,162.0 L198.3,152.5 L204.4,154.0 L205.6,165.3 L209.6,167.7 L220.3,163.7 L224.4,168.5 L218.7,178.4 L220.5,182.7 L231.5,185.7 L232.0,192.0 L221.6,196.7 L220.5,201.3 L227.6,210.2 L224.4,215.5 L213.2,213.2 L209.6,216.3 L210.2,227.6 L204.4,230.0 L196.7,221.6 L192.0,222.0 L185.7,231.5 L179.6,230.0 L178.4,218.7 L174.4,216.3 L163.7,220.3 L159.6,215.5 L165.3,205.6 L163.5,201.3 L152.5,198.3 L152.0,192.0 L162.4,187.3 L163.5,182.7 L156.4,173.8 L159.6,168.5 L170.8,170.8 L174.4,167.7 L173.8,156.4 L179.6,154.0 L187.3,162.4 Z M180.0,192.0 a12.0,12.0 0 1,0 24.0,0 a12.0,12.0 0 1,0 -24.0,0 Z" fill="#f2b824" fill-rule="evenodd" stroke="#161b24" stroke-width="3" stroke-linejoin="round"/>
 </svg>
