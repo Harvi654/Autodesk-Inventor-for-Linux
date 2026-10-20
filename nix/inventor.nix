@@ -91,6 +91,23 @@ overlayfsLib.mkWindowsPackage {
   workingDirectory = "/drive_c/Program Files/Autodesk/Inventor 2026/Bin";
   src = media;
   overlayDependencies = [ webview2 ];
+  # These replace Wine's stock DLLs; keep them when the library prunes duplicates.
+  extraPathsToInclude =
+    lib.concatMap
+      (
+        directory:
+        map (dll: "windows/${directory}/${dll}.dll") [
+          "d3d8"
+          "d3d9"
+          "d3d10core"
+          "d3d11"
+          "dxgi"
+        ]
+      )
+      [
+        "system32"
+        "syswow64"
+      ];
   unshareInstall = { session, ... }: ''
     set -euo pipefail
     export PATH=${lib.makeBinPath tools}:${modules.runtime.toolsPackage}/bin:$PATH
@@ -126,7 +143,7 @@ overlayfsLib.mkWindowsPackage {
   '';
   runtimeEnvVars = {
     WINE_LARGE_ADDRESS_AWARE = "1";
-    WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d;d3d8,d3d9,d3d10core,d3d11,dxgi=n";
+    WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d";
   };
   urlSchemes = [ "adskidmgr" ];
   entrypointWrapper = entrypoint: ''
