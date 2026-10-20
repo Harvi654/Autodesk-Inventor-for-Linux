@@ -34,16 +34,21 @@ chmod +x "$SCRIPTS_DIR/gui/askpass.py"
 # (repair, update). Removed by install-desktop-integration.sh --uninstall.
 APPS="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 HICOLOR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor"
-mkdir -p "$APPS" "$HICOLOR/scalable/apps" "$HICOLOR/256x256/apps"
-cp -f "$PROJECT_DIR/config/icons/inventor-on-linux.svg" "$HICOLOR/scalable/apps/inventor-on-linux.svg"
-cp -f "$PROJECT_DIR/config/icons/inventor-on-linux.png" "$HICOLOR/256x256/apps/inventor-on-linux.png"
+mkdir -p "$APPS"
+# one PNG per size: a simplified drawing up to 32 px, the detailed one above
+for png in "$PROJECT_DIR"/config/icons/hicolor/*/inventor-on-linux.png; do
+    size="$(basename "$(dirname "$png")")"
+    mkdir -p "$HICOLOR/$size/apps"
+    cp -f "$png" "$HICOLOR/$size/apps/inventor-on-linux.png"
+done
+rm -f "$HICOLOR/scalable/apps/inventor-on-linux.svg"   # older version; a scalable icon would win over the small PNGs
 cat > "$APPS/io.github.harvi654.InventorInstaller.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Name=Inventor on Linux - Setup
 Comment=Install, repair or update Autodesk Inventor on Linux
 Exec=bash "$SCRIPTS_DIR/install-gui.sh"
-Icon=$HICOLOR/256x256/apps/inventor-on-linux.png
+Icon=inventor-on-linux
 Terminal=false
 Categories=System;Settings;
 Keywords=Inventor;Autodesk;CAD;install;update;
