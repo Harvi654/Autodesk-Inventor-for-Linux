@@ -86,6 +86,10 @@ For Wine installers that fail creating directory junctions or symbolic links, in
 
 The fork's `mkWindowsPackage { portableReparsePoints = true; ... }` provides a prefix-scoped build adapter and selects materialized mode. It converts supported directory reparse records into relative Unix symlinks before layer capture. Call `${session.commands.normalizeReparsePoints} "$WINEPREFIX"` before native Linux postprocessing needs to follow installer-created links. Verify Windows traversal with the exact runtime and inspect captured links. Unsupported targets and nonempty placeholders fail rather than lose data. Keep host security policy unchanged.
 
+When installing DXVK or other replacements for stock Wine DLLs inside `mkWindowsPackage`, retain their `windows/system32/...` and `windows/syswow64/...` paths with `extraPathsToInclude`; the library prunes a stock-DLL path list without comparing replacement contents. Inspect the captured layer, since successful installation alone does not prove the replacements survived. Keep per-application registry overrides effective: global `WINEDLLOVERRIDES` can override WebView2's builtin graphics settings.
+
+Runtime service helpers must share the application's user mapping. Running hooks as namespace root and Wine as a mapped user creates separate Wine servers for the same prefix; compare process namespaces and add a prelaunch/application UID regression in the library. The fork now drops namespace root after mounting and runs hooks, callbacks, the application, and cleanup together. Mutable databases captured during installation need writable copies in the user layer; a targeted `chmod u+w` through the mounted prefix copies them up without altering immutable sources. Preserve the source launcher's transient IPC cleanup when adapting persistent service startup.
+
 Use --keep-failed for expensive installer builds when retained logs will help diagnose failures. Keep and poll an existing live build handle rather than launching additional builds just to observe progress. Prefer bounded log excerpts over streaming an entire Wine compilation into the conversation.
 
 ## Integrating existing installer scripts
