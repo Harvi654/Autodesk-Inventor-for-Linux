@@ -119,7 +119,8 @@ class Installer:
         self.image = os.path.abspath(a.image)
         self.prefix = os.path.abspath(os.path.expanduser(a.prefix))
         self.c = os.path.join(self.prefix, "drive_c")
-        self.logdir = os.path.join(PROJECT, "logs", time.strftime("odis-install-%Y%m%d-%H%M%S"))
+        self.logdir = os.path.join(os.environ.get("INV_LOGDIR", os.path.join(PROJECT, "logs")),
+                                   time.strftime("odis-install-%Y%m%d-%H%M%S"))
         self.state_file = os.path.join(self.prefix, ".odis-install-state.json")
         self.env = dict(os.environ, WINEPREFIX=self.prefix,
                         WINEDEBUG=os.environ.get("WINEDEBUG", "fixme-all"))
@@ -316,7 +317,7 @@ class Installer:
 
     def do_7z(self, s, logname, path):
         dest = self.target_dir(s)
-        sevenzip = shutil.which("7z") or shutil.which("7za")
+        sevenzip = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
         if not sevenzip:
             raise RuntimeError("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
         return self.run([sevenzip, "x", "-y", "-o" + dest, path], logname) == 0
@@ -587,7 +588,7 @@ def unpack_exe(exe, dry_run=False):
     marker = os.path.join(dest, ".unpacked")
     if os.path.isfile(marker):
         return dest
-    sevenzip = shutil.which("7z") or shutil.which("7za")
+    sevenzip = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
     if not sevenzip:
         sys.exit("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
     print("unpacking %s -> %s" % (exe, dest), flush=True)
@@ -610,6 +611,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("image")
     ap.add_argument("--prefix", default="~/.wine-invtest")
+    ap.add_argument("--prepared-prefix", action="store_true",
+                    help="allow installation into a prepared Wine base prefix (for declarative builds)")
     ap.add_argument("--lang", default="en-US")
     ap.add_argument("--from", dest="start", type=int, default=1)
     ap.add_argument("--only")
@@ -629,7 +632,7 @@ def main():
     if odis.image_kind(a.image) is None:
         sys.exit("%s is neither an install image (manifest/app.*.xml) nor an update (Bundle setup.xml)" % a.image)
     prefix = os.path.expanduser(a.prefix)
-    if (os.path.isdir(os.path.join(prefix, "drive_c")) and not a.dry_run and
+    if (os.path.isdir(os.path.join(prefix, "drive_c")) and not a.dry_run and not a.prepared_prefix and
             not os.path.isfile(os.path.join(prefix, ".odis-install-state.json"))):
         sys.exit("refusing to install into %s: it exists and was not made by this installer "
                  "(e.g. a prefix copied from Windows) - move it away or choose another --prefix" % prefix)
