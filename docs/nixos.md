@@ -274,3 +274,58 @@ user confirmed that a window appears, but remains unresponsive after resolving
 a separate sign-in/licensing issue. Native Wayland is therefore not a usable
 alternative to the regular launcher at present. Close Inventor before changing
 launchers because they share persistent state and the running Wine session.
+
+## Experimental GPU ray tracing
+
+GPU ray tracing rendered the sample `madeinlinux.ipt` successfully on an NVIDIA
+RTX 3060 with the system Vulkan driver. The isolated X11 desktop showed a
+ray-traced viewport and the **GPU** progress panel completed its Low-quality
+render in about two seconds; High quality completed in about twelve seconds.
+This verifies the complete shader and shared-texture
+path, beyond the standalone DXR capability checks. Other GPUs and large assemblies
+have not been validated.
+
+The experimental package adds Nixpkgs' Windows vkd3d-proton DLLs to the existing
+DXVK setup and uses the system Vulkan drivers. It reuses the application layer
+without rerunning the Autodesk installer. Try it from this checkout:
+
+```sh
+nix run .#inventor-rt
+```
+
+Close Inventor before switching launchers. This uses the normal authenticated
+user state and sets Inventor 2026's `Driver\EnableHydra` preference to `1` before
+startup. Scoped Wine, DXVK, and vkd3d-proton compatibility patches fix Autodesk's
+OpenGL context setup, ray-payload matrix shader translation, and D3D12-to-D3D11
+shared textures. The ordinary launcher does not set the Hydra preference;
+Inventor may change it after its capability checks. To restore the prior value,
+see [the runtime helper notes](../runtime/README.md).
+
+In Inventor, enable **Tools → Application Options → Hardware → Viewport GPU
+Ray Tracing**, open a solid part, choose **View → Visual Style → Realistic**,
+and enable **Ray Tracing**. The progress panel should say **GPU**.
+
+For opt-in NixOS integration:
+
+```nix
+programs.autodesk-inventor = {
+  enable = true;
+  gpuRayTracing = true;
+};
+```
+
+This selects `inventor-rt` for the desktop entries and browser callback handler.
+If you override `package`, also pass `gpuRayTracing = true` to `lib.mkInventor`.
+The native Wayland limitation above still applies.
+
+`nix run .#dxr-check` checks DXR support in an ephemeral prefix.
+`nix run .#shared-texture-check` checks the D3D12-to-D3D11 texture handoff. For Autodesk
+plugin diagnostics, build `.#dxr-check-inventor` and follow the
+[runtime helper notes](../runtime/README.md). Shader caching is under
+`$XDG_CACHE_HOME/autodesk-inventor-2026/vkd3d`, and renderer logs are under
+`$XDG_STATE_HOME/autodesk-inventor-2026/vkd3d.log`, with the usual `~/.cache`
+and `~/.local/state` defaults. A missing renderer log can mean Inventor has
+not attempted D3D12 initialization.
+
+The reusable installation, runtime configuration, and diagnostic sources live
+in `runtime/`; the Nix expressions provide packages and launcher wiring.
