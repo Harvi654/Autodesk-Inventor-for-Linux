@@ -11,6 +11,6 @@ mkdir -p "$inventor_log_root"
 wine 'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' \
     >>"$inventor_log_root/identity.log" 2>&1 &
 sleep 5
-wine "C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing\$licensing_version\AdskLicensingService\AdskLicensingService.exe" \
+wine "$licensing_root/$licensing_version/AdskLicensingService/AdskLicensingService.exe" \
     >>"$inventor_log_root/licensing.log" 2>&1 &
 sleep 5
