@@ -82,6 +82,10 @@ When a Nixpkgs dependency fails its own tests, inspect the retained test output 
 
 Preserve Wine registry key metadata through both JSON conversion and runtime layer merging. Dropping the #link marker while retaining SymbolicLinkValue turns aliases such as CurrentControlSet into ordinary keys; symptoms include missing RpcSs/SamSs services and unregistered COM classes. Verify registry-link round trips and merges, not only ordinary registry values. Fix the converters and merger in the library instead of adding application-specific duplicate registry keys.
 
+For Wine installers that fail creating directory junctions or symbolic links, inspect the vendor log and test both link creation and traversal. Newer Wine stores directory links in `user.WINEREPARSE` xattrs and renames placeholders with a `?` suffix. Nix builds can deny xattr writes, NAR does not preserve that metadata, and kernel overlayfs can reject the directory rename even when Wine reports successful creation. Selecting direct mode alone does not solve the xattr problem.
+
+The fork's `mkWindowsPackage { portableReparsePoints = true; ... }` provides a prefix-scoped build adapter and selects materialized mode. It converts supported directory reparse records into relative Unix symlinks before layer capture. Call `${session.commands.normalizeReparsePoints} "$WINEPREFIX"` before native Linux postprocessing needs to follow installer-created links. Verify Windows traversal with the exact runtime and inspect captured links. Unsupported targets and nonempty placeholders fail rather than lose data. Keep host security policy unchanged.
+
 Use --keep-failed for expensive installer builds when retained logs will help diagnose failures. Keep and poll an existing live build handle rather than launching additional builds just to observe progress. Prefer bounded log excerpts over streaming an entire Wine compilation into the conversation.
 
 ## Integrating existing installer scripts
