@@ -60,6 +60,18 @@ class PreparedPrefixTests(unittest.TestCase):
             instance.a.preinstalled_webview2 = False
             self.assertFalse(instance.use_preinstalled_webview2({"name": "WebView2"}))
 
+    def test_licensing_without_standalone_sdk_has_no_dangling_link(self):
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as directory:
+            instance = installer.Installer(Namespace(image=directory, prefix=directory, lang="en-US"))
+            base = Path(instance.c) / "Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
+            (base / "15.1.0.12339").mkdir(parents=True)
+            (base / "CurrentSDK").symlink_to("15.1.0.12339/AdskLicensingSDK")
+            with patch.object(instance, "log"):
+                self.assertTrue(instance.finish_licensing())
+            self.assertEqual(os.readlink(base / "Current"), "15.1.0.12339")
+            self.assertFalse(os.path.lexists(base / "CurrentSDK"))
+
     def test_licensing_junction_recovery_retries_vendor_installer(self):
         from argparse import Namespace
         with tempfile.TemporaryDirectory() as directory:
@@ -68,6 +80,7 @@ class PreparedPrefixTests(unittest.TestCase):
             service = base / "15.1.0.12339/AdskLicensingService/AdskLicensingService.exe"
             service.parent.mkdir(parents=True)
             service.write_bytes(b"MZ")
+            (base / "15.1.0.12339/AdskLicensingSDK").mkdir()
             log = Path(instance.c) / f"users/{installer.USER}/AppData/Local/Temp/AdskLicensing-install.log"
             log.parent.mkdir(parents=True)
             step = {"name": "AdskLicensing", "file": "setup.exe", "params": "--mode unattended"}

@@ -327,8 +327,10 @@ class Installer:
                     os.remove(p)
                 elif os.path.isdir(p):
                     os.rmdir(p)   # empty placeholder; never delete real content
-            os.symlink(target, os.path.join(base, name))
-        self.log("        version.ini (%s), Current, CurrentSDK written" % ver)
+            # Recent licensing payloads omit the old standalone SDK directory.
+            if os.path.isdir(os.path.join(base, target)):
+                os.symlink(target, os.path.join(base, name))
+        self.log("        version.ini (%s) and available Current links written" % ver)
         return True
 
     def target_dir(self, s):
