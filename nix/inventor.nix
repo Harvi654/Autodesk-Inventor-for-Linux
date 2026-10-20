@@ -72,8 +72,12 @@ let
       url = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/18c66e75-0385-4019-be3f-3f4a2bb867d5/MicrosoftEdgeWebView2RuntimeInstallerX64.exe";
       hash = "sha256-rCLs3BnFuIuH8/p1LADalUFlOo9cDF/Eo7K26+ZZH2k=";
     };
-    silentFlags = "/silent /install";
-    wineserverWaitTimeout = 60;
+    unshareInstall = { session, ... }: ''
+      set -euo pipefail
+      ${session.commands.wine} "$src" /silent /install
+      ${pkgs.coreutils}/bin/timeout 60 ${session.commands.wineserver} --wait || ${session.commands.wineserver} -k
+      test -n "$(${pkgs.findutils}/bin/find "$WINEPREFIX/drive_c" -name msedgewebview2.exe -print -quit)"
+    '';
   };
 in
 overlayfsLib.mkWindowsPackage {

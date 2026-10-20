@@ -11,6 +11,10 @@ top-level patch in `patches/`. Nixpkgs and the nix-overlayfs fork are pinned in
 The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
 mapping and sandbox MSI link-action fix, published from the local development
 fork. That base environment builds successfully with the patched Wine runtime.
+The pinned library also preserves Wine's registry symbolic-link markers and
+propagates failed installer exit statuses. The WebView2 layer has been built
+and checked for its actual executable; Inventor installation and GUI validation
+are still pending.
 A separate libgsf patch fixes empty OLE streams; it was
 verified by rebuilding msitools with all 29 of its tests enabled and passing.
 
