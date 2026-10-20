@@ -24,7 +24,9 @@ INV_TYPES=(
 
 if [ "${1:-}" = "--uninstall" ]; then
     rm -f "$APPS/adskidmgr-handler.desktop" "$APPS/$NAME.desktop" "$ICONS/$NAME.png" "$ICONS/$NAME"-*.png \
-          "$BIN/adskidmgr-callback" "$BIN/launch-inventor" "$MIME_XML"
+          "$BIN/adskidmgr-callback" "$BIN/launch-inventor" "$MIME_XML" \
+          "$APPS/io.github.harvi654.InventorInstaller.desktop" \
+          "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps/inventor-on-linux.svg"
     update-desktop-database "$APPS" 2>/dev/null || true
     update-mime-database "$MIME_DIR" 2>/dev/null || true
     ok "removed"; exit 0

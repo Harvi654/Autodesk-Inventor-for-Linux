@@ -800,7 +800,7 @@ class Installer(Gtk.ApplicationWindow):
         self.run_command(args, "Installing Inventor", install=True)
 
     def start_update(self):
-        script = ('set -e; cd "$1"; echo "Updating this project (git pull)..."; git pull --ff-only; '
+        script = ('set -e; cd "$1"; echo "Updating this project..."; bash scripts/update-project.sh; '
                   'echo "Wine..."; bash scripts/get-wine.sh; '
                   'echo "App launcher and file types..."; bash scripts/install-desktop-integration.sh')
         self.last_args = ["bash", "-c", script, "bash", REPO]
@@ -900,6 +900,7 @@ class Installer(Gtk.ApplicationWindow):
 def main():
     if os.geteuid() == 0:
         sys.exit("run the installer as your normal user, not as root")
+    Gtk.Window.set_default_icon_name("inventor-on-linux")  # X11; on Wayland the .desktop file named APP_ID
     app = Gtk.Application(application_id=APP_ID)
     app.connect("activate", lambda a: (a.get_active_window() or Installer(a)).present())
     return app.run([sys.argv[0]])

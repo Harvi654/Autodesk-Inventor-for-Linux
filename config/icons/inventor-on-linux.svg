@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+<defs>
+<linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a3140"/><stop offset="1" stop-color="#161b24"/></linearGradient>
+<radialGradient id="glow" cx="0.5" cy="0.45" r="0.5"><stop offset="0" stop-color="#f2b824" stop-opacity="0.18"/><stop offset="1" stop-color="#f2b824" stop-opacity="0"/></radialGradient>
+<pattern id="hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="8" height="8" fill="#f2b824" fill-opacity="0.12"/><line x1="0" y1="0" x2="0" y2="8" stroke="#f2b824" stroke-opacity="0.55" stroke-width="2"/></pattern>
+</defs>
+<rect x="8" y="8" width="240" height="240" rx="52" fill="url(#bg)"/>
+<rect x="8" y="8" width="240" height="240" rx="52" fill="url(#glow)"/>
+<rect x="8.5" y="8.5" width="239" height="239" rx="51.5" fill="none" stroke="#ffffff" stroke-opacity="0.08"/>
+<polygon points="54.0,73.5 180.0,73.5 202.0,56.5 76.0,56.5" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
+<polygon points="180.0,73.5 180.0,102.9 202.0,85.9 202.0,56.5" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
+<polygon points="131.7,102.9 131.7,170.1 153.7,153.1 153.7,85.9" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
+<polygon points="180.0,170.1 180.0,199.5 202.0,182.5 202.0,153.1" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
+<polygon points="180.0,199.5 54.0,199.5 76.0,182.5 202.0,182.5" fill="#f2b824" fill-opacity="0.22" stroke="#f2b824" stroke-width="3.6" stroke-linejoin="round"/>
+<polygon points="54.0,73.5 180.0,73.5 180.0,102.9 131.7,102.9 131.7,170.1 180.0,170.1 180.0,199.5 54.0,199.5 54.0,170.1 102.3,170.1 102.3,102.9 54.0,102.9" fill="url(#hatch)" stroke="#f2b824" stroke-width="4.0" stroke-linejoin="round"/>
+
+</svg>

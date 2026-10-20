@@ -141,6 +141,23 @@ The folder then looks like this (its name does not matter):
   `Create_Installer_*.exe` tools - they are for Windows. If they are in the
   folder, they are skipped.
 
+### The easy way: one command
+
+With the download from step 1 in your Downloads folder, run this in a terminal:
+
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/Harvi654/Autodesk-Inventor-for-Linux/main/get.sh)
+```
+
+It installs `git` if needed, downloads this project into `~/inventor-on-linux`
+(the newest release) and starts the graphical installer, which finds the
+download, shows every phase with a progress bar and asks for your password in
+a window. [`get.sh`](get.sh) is short - read it first if you like. Later,
+**Inventor on Linux - Setup** in your app menu repairs or updates the
+installation.
+
+Or step by step:
+
 ### 2. Get this project
 
 ```bash
