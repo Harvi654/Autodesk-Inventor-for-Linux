@@ -13,6 +13,7 @@ Start it with: bash scripts/install-gui.sh
 import glob
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -52,20 +53,44 @@ GB = 1024 ** 3
 # --------------------------------------------------------------------- system
 
 def project_settings():
-    """INV_PREFIX, INV_DATA_DIR, ... as the scripts see them (config.env included)."""
-    names = ["INV_PREFIX", "INV_DATA_DIR", "INV_DISTRO", "INV_YEAR"]
-    script = 'source "$1/lib/common.sh" >/dev/null 2>&1; printf "%s\\n" ' + " ".join('"$%s"' % n for n in names)
+    """INV_PREFIX, INV_DATA_DIR, ... as the scripts see them (config.env included),
+    and "installs": the installed Inventor releases [(year, prefix)], oldest first."""
+    names = ["INV_PREFIX", "INV_DATA_DIR", "INV_DISTRO", "INV_YEAR", "INV_CONFIG_PREFIX"]
+    script = ('source "$1/lib/common.sh" >/dev/null 2>&1; printf "%s\\n" '
+              + " ".join('"$%s"' % n for n in names) + '; inventor_installs')
     try:
         out = subprocess.run(["bash", "-c", script, "bash", SCRIPTS], capture_output=True,
                              text=True, timeout=30).stdout.splitlines()
     except (OSError, subprocess.SubprocessError):
         out = []
-    vals = dict(zip(names, out + [""] * len(names)))
+    vals = dict(zip(names, out[:len(names)] + [""] * len(names)))
+    vals["installs"] = [tuple(l.split("\t", 1)) for l in out[len(names):] if "\t" in l]
     home = os.path.expanduser("~")
     vals["INV_YEAR"] = vals["INV_YEAR"] or "2026"
     vals["INV_PREFIX"] = vals["INV_PREFIX"] or os.path.join(home, ".wine-inventor" + vals["INV_YEAR"])
     vals["INV_DATA_DIR"] = vals["INV_DATA_DIR"] or os.path.join(home, "Inventor")
     return vals
+
+
+YEAR = re.compile(r"^Inventor(?:_Professional)?_(20\d\d)", re.I)
+
+
+def release_of(path):
+    """2027 for Inventor_Professional_2027_..., Inventor_2027.1_Update.exe or such a folder; None else."""
+    m = YEAR.match(os.path.basename(path.rstrip("/")))
+    return m.group(1) if m else None
+
+
+def prefix_for(settings, year):
+    """Where Inventor <year> is (or goes): its installed prefix; for the very first
+    installation the prefix from config.env; else ~/.wine-inventor<year>."""
+    for y, p in settings["installs"]:
+        if y == year:
+            return p
+    cfg = settings.get("INV_CONFIG_PREFIX") or ""
+    if cfg and not settings["installs"]:
+        return cfg
+    return os.path.join(os.path.expanduser("~"), ".wine-inventor" + year)
 
 
 def os_release():
@@ -139,9 +164,8 @@ def system_checks(settings):
     return checks
 
 
-def installed_inventor(settings):
-    exe = os.path.join(settings["INV_PREFIX"], "drive_c", "Program Files", "Autodesk",
-                       "Inventor " + settings["INV_YEAR"], "Bin", "Inventor.exe")
+def installed_inventor(prefix, year):
+    exe = os.path.join(prefix, "drive_c", "Program Files", "Autodesk", "Inventor " + year, "Bin", "Inventor.exe")
     return os.path.isfile(exe)
 
 
@@ -178,7 +202,7 @@ def cached_media():
     cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
                          "inventor-on-linux", "media")
     return sorted(d for d in glob.glob(os.path.join(cache, "*"))
-                  if os.path.isfile(os.path.join(d, ".unpacked")))
+                  if os.path.isfile(os.path.join(d, ".unpacked")) and "inventor" in os.path.basename(d).lower())
 
 
 def dir_size(path):
@@ -216,9 +240,8 @@ def project_version():
         return "unknown"
 
 
-def prefix_not_ours(settings):
+def prefix_not_ours(pre):
     """A prefix folder exists that this installer did not make (install.sh refuses it)."""
-    pre = settings["INV_PREFIX"]
     return os.path.isdir(os.path.join(pre, "drive_c")) and \
         not os.path.isfile(os.path.join(pre, ".odis-install-state.json"))
 
@@ -269,6 +292,9 @@ HINTS = [
     ("close Inventor", "Close Inventor (and other Wine programs) first, then try again."),
     ("none of the downloads is the Inventor installer", "Select the Inventor download itself, not only "
                                                          "the update."),
+    ("downloads of several Inventor releases", "Select the downloads of one Inventor release at a time "
+                                               "(e.g. only 2027), install it, then run the installer again "
+                                               "for the other one."),
     ("not an Inventor download", "One of the selected files is not an Inventor download (e.g. the web "
                                  "installer). Select the ..._db_... files."),
 ]
@@ -329,6 +355,7 @@ class Installer(Gtk.ApplicationWindow):
         self.cancelled = False
         self.running_install = False
         self.last_args = None
+        self.last_env = {}
         self.logfile = None
         self.errors = []
 
@@ -344,8 +371,7 @@ class Installer(Gtk.ApplicationWindow):
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
         header = Gtk.HeaderBar()
-        header.set_title_widget(label("Autodesk Inventor %s on Linux" % self.settings["INV_YEAR"],
-                                      css="heading", wrap=False))
+        header.set_title_widget(label("Autodesk Inventor on Linux", css="heading", wrap=False))
         self.set_titlebar(header)
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.SLIDE_LEFT_RIGHT, vexpand=True)
@@ -386,6 +412,28 @@ class Installer(Gtk.ApplicationWindow):
         self.show_page("welcome")
         self.connect("close-request", self.on_close_request)
 
+    # ---------------------------------------------------------------- target
+
+    def selected_releases(self):
+        """Inventor releases of the selected downloads (from their names)."""
+        return sorted({y for y in (release_of(p) for p in self.selected_downloads()) if y})
+
+    def target(self):
+        """(year, prefix) the next run installs or repairs: the release of the selected
+        downloads; with none selected the newest installed one (a repair)."""
+        rels = self.selected_releases() if hasattr(self, "dl_rows") else []
+        if rels:
+            year = rels[-1]
+        elif self.settings["installs"]:
+            year = self.settings["installs"][-1][0]
+        else:
+            year = self.settings["INV_YEAR"]
+        return year, prefix_for(self.settings, year)
+
+    def target_installed(self):
+        year, prefix = self.target()
+        return installed_inventor(prefix, year)
+
     # ------------------------------------------------------------- navigation
 
     def show_page(self, name):
@@ -397,10 +445,16 @@ class Installer(Gtk.ApplicationWindow):
         self.nav_hint.set_text("")
         self.next_btn.remove_css_class("destructive-action")
         self.next_btn.add_css_class("suggested-action")
-        self.next_btn.set_label({"summary": "Repair" if installed_inventor(self.settings) else "Install",
+        self.next_btn.set_label({"summary": "Repair" if self.target_installed() else "Install",
                                  "uninstall": "Uninstall…"}.get(name, "Next"))
         if name == "summary":
             self.fill_summary()
+        if name == "options":
+            year, prefix = self.target()
+            self.where.set_text("Inventor %s (Wine prefix): %s\nYour files (drive D: in Inventor): %s\n"
+                                "To use other folders set INV_PREFIX / INV_DATA_DIR in config.env "
+                                "(see config.env.example) before installing."
+                                % (year, prefix, self.settings["INV_DATA_DIR"]))
         if name == "welcome":
             self.next_btn.set_sensitive(self.checks_ok)
         elif name == "downloads":
@@ -465,12 +519,12 @@ class Installer(Gtk.ApplicationWindow):
 
     def page_welcome(self):
         box = margin(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12), 24)
-        box.append(label(markup="<span size='x-large' weight='bold'>Install Autodesk Inventor %s</span>"
-                         % self.settings["INV_YEAR"]))
+        box.append(label(markup="<span size='x-large' weight='bold'>Install Autodesk Inventor</span>"))
         box.append(label("Inventor is installed from Autodesk's own download and runs under Wine - "
                          "no Windows, no virtual machine. You need your own Inventor license "
                          "(an education license works). This is an unofficial community project, "
-                         "not made or supported by Autodesk."))
+                         "not made or supported by Autodesk. Several releases (e.g. 2026 and 2027) "
+                         "can be installed side by side, each in its own Wine prefix."))
 
         grid = Gtk.Grid(column_spacing=12, row_spacing=6)
         checks = system_checks(self.settings)
@@ -485,28 +539,33 @@ class Installer(Gtk.ApplicationWindow):
         box.append(frame)
         if not self.checks_ok:
             box.append(label(markup="<b>This system can't run the installation</b> - see the ✗ above."))
-        if prefix_not_ours(self.settings) and not installed_inventor(self.settings):
+        cfg = self.settings.get("INV_CONFIG_PREFIX") or ""
+        if cfg and prefix_not_ours(cfg) and not self.settings["installs"]:
             box.append(label(markup="<b>Note:</b> %s already exists but was not made by this installer. "
                              "The installation refuses to use it - remove or rename it first, or set another "
-                             "INV_PREFIX in config.env." % esc(self.settings["INV_PREFIX"])))
+                             "INV_PREFIX in config.env." % esc(cfg)))
         if wine_running():
             box.append(label(markup="<b>Note:</b> Inventor or another Wine program is running. "
                              "Close it before you install, repair or uninstall."))
 
-        if installed_inventor(self.settings):
+        if self.settings["installs"]:
             inst = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-            inst.append(label(markup="<b>Inventor is already installed</b> in %s."
-                              % esc(self.settings["INV_PREFIX"])))
-            inst.append(label("Next repairs or completes the installation (finished parts are skipped). "
-                              "Or start it, or update this project and its Wine:"))
-            row = Gtk.Box(spacing=8)
-            start = Gtk.Button(label="Start Inventor")
-            start.connect("clicked", lambda *_: self.launch_inventor())
-            update = Gtk.Button(label="Update project and Wine")
+            inst.append(label(markup="<b>Installed</b>"))
+            for year, prefix in self.settings["installs"]:
+                row = Gtk.Box(spacing=8)
+                text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, hexpand=True)
+                text.append(label(markup="<b>Inventor %s</b>" % esc(year)))
+                text.append(label(prefix, css="dim-label caption"))
+                row.append(text)
+                start = Gtk.Button(label="Start", valign=Gtk.Align.CENTER)
+                start.connect("clicked", lambda _b, p=prefix: self.launch_inventor(p))
+                row.append(start)
+                inst.append(row)
+            inst.append(label("Next installs another release (from its download) or repairs an installed "
+                              "one - finished parts are skipped. Or update this project and its Wine:"))
+            update = Gtk.Button(label="Update project and Wine", halign=Gtk.Align.START)
             update.connect("clicked", lambda *_: self.start_update())
-            row.append(start)
-            row.append(update)
-            inst.append(row)
+            inst.append(update)
             frame2 = Gtk.Frame()
             frame2.set_child(margin(inst, 12))
             box.append(frame2)
@@ -534,13 +593,17 @@ class Installer(Gtk.ApplicationWindow):
     # -------------------------------------------------------------- uninstall
 
     def uninstall_items(self):
+        """(key, title, path, default); "rel:2027" = that release: its prefix and menu entry."""
         s = self.settings
         data_home = os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share")
         cache = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "inventor-on-linux")
-        return [
-            ("desktop", "App menu entries, file types, browser sign-in handler",
-             os.path.join(data_home, "applications", "autodesk-inventor-%s.desktop" % s["INV_YEAR"]), True),
-            ("prefix", "Inventor itself (the Wine prefix)", s["INV_PREFIX"], True),
+        items = [("rel:" + y, "Inventor %s - the program in its Wine prefix, its app menu entry" % y, p, True)
+                 for y, p in s["installs"]]
+        if not s["installs"]:
+            items.append(("desktop", "App menu entries, file types, browser sign-in handler",
+                          os.path.join(data_home, "applications", "autodesk-inventor-%s.desktop" % s["INV_YEAR"]),
+                          True))
+        return items + [
             ("wine", "This project's Wine", os.path.join(data_home, "inventor-on-linux"), True),
             ("cache", "Unpacked downloads (Autodesk's files in Downloads stay)", cache, True),
             ("data", "YOUR Inventor files - parts, assemblies, drawings", s["INV_DATA_DIR"], False),
@@ -607,7 +670,19 @@ class Installer(Gtk.ApplicationWindow):
 
         def chosen_cb(idx):
             if idx == 1:
-                args = ["bash", os.path.join(SCRIPTS, "uninstall.sh"), "--yes"] + ["--" + k for k in chosen]
+                # each release with its own prefix, then the shared parts (the project last)
+                un = os.path.join(SCRIPTS, "uninstall.sh")
+                cmds = []
+                for k in chosen:
+                    if k.startswith("rel:"):
+                        year = k[4:]
+                        prefix = dict(self.settings["installs"])[year]
+                        cmds.append("INV_YEAR=%s INV_PREFIX=%s bash %s --yes --prefix --desktop"
+                                    % (year, shlex.quote(prefix), shlex.quote(un)))
+                rest = [k for k in chosen if not k.startswith("rel:")]
+                if rest:
+                    cmds.append("bash %s --yes %s" % (shlex.quote(un), " ".join("--" + k for k in rest)))
+                args = ["bash", "-c", "set -e; " + "; ".join(cmds)]
                 self.last_args = args
                 self.check_wine_then(lambda: self.run_command(args, "Uninstalling", mode="uninstall"))
         self.alert("Remove these?", detail, ["Cancel", "Remove"], chosen_cb)
@@ -693,15 +768,22 @@ class Installer(Gtk.ApplicationWindow):
 
     def update_downloads_state(self):
         sel = self.selected_downloads()
-        installed = installed_inventor(self.settings)
-        ok = bool(sel) or installed
+        installed = bool(self.settings["installs"])
+        rels = self.selected_releases()
+        ok = (bool(sel) or installed) and len(rels) <= 1
         if self.stack.get_visible_child_name() == "downloads":
             self.next_btn.set_sensitive(ok)
         problems = download_problems(sel)
+        if len(rels) > 1:
+            problems.insert(0, "downloads of several releases are selected (%s) - install one release at a "
+                               "time" % ", ".join(rels))
         if sel and problems:
             self.dl_hint.set_markup("<b>Check:</b> " + esc("; ".join(problems)))
         elif sel:
-            self.dl_hint.set_text("%d selected." % len(sel))
+            year, prefix = self.target()
+            self.dl_hint.set_text("%d selected - Inventor %s, %s." % (
+                len(sel), year, "repair of the installation in " + prefix if self.target_installed()
+                else "new installation into " + prefix))
         elif installed:
             self.dl_hint.set_text("Nothing selected - fine for a repair of the existing installation "
                                   "only if its unpacked download is still in the cache.")
@@ -764,10 +846,8 @@ class Installer(Gtk.ApplicationWindow):
                                  ".ipt/.iam/.idw files open in Inventor with a double-click.", True)
         box.append(Gtk.Separator())
         box.append(label(markup="<b>Where things go</b>"))
-        box.append(label("Inventor (Wine prefix): %s\nYour files (drive D: in Inventor): %s\n"
-                         "To use other folders set INV_PREFIX / INV_DATA_DIR in config.env "
-                         "(see config.env.example) before installing."
-                         % (self.settings["INV_PREFIX"], self.settings["INV_DATA_DIR"]), selectable=True))
+        self.where = label("", selectable=True)
+        box.append(self.where)
         return box
 
     # ---------------------------------------------------------------- summary
@@ -785,12 +865,17 @@ class Installer(Gtk.ApplicationWindow):
         pk = {"arch": "pacman (updates the system together with the new packages, as Arch requires)",
               "debian": "apt", "fedora": "dnf"}.get(distro, "your package manager")
         sel = self.selected_downloads()
-        repair = installed_inventor(self.settings)
+        year, prefix = self.target()
+        repair = self.target_installed()
         lines = [
-            "<b>Inventor is already installed</b> in %s - this run checks every step and does only what is "
+            "<b>Inventor %s is already installed</b> in %s - this run checks every step and does only what is "
             "missing or broken (a repair). Finished parts are skipped, your files are not touched." %
-            esc(self.settings["INV_PREFIX"]), "",
-        ] if repair else []
+            (esc(year), esc(prefix)), "",
+        ] if repair else ["<b>Inventor %s</b> goes into %s." % (esc(year), esc(prefix)), ""]
+        others = [y for y, _ in self.settings["installs"] if y != year]
+        if others and not repair:
+            lines += ["Inventor %s stays as it is - each release has its own prefix and menu entry."
+                      % " and ".join(others), ""]
         lines += [
             "<b>What happens</b>" if not repair else "<b>The steps</b>",
             "1. System packages are installed with %s - this asks for your password once." % esc(pk),
@@ -809,7 +894,7 @@ class Installer(Gtk.ApplicationWindow):
         need = (25 if self.sw_content.get_active() else 12) + 1
         if not any(os.path.isdir(p) for p in cached_media()) or any(not os.path.isdir(p) for p in sel):
             need += 15
-        if installed_inventor(self.settings):
+        if repair:
             need = 2
         free = shutil.disk_usage(os.path.expanduser("~")).free / GB
         self.summary_ok = free >= need
@@ -970,7 +1055,7 @@ class Installer(Gtk.ApplicationWindow):
             self.sub.pulse()
         return True
 
-    def run_command(self, args, title, install=False, mode=None):
+    def run_command(self, args, title, install=False, mode=None, env_extra=None):
         self.mode = mode or ("install" if install else "update")
         self.recent = []
         self.show_page("progress")
@@ -999,6 +1084,7 @@ class Installer(Gtk.ApplicationWindow):
         if install:
             self.set_phase(1, PHASES[0][0])
         env = dict(os.environ)
+        env.update(env_extra or {})
         env.update({"INV_GUI": "1", "INV_NONINTERACTIVE": "1",
                     "SUDO_ASKPASS": os.path.join(HERE, "askpass.py"),
                     "PYTHONUNBUFFERED": "1", "TERM": "dumb"})
@@ -1077,12 +1163,16 @@ class Installer(Gtk.ApplicationWindow):
             args.append("--no-content")
         if not self.sw_desktop.get_active():
             args.append("--no-desktop")
+        year, prefix = self.target()
         sel = self.selected_downloads()
-        if not sel:
-            sel = cached_media()
-        args += sel
+        if not sel:   # a repair: the release's download unpacked earlier
+            sel = [p for p in cached_media() if release_of(p) == year]
+        args += ["--prefix", prefix] + sel
         self.last_args = args
-        self.run_command(args, "Installing Inventor", install=True, mode="install")
+        self.last_env = {"INV_YEAR": year}
+        self.installed_target = (year, prefix)
+        self.run_command(args, "Installing Inventor %s" % year, install=True, mode="install",
+                         env_extra=self.last_env)
 
     def start_update(self):
         script = ('set -e; cd "$1"; echo "Updating this project..."; bash scripts/update-project.sh; '
@@ -1133,7 +1223,7 @@ class Installer(Gtk.ApplicationWindow):
 
         if success and self.mode == "uninstall":
             self.done_title.set_text("Removed")
-            gone_self = "--project" in (self.last_args or [])
+            gone_self = "--project" in " ".join(self.last_args or [])
             self.done_text.set_text("The selected parts are removed." + (
                 "\n\nThe installer itself is removed as well. To install again later:\n"
                 "bash <(curl -fsSL https://raw.githubusercontent.com/Harvi654/Autodesk-Inventor-for-Linux/main/get.sh)"
@@ -1144,15 +1234,19 @@ class Installer(Gtk.ApplicationWindow):
         if success:
             self.done_title.set_text("Done")
             if self.mode == "install":
-                text = ("Inventor is installed. The first start asks you to sign in with your Autodesk account "
-                        "in your web browser.\n\nYour files go to %s (drive D: in Inventor)." % self.settings["INV_DATA_DIR"])
+                year, _ = self.installed_target
+                text = ("Inventor %s is installed - in the app menu as \"Autodesk Inventor %s\". The first start "
+                        "asks you to sign in with your Autodesk account in your web browser.\n\nYour files go to "
+                        "%s (drive D: in Inventor)." % (year, year, self.settings["INV_DATA_DIR"]))
                 if "hyprland" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower():
                     text += ("\n\nHyprland: add this line to ~/.config/hypr/hyprland.conf for Inventor's windows:\n"
                              "source = %s/config/hyprland-inventor.conf" % REPO)
                 self.done_text.set_text(text)
             else:
                 self.done_text.set_text("Finished.")
-            button("Start Inventor", self.launch_inventor, suggested=True)
+            if self.mode == "install":
+                button("Start Inventor %s" % self.installed_target[0],
+                       lambda: self.launch_inventor(self.installed_target[1]), suggested=True)
             button("Open my Inventor folder", lambda: self.open_uri(self.settings["INV_DATA_DIR"]))
         else:
             what = {"install": "The installation", "update": "The update", "uninstall": "Uninstalling"}[self.mode]
@@ -1166,7 +1260,8 @@ class Installer(Gtk.ApplicationWindow):
                                     "open an issue on GitHub with the report (button below).")
             mode = self.mode
             button("Try again", lambda: self.check_wine_then(
-                lambda: self.run_command(self.last_args, self.run_title, install=mode == "install", mode=mode)),
+                lambda: self.run_command(self.last_args, self.run_title, install=mode == "install", mode=mode,
+                                         env_extra=self.last_env if mode == "install" else None)),
                 suggested=True)
             if self.logfile:
                 button("Open the log", lambda: self.open_uri(self.logfile))
@@ -1197,8 +1292,9 @@ class Installer(Gtk.ApplicationWindow):
         except GLib.Error as e:
             self.log("could not open %s: %s" % (url, e.message))
 
-    def launch_inventor(self):
+    def launch_inventor(self, prefix):
         subprocess.Popen(["bash", os.path.join(SCRIPTS, "launch-inventor.sh")], cwd=REPO,
+                         env=dict(os.environ, INV_PREFIX=prefix),
                          stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True)
 
