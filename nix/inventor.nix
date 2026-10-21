@@ -7,13 +7,15 @@
   # A fixed-output derivation containing the original Autodesk install image.
   media,
   updates ? [ ],
-  version ? "2026",
+  year ? "2026",
+  version ? year,
+  executableName ? if year == "2026" then "inventor" else "inventor-${year}",
   contentCenter ? true,
 }:
 let
   inherit (pkgs) lib;
   inventorMeta = {
-    description = "Autodesk Inventor 2026 through Wine and nix-overlayfs";
+    description = "Autodesk Inventor ${year} through Wine and nix-overlayfs";
     homepage = "https://www.autodesk.com/products/inventor/overview";
     license = lib.licenses.unfree;
     platforms = [ "x86_64-linux" ];
@@ -114,10 +116,10 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   inherit version;
   portableReparsePoints = true;
   pname = "inventor";
-  packageName = "autodesk-inventor-2026";
-  executableName = "inventor";
-  executablePath = "/drive_c/Program Files/Autodesk/Inventor 2026/Bin/Inventor.exe";
-  workingDirectory = "/drive_c/Program Files/Autodesk/Inventor 2026/Bin";
+  packageName = "autodesk-inventor-${year}";
+  inherit executableName;
+  executablePath = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe";
+  workingDirectory = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin";
   src = media;
   overlayDependencies = [ webview2 ];
   # These replace Wine's stock DLLs; keep them when the library prunes duplicates.
@@ -142,6 +144,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   unshareInstall = { session, ... }: ''
     set -euo pipefail
     export PATH=${lib.makeBinPath tools}:${modules.runtime.toolsPackage}/bin:$PATH
+    export INV_YEAR=${lib.escapeShellArg year}
     export INV_WINE=system INV_SANDBOX=0 INV_DATA_DIR="" INV_FONTS=linux
     export INV_NORMALIZE_REPARSE=${session.commands.normalizeReparsePoints}
     export INV_PREFIX="$WINEPREFIX" INV_LOGDIR="$TMPDIR/inventor-logs"
@@ -171,9 +174,10 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     test -s "$WINEPREFIX/drive_c/windows/Fonts/NotoSans.ttf"
     test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
     test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
-    test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor 2026/Bin/Inventor.exe"
+    test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe"
   '';
   runtimeEnvVars = {
+    INVENTOR_YEAR = year;
     WINE_LARGE_ADDRESS_AWARE = "1";
     WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d";
   };
@@ -200,4 +204,4 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     }
     ${builtins.readFile ./launch-services.sh}
   '';
-}) "inventor"
+}) executableName

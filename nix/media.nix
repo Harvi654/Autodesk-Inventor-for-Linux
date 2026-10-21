@@ -1,32 +1,48 @@
-{ pkgs }:
+{
+  pkgs,
+  year ? "2026",
+}:
 let
+  sources = {
+    "2026" = {
+      archiveHash = "sha256-MrmMh4cTR0WEjLsWemrfT5hse0TgyVdq3cFV+Hhq7Sc=";
+      updateVersion = "2026.4";
+      updateHash = "sha256-FgzGtaqfOlYEa2FEBzC0PNE9LPxjJkCLKNue756luPI=";
+    };
+    "2027" = {
+      archiveHash = "sha256-h6AZa9Ue6wRmlffS7uR32xYjeMXQMGBANwn1PQXbM/0=";
+      updateVersion = "2027.1";
+      updateHash = "sha256-3K0IZ/7jlDSmL4Ra233dI3YgR3TM0569GvqabO8ll6Y=";
+    };
+  };
+  source = sources.${year};
   meta = {
     homepage = "https://www.autodesk.com/products/inventor/overview";
     license = pkgs.lib.licenses.unfree;
   };
   archive =
     (pkgs.requireFile {
-      name = "Inventor_Professional_2026_English_Win_64bit_db_002_002.7z";
-      hash = "sha256-MrmMh4cTR0WEjLsWemrfT5hse0TgyVdq3cFV+Hhq7Sc=";
+      name = "Inventor_Professional_${year}_English_Win_64bit_db_002_002.7z";
+      hash = source.archiveHash;
       message = ''
-        Download Inventor Professional 2026 English using Autodesk's direct download.
+        Download Inventor Professional ${year} English using Autodesk's direct download.
         Add the original archive to the local store:
-          nix-store --add-fixed sha256 Inventor_Professional_2026_English_Win_64bit_db_002_002.7z
+          nix-store --add-fixed sha256 Inventor_Professional_${year}_English_Win_64bit_db_002_002.7z
       '';
     }).overrideAttrs
       { inherit meta; };
   update =
     (pkgs.requireFile {
-      name = "Inventor_2026.4_Update.exe";
-      hash = "sha256-FgzGtaqfOlYEa2FEBzC0PNE9LPxjJkCLKNue756luPI=";
+      name = "Inventor_${source.updateVersion}_Update.exe";
+      hash = source.updateHash;
       message = ''
-        Download the Inventor 2026.4 update from Autodesk and add it to the local store:
-          nix-store --add-fixed sha256 Inventor_2026.4_Update.exe
+        Download the Inventor ${source.updateVersion} update from Autodesk and add it to the local store:
+          nix-store --add-fixed sha256 Inventor_${source.updateVersion}_Update.exe
       '';
     }).overrideAttrs
       { inherit meta; };
   media =
-    pkgs.runCommand "inventor-2026-english-media"
+    pkgs.runCommand "inventor-${year}-english-media"
       {
         nativeBuildInputs = [ pkgs._7zz ];
         inherit meta;

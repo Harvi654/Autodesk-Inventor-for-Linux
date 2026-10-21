@@ -13,7 +13,8 @@ GUI validation passed browser sign-in and basic part creation, save, and reopen.
 Broader application compatibility has not been validated.
 
 The default target is Inventor Professional 2026 English with the 2026.4 update
-and Content Center, on x86_64 Linux. The runtime builds Wine 11.20 with every
+and Content Center, on x86_64 Linux. Inventor 2027 English with update 2027.1
+is also available as a separate package. The runtime builds Wine 11.20 with every
 top-level patch in `patches/`. Nixpkgs and the nix-overlayfs fork are pinned in
 `flake.lock`; no local checkout is required by the committed input definitions.
 The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
@@ -36,6 +37,14 @@ Obtain your own direct downloads from Autodesk. Import these original files:
 ```sh
 nix-store --add-fixed sha256 ~/downloads/Inventor/Inventor_Professional_2026_English_Win_64bit_db_002_002.7z
 nix-store --add-fixed sha256 ~/downloads/Inventor/Inventor_2026.4_Update.exe
+```
+
+For Inventor 2027, import its own archive and update instead (import both sets
+when installing both releases):
+
+```sh
+nix-store --add-fixed sha256 ~/downloads/Inventor/2027/Inventor_Professional_2027_English_Win_64bit_db_002_002.7z
+nix-store --add-fixed sha256 ~/downloads/Inventor/2027/Inventor_2027.1_Update.exe
 ```
 
 The small `001_002.exe` unpacker is unnecessary. The archive and update must
@@ -150,6 +159,33 @@ too; a user default takes precedence over the system default:
 xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor.desktop";
 ```
 
+## Install both releases side by side
+
+The NixOS module keeps the existing 2026-only default. To install both releases:
+
+```nix
+programs.autodesk-inventor = {
+  enable = true;
+  versions = [ "2026" "2027" ];
+};
+```
+
+Use `versions = [ "2027" ];` for 2027 only. Each release has its own desktop
+entry, Wine prefix, licensing database, lock, settings, and logs. The commands
+are `inventor` for 2026 and `inventor-2027` for 2027. From the checkout, use
+`nix run .#inventor-2026` or `nix run .#inventor-2027`; `.#inventor` remains 2026.
+Native Wayland remains experimental for both releases.
+
+The module's browser callback default selects the newest installed release.
+If Home Manager manages MIME defaults and you install 2027, use
+`"autodesk-inventor-2027.desktop"` instead of `"autodesk-inventor.desktop"`.
+The launcher also registers a release-specific callback handler when started;
+complete sign-in for one release at a time when both are open.
+
+For custom 2027 media, set `programs.autodesk-inventor.packages."2027"` to a
+package made with `inputs.inventor.lib.mkInventor { year = "2027"; ...; }`.
+The existing `programs.autodesk-inventor.package` override still targets 2026.
+
 For other fixed-output media sources or to omit Content Center, use a package
 constructed with the flake library:
 
@@ -165,8 +201,9 @@ programs.autodesk-inventor.package = inputs.inventor.lib.mkInventor {
 The sources should be hash-pinned fetchers or `requireFile` derivations.
 Changing an update or runtime rebuilds immutable layers; login and application
 settings remain in nix-overlayfs's writable state at
-`${XDG_DATA_HOME:-~/.local/share}/autodesk-inventor-2026`.
-Service logs are under `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-2026`.
+`${XDG_DATA_HOME:-~/.local/share}/autodesk-inventor-2026` or
+`${XDG_DATA_HOME:-~/.local/share}/autodesk-inventor-2027`.
+Service logs are under `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-<year>`.
 Do not delete existing writable state when testing upgrades. Use temporary XDG
 data/cache/state directories for clean smoke tests.
 

@@ -45,7 +45,7 @@ for state_file in AdskLicensingService.sds AdskLicensingService.data; do
     fi
 done
 # Wine creates a profile for the runtime user; seed the build-time default once.
-realdwg_relative="AppData/Roaming/Autodesk/Inventor 2026/RealDWGSettings.xml"
+realdwg_relative="AppData/Roaming/Autodesk/Inventor $inventor_year/RealDWGSettings.xml"
 realdwg_settings="$WINEPREFIX/drive_c/users/$USER/$realdwg_relative"
 if [ ! -f "$realdwg_settings" ]; then
     mkdir -p "$(dirname "$realdwg_settings")"
@@ -57,7 +57,7 @@ idsdk_user_hex=$(printf %s "$USER" | od -An -tx1 -v | tr -d ' \n' | tr 'a-f' 'A-
 idsdk_ipc="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$idsdk_user_hex/interprocess"
 rm -rf -- "$idsdk_ipc"
 mkdir -p "$idsdk_ipc/01000000"
-inventor_log_root="${XDG_STATE_HOME:-$HOME/.local/state}/autodesk-inventor-2026"
+inventor_log_root="${XDG_STATE_HOME:-$HOME/.local/state}/autodesk-inventor-$inventor_year"
 mkdir -p "$inventor_log_root"
 wine 'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' \
     >>"$inventor_log_root/identity.log" 2>&1 &

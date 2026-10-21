@@ -22,6 +22,7 @@ class RuntimeState(unittest.TestCase):
             "XDG_STATE_HOME": str(self.root / "state"),
             "WINEPREFIX": str(self.root / "overlay"),
             "INVENTOR_WINE_DRIVER": "x11",
+            "INVENTOR_YEAR": "2026",
             "USER": pwd.getpwuid(os.getuid()).pw_name,
         }
 
@@ -43,7 +44,27 @@ class RuntimeState(unittest.TestCase):
         self.assertEqual(owner.returncode, 0)
         self.assertEqual(self.run_script(f'. "{LOCK}"').returncode, 0)
 
+    def test_different_releases_can_hold_locks_simultaneously(self):
+        script = f'. "{LOCK}"; echo ready; read -r line'
+        owner = subprocess.Popen(["bash", "-c", script], env=self.env,
+                                 text=True, stdin=subprocess.PIPE,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.addCleanup(lambda: owner.poll() is None and owner.kill())
+        self.assertEqual(owner.stdout.readline().strip(), "ready")
+        self.env["INVENTOR_YEAR"] = "2027"
+        other = self.run_script(f'. "{LOCK}"; printf "%s" "$inventor_state_dir"')
+        self.assertEqual(other.returncode, 0, other.stderr)
+        self.assertIn("autodesk-inventor-2027", other.stdout)
+        owner.communicate("release\n", timeout=5)
+
     def test_database_migration_preserves_native_updates(self):
+        self.check_database_migration("2026")
+
+    def test_2027_database_migration_is_separate(self):
+        self.check_database_migration("2027")
+
+    def check_database_migration(self, year):
+        self.env["INVENTOR_YEAR"] = year
         prefix = Path(self.env["WINEPREFIX"])
         service = prefix / "drive_c/ProgramData/Autodesk/AdskLicensingService"
         service.mkdir(parents=True)
@@ -55,7 +76,7 @@ class RuntimeState(unittest.TestCase):
                             "Autodesk Shared/AdskLicensing/1.0")
         version.mkdir(parents=True)
         profile = prefix / "drive_c/users" / self.env["USER"] / (
-            "AppData/Roaming/Autodesk/Inventor 2026/RealDWGSettings.xml")
+            f"AppData/Roaming/Autodesk/Inventor {year}/RealDWGSettings.xml")
         profile.parent.mkdir(parents=True)
         profile.write_text("settings")
         mock_bin = self.root / "bin"
@@ -71,6 +92,7 @@ class RuntimeState(unittest.TestCase):
         self.assertTrue(database.is_symlink())
         native = database.resolve()
         self.assertFalse(native.is_relative_to(prefix))
+        self.assertIn(f"autodesk-inventor-{year}", str(native))
         self.assertEqual(native.read_bytes(), b"registered-product-and-user-state")
         self.assertEqual(native.stat().st_mode & 0o777, 0o600)
         native.write_bytes(b"updated-genuine-authorization")
