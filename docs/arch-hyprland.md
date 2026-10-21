@@ -642,18 +642,21 @@ behind a KDE title bar, and only part of the window was drawn. With the 11.20
 build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
 the version the prefix was last updated with, and move forward only.
 
-## Open: crash while browsing (being looked into)
+## Open: crash while browsing (fixed in wine-11.20-4)
 
-Browsing folders in Open (filter "All files") can end Inventor with
-`Fatal error. 0xC0000005` from .NET. Reproducible; right before it the RealDWG
-preview libraries load (`acdb25.dll`, `DWGSERVICE.dll`, `dbxbridgePS.dll`).
-In a background thread an access violation is raised, then a second one at an
-odd address, and while .NET handles that, Wine's `RtlLocateExtendedFeature2`
-(ntdll) reads a `CONTEXT_EX` behind a `CONTEXT` that has none: its
-`XState.Offset` holds a stack address. So: a context flagged `CONTEXT_XSTATE`
-without the extended part reaches `LocateXStateFeature` - either Wine passes
-such a context to the handler or the copy .NET makes keeps the flag. To check
-against .NET's context handling next.
+Switching folders quickly in Open (2026 and 2027's new dialog) ended Inventor
+with `Fatal error. 0xC0000005` from .NET. Found with `WINEDEBUG=+seh,+loaddll`:
+the preview code raises NullReferenceExceptions (normal, .NET handles them);
+one of them happens in a virtual stub dispatch stub, and .NET's
+`AdjustContextForVirtualStub` asks for the CET shadow-stack pointer
+(`LocateXStateFeature(context, XSTATE_CET_U)`) on a CONTEXT copy that keeps
+`CONTEXT_XSTATE` but has no `CONTEXT_EX` behind it. On CPUs with compacted
+XSAVE (Zen 3, newer Intel) Wine's `RtlLocateExtendedFeature2` read the XSAVE
+header through `XState.Offset` - here stack data, a pointer to the exception
+record - before checking that the feature is enabled, and faulted inside the
+exception handler. Fix: return NULL for a feature that is not enabled before
+the XSAVE area is touched (`patches/ntdll-locate-xstate-feature-enabled.patch`,
+with a test).
 
 ## Known harmless log messages
 
