@@ -80,7 +80,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
-| Inventor 2027 (2027.1) | ✅ | first test: install, sign-in, parts, Stress Analysis; install with `INV_YEAR=2027` |
+| Inventor 2027 (2027.1) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
 | Drawings (views, sections) | ✅ | |
@@ -116,13 +116,16 @@ Create a folder for the download, e.g. `~/Downloads/Inventor`. Then, signed in
 at [manage.autodesk.com](https://manage.autodesk.com):
 
 1. **Products and Services** → click **Inventor Professional**.
-2. Choose version **2026** and your **language**.
+2. Choose version **2026** or **2027** and your **language** (English is the
+   tested one).
 3. Click the **arrow** next to the download button and pick **Direct
    download** (called *Browser download* in some versions) - not "Install".
 4. Two files are downloaded - save both into the folder.
 5. Recommended: in the same place, under the available downloads / updates,
-   download **Inventor Professional 2026.4 Update** (or the newest 2026
-   update) into the same folder.
+   download the newest **Inventor Professional update** of that version
+   (e.g. 2026.4 or 2027.1) into the same folder. Only the Inventor update -
+   the Identity Manager, Licensing Service and Shared Components updates
+   listed there are not needed.
 
 The folder then looks like this (its name does not matter):
 
@@ -140,6 +143,9 @@ The folder then looks like this (its name does not matter):
   does it (into `~/.cache/inventor-on-linux/media`, ~15 GB).
 - An already unpacked install image (a folder with `setup.xml` /
   `manifest/`) works too.
+- The installer reads the version from the file names: 2026 goes to
+  `~/.wine-inventor2026`, 2027 to `~/.wine-inventor2027`. Both can be
+  installed side by side; one download folder per version.
 - You do **not** need the "Install" web installer or the
   `Create_Installer_*.exe` tools - they are for Windows. If they are in the
   folder, they are skipped.
@@ -214,10 +220,17 @@ With a Lua config (`hyprland.lua`, Hyprland 0.55+) copy the contents of
 
 ### 5. Start
 
-Start **Autodesk Inventor 2026** from your app launcher, or:
+Start **Autodesk Inventor 2026** (or 2027) from your app launcher, or:
 
 ```bash
 bash ~/inventor-on-linux/scripts/launch-inventor.sh
+```
+
+With several versions installed, choose one by its prefix - the version is
+read from it:
+
+```bash
+INV_PREFIX=~/.wine-inventor2027 bash ~/inventor-on-linux/scripts/launch-inventor.sh
 ```
 
 The first start opens your browser for the Autodesk sign-in.

@@ -20,7 +20,8 @@
 #   7. app-launcher entry and the browser-login handler     install-desktop-integration.sh
 #
 # Options:
-#   --prefix DIR       Wine prefix (default ~/.wine-inventor2026)
+#   --prefix DIR       Wine prefix (default ~/.wine-inventor<year>; the year comes
+#                      from the download names, or INV_YEAR=2027)
 #   --no-content       leave out the Content Center libraries (~12.7 GB)
 #   --skip-packages    don't install system packages (already there)
 #   --skip-wine        don't install/check Wine
@@ -31,6 +32,7 @@
 set -Eeuo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
+_ORIG_ARGS=("$@")
 PREFIX="$INV_PREFIX"
 NO_CONTENT=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
 while [ $# -gt 0 ]; do
@@ -46,6 +48,29 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
+# The Inventor release from the download names (Inventor_Professional_2027_...,
+# Inventor_2027.1_Update.exe), unless INV_YEAR was given: then the rest of the
+# scripts run for that year (restart with INV_YEAR set). Without --prefix a
+# release other than the one in the configured prefix gets its own prefix
+# (~/.wine-inventor<year>) - never two releases in one prefix.
+if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "${_INV_YEAR_DETECTED:-}" ] && [ ${#ARGS[@]} -gt 0 ]; then
+    years="$(for a in "${ARGS[@]}"; do
+                 if [ -d "$a" ]; then find "$a" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.7z' \) -printf '%f\n'
+                 else basename "$a"; fi
+             done | grep -oiE '^Inventor(_Professional)?_20[0-9]{2}' | grep -oE '20[0-9]{2}' | sort -u)"
+    case "$(printf '%s\n' "$years" | sed '/^$/d' | wc -l)" in
+        0) ;;
+        1)  if [ "$years" != "$INV_YEAR" ]; then
+                if [ "$PREFIX" = "$INV_PREFIX" ] && { [ -n "$(inventor_year_in_prefix "$PREFIX")" ] ||
+                       [ "$(realpath -m "$PREFIX")" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ]; }; then
+                    PREFIX="$HOME/.wine-inventor$years"
+                fi
+                info "downloads are Inventor $years - installing Inventor $years into $PREFIX"
+                exec env INV_YEAR="$years" INV_PREFIX="$PREFIX" _INV_YEAR_DETECTED=1 bash "$0" "${_ORIG_ARGS[@]}"
+            fi ;;
+        *) die "downloads of several Inventor releases ($(echo $years)) - install one at a time" ;;
+    esac
+fi
 PREFIX="$(realpath -m "$PREFIX")"
 export INV_PREFIX="$PREFIX" WINEPREFIX="$PREFIX"
 

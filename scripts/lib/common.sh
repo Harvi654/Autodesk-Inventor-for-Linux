@@ -35,6 +35,19 @@ done
 [ -z "$_env_save" ] || eval "$_env_save"
 unset _cfg _env_inv _env_save
 
+# Inventor release: given (environment, config.env), else the one installed in
+# INV_PREFIX (newest if several), else 2026. INV_YEAR_GIVEN=1 when it was given.
+INV_YEAR_GIVEN=0; [ -z "${INV_YEAR:-}" ] || INV_YEAR_GIVEN=1
+inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
+    local d y=""
+    for d in "$1/drive_c/Program Files/Autodesk/Inventor 20"[0-9][0-9]; do
+        [ -f "$d/Bin/Inventor.exe" ] && y="${d##* }"
+    done
+    echo "$y"
+}
+if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
+    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
+fi
 INV_YEAR="${INV_YEAR:-2026}"
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
 INV_REGMAJOR="${INV_REGMAJOR:-$((INV_YEAR - 1996))}"
