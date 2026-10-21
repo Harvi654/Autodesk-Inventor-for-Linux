@@ -415,10 +415,13 @@ install_dxvk() {
         done
         rm -rf "$tmp"
     fi
-    # native = load DXVK's DLLs instead of Wine's wined3d; d3dcompiler_47 as in the original setup
-    for d in "${DXVK_DLLS[@]}" d3dcompiler_47; do
+    # native = load DXVK's DLLs instead of Wine's wined3d
+    for d in "${DXVK_DLLS[@]}"; do
         wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d native
     done
+    # d3dcompiler_47: the program's own copy when it has one (Inventor's Bin),
+    # Wine's otherwise - AutoCAD links to it without shipping it
+    wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v d3dcompiler_47 /t REG_SZ /d native,builtin
 }
 
 # Same for vkd3d-proton (Direct3D 12). INV_VKD3D=off: Wine's builtin d3d12 again.
