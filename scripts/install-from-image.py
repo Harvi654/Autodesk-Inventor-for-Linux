@@ -76,11 +76,13 @@ VFS = {
     "programfilescommonx64": "Program Files/Common Files",
     "programfilescommonx86": "Program Files (x86)/Common Files",
     "common appdata": "ProgramData",
+    "common documents": "users/Public/Documents",   # Default.ipj, Design Data, samples
     "appdata": "users/%s/AppData/Roaming" % USER,
     "local appdata": "users/%s/AppData/Local" % USER,
     "fonts": "windows/Fonts",
     "systemx64": "windows/system32",
     "systemx86": "windows/syswow64",
+    "system": "windows/system32",                    # the native one (64-bit here)
     "windows": "windows",
 }
 # Installers that end with an error under Wine although their files are in

@@ -77,7 +77,7 @@ cfg_wpf_stubs() {
         if [ ${#sys_stubs[@]} -gt 0 ]; then
             # Inventor 2026 brings its own .NET 8/10 with WPF; a clean install
             # from Autodesk's image runs fine next to the system wine-mono.
-            info "system wine-mono has WPF stubs - not used by Inventor 2026 (.NET 8+), fine"
+            info "system wine-mono has WPF stubs - not used by Inventor $INV_YEAR (.NET 8+), fine"
         else
             info "no WPF stub assemblies found"
         fi
