@@ -658,6 +658,22 @@ exception handler. Fix: return NULL for a feature that is not enabled before
 the XSAVE area is touched (`patches/ntdll-locate-xstate-feature-enabled.patch`,
 with a test).
 
+## GPU ray tracing (Inventor 2027, not working yet)
+
+Tested 2026-10-21 on an RX 6400 (RDNA 2, on the Linux host via `INV_GPU=6400`,
+monitor on the other card): Inventor 2027 runs on DirectX 12 through
+vkd3d-proton, which reports `DXR 1.1 support enabled` and `DX Ultimate`;
+Vulkan has `VK_KHR_ray_tracing_pipeline`, `acceleration_structure`,
+`ray_query`. Inventor still greys out *Enable Viewport GPU Ray Tracing*
+("The graphics card in use does not support this option") and never loads
+`aurora.dll` (its GPU ray tracer). Ruled out: driver name/version (Wine does not
+register `InstalledDisplayDrivers`; with `INV_DRIVER_NAMES=1` Diagnostics shows
+"aticfx64 ... 35.0.21025.1024" instead of "Unknown", no change), Windows build,
+no capability cached in the registry (`GraphicsUtil` has `UseGPURaytracing=1`).
+Still open: DXVK answers an unknown `IDXGIAdapter` query `f0db4c7f-fe5a-42a2-
+bd62-f2a6cf6fc83e` (possibly DXCore) right before vkd3d-proton starts. A test
+with an NVIDIA RTX card would show whether this is AMD-specific.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
