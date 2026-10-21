@@ -9,7 +9,8 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 export WINEDEBUG="${WINEDEBUG:-err+all,fixme-all}"
 export DXVK_LOG_LEVEL="${DXVK_LOG_LEVEL:-info}"
 export WINE_LARGE_ADDRESS_AWARE=1
-[ -n "$INV_GPU" ] && export DXVK_FILTER_DEVICE_NAME="$INV_GPU"
+# DXVK (Direct3D 9-11) and vkd3d-proton (Direct3D 12) on the same GPU
+[ -n "$INV_GPU" ] && export DXVK_FILTER_DEVICE_NAME="$INV_GPU" VKD3D_FILTER_DEVICE_NAME="$INV_GPU"
 # msquic= : stops .NET 8 crashing in its QUIC networking stack (README, Key Discovery #6)
 export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}msquic="
 
