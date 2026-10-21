@@ -193,8 +193,10 @@ def _plan(img, roots, lang, include_all, extra=()):
             visit(dep.get("name", "?"), dep.get("path"), dep.get("installAs", ""), chain + [name])
         s = _step(root, name, install_as, rel, img, lang)
         # the ODIS installer under another manifest name (AutoCAD: "Autodesk Installer")
-        if s and not include_all and os.path.basename(str(s.get("file", "")).replace("\\", "/")).lower() == "adodis-installer.exe":
-            skipped.append((name, SKIP["odis"]))
+        by_file = {"adodis-installer.exe": "odis", "adaccess-installer.exe": "access"}
+        f = os.path.basename(str((s or {}).get("file", "")).replace("\\", "/")).lower()
+        if s and not include_all and f in by_file:
+            skipped.append((name, SKIP[by_file[f]]))
             return
         if s:
             steps.append(s)
