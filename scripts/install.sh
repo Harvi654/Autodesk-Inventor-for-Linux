@@ -57,18 +57,18 @@ if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "${_INV_YEAR_DETECTED:-}" ] && [ ${#ARGS[
     years="$(for a in "${ARGS[@]}"; do
                  if [ -d "$a" ]; then find "$a" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.7z' \) -printf '%f\n'
                  else basename "$a"; fi
-             done | grep -oiE '^Inventor(_Professional)?_20[0-9]{2}' | grep -oE '20[0-9]{2}' | sort -u)"
+             done | grep -oiE "$APP_DOWNLOAD_RE" | grep -oE '20[0-9]{2}' | sort -u)"
     case "$(printf '%s\n' "$years" | sed '/^$/d' | wc -l)" in
         0) ;;
         1)  if [ "$years" != "$INV_YEAR" ]; then
                 if [ "$PREFIX" = "$INV_PREFIX" ] && { [ -n "$(inventor_year_in_prefix "$PREFIX")" ] ||
-                       [ "$(realpath -m "$PREFIX")" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ]; }; then
-                    PREFIX="$HOME/.wine-inventor$years"
+                       [ "$(realpath -m "$PREFIX")" = "$(realpath -m "$HOME/.wine-$INV_PRODUCT$INV_YEAR")" ]; }; then
+                    PREFIX="$HOME/.wine-$INV_PRODUCT$years"
                 fi
-                info "downloads are Inventor $years - installing Inventor $years into $PREFIX"
+                info "downloads are $APP_TITLE $years - installing $APP_TITLE $years into $PREFIX"
                 exec env INV_YEAR="$years" INV_PREFIX="$PREFIX" _INV_YEAR_DETECTED=1 bash "$0" "${_ORIG_ARGS[@]}"
             fi ;;
-        *) die "downloads of several Inventor releases ($(echo $years)) - install one at a time" ;;
+        *) die "downloads of several $APP_TITLE releases ($(echo $years)) - install one at a time" ;;
     esac
 fi
 PREFIX="$(realpath -m "$PREFIX")"
@@ -213,12 +213,13 @@ fi
 if [ -z "$PRODUCT" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
     die "none of the downloads is the Inventor installer itself (only updates?)"
 fi
-[ -n "$PRODUCT" ] && ok "Inventor: $PRODUCT"
+[ -n "$PRODUCT" ] && ok "$APP_TITLE: $PRODUCT"
 for u in "${UPDATES[@]}"; do ok "update:   $u"; done
 
-step "Installing Inventor (Autodesk's installers, under Wine - 15-40 minutes)..."
+step "Installing $APP_TITLE (Autodesk's installers, under Wine - 15-40 minutes)..."
 if [ -n "$PRODUCT" ]; then
-    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${NO_CONTENT[@]}"
+    APP_ARGS=(); [ "$INV_PRODUCT" = inventor ] || for m in "${APP_MANIFESTS[@]}"; do APP_ARGS+=(--app "$m"); done
+    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${NO_CONTENT[@]}" "${APP_ARGS[@]}"
 else
     info "already installed"
 fi
@@ -234,9 +235,10 @@ INV_FINISH_MAIN=1 bash "$SCRIPTS_DIR/finish-install.sh"
 
 step "App launcher and browser login..."
 if [ "$NO_DESKTOP" -eq 1 ]; then info "skipped (--no-desktop)"
+elif [ "$INV_PRODUCT" != inventor ]; then info "skipped: not yet for $APP_TITLE (start it with the command below)"
 else bash "$SCRIPTS_DIR/install-desktop-integration.sh"; fi
 
-ok "Inventor is installed."
-[ "$NO_DESKTOP" -eq 1 ] && info "Start it with:" || info "Start it from your app launcher (\"Autodesk Inventor $INV_YEAR\") or with:"
+ok "$APP_TITLE is installed."
+{ [ "$NO_DESKTOP" -eq 1 ] || [ "$INV_PRODUCT" != inventor ]; } && info "Start it with:" || info "Start it from your app launcher (\"Autodesk $APP_TITLE $INV_YEAR\") or with:"
 info "    INV_PREFIX=$PREFIX bash $SCRIPTS_DIR/launch-inventor.sh"
 info "The first start asks you to sign in with your Autodesk account in the browser."

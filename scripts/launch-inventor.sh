@@ -20,9 +20,9 @@ detect_prefix_versions
 LIC_EXE="C:\\Program Files (x86)\\Common Files\\Autodesk Shared\\AdskLicensing\\$LIC_VER\\AdskLicensingService\\AdskLicensingService.exe"
 IDMGR_EXE='C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe'
 
-notify() { command -v notify-send >/dev/null && notify-send -a "Inventor" "Autodesk Inventor" "$*" || true; }
+notify() { command -v notify-send >/dev/null && notify-send -a "$APP_TITLE" "Autodesk $APP_TITLE" "$*" || true; }
 
-[ -f "$P_INV/Bin/Inventor.exe" ] || { err "prefix not built: $P_INV"; notify "Prefix not built - run rebuild-prefix.sh"; exit 1; }
+[ -f "$P_APP_BIN/$APP_EXE" ] || { err "no $APP_TITLE in $P_APP"; notify "$APP_TITLE is not installed in $WINEPREFIX"; exit 1; }
 [ -n "$LIC_VER" ] || { err "AdskLicensing not found in prefix"; exit 1; }
 
 # Files to open (from the file manager or the command line): Linux paths ->
@@ -48,14 +48,15 @@ for a in "$@"; do
 done
 [ $# -eq 0 ] || [ ${#WIN_ARGS[@]} -gt 0 ] || exit 1
 
-if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
+APP_RE="$(printf '%s' "${APP_EXE,,}" | sed 's/\./\\./g')"
+if pgrep -if "(^|[\\\\/])$APP_RE( |\$)" >/dev/null; then
     if [ ${#WIN_ARGS[@]} -gt 0 ]; then
         # hand the files to the running Inventor (Windows' "open" for the file type)
-        for w in "${WIN_ARGS[@]}"; do info "opening $w in the running Inventor"; wine start "$w" >/dev/null 2>&1 & done
+        for w in "${WIN_ARGS[@]}"; do info "opening $w in the running $APP_TITLE"; wine start "$w" >/dev/null 2>&1 & done
         exit 0
     fi
-    warn "Inventor is already running"
-    notify "Inventor is already running"
+    warn "$APP_TITLE is already running"
+    notify "$APP_TITLE is already running"
     exit 0
 fi
 
@@ -85,7 +86,7 @@ cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; rm -f "
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-echo "=== Inventor $INV_YEAR | prefix $WINEPREFIX | $(wine --version 2>/dev/null) ($INV_WINE_ACTIVE${INV_WINE_DIR:+: $INV_WINE_DIR}) | logs $LOGDIR/*-$TS.log ==="
+echo "=== $APP_TITLE $INV_YEAR | prefix $WINEPREFIX | $(wine --version 2>/dev/null) ($INV_WINE_ACTIVE${INV_WINE_DIR:+: $INV_WINE_DIR}) | logs $LOGDIR/*-$TS.log ==="
 
 # 0. Stale Boost.Interprocess state deadlocks Identity Manager. Wipe ALL
 #    session dirs, not only 01000000 (README, Open Problem #4).
@@ -93,7 +94,7 @@ info "[0/4] cleaning IDSDK IPC state"
 rm -rf -- "$IDSDK_IPC_ROOT"
 mkdir -p "$IDSDK_IPC_ROOT/01000000"
 
-migrate_disabled_addins
+[ "$INV_PRODUCT" != inventor ] || migrate_disabled_addins
 
 info "[1/4] starting wineserver"
 # Drives first: Wine records font paths in the registry when it starts, and a
@@ -120,7 +121,8 @@ sandbox_fs   # again after wineboot, so nothing it does can bring Z: or the $HOM
 # Wine's shell reads the machine classes, which still hold the installer's
 # old "I" icons - copy them over (from the previous run's registration).
 ICONREG="$P_C/windows/temp/inventor-class-icons.reg"
-N="$(python3 -I "$COMMON_DIR/sync-class-icons.py" "$WINEPREFIX" "$ICONREG" 2>/dev/null || echo 0)"
+N=0
+[ "$INV_PRODUCT" != inventor ] || N="$(python3 -I "$COMMON_DIR/sync-class-icons.py" "$WINEPREFIX" "$ICONREG" 2>/dev/null || echo 0)"
 if [ "${N:-0}" -gt 0 ] 2>/dev/null; then
     import_reg_file "$ICONREG" && info "    $N file type entries updated"
 fi
@@ -171,24 +173,24 @@ if [ "${INV_DRIVER_NAMES:-0}" = 1 ]; then
     done
 fi
 
-info "[4/4] launching Inventor"
-cd "$P_INV/Bin" || exit 1
+info "[4/4] launching $APP_TITLE"
+cd "$P_APP_BIN" || exit 1
 # Not "wine ... | tee": processes Inventor starts (WebView2, licensing agent)
 # inherit the pipe, so tee - and this script - would wait for them after
 # Inventor itself has exited or crashed. Write to the log and follow it instead.
 LOG="$LOGDIR/inventor-$TS.log"
 if [ -n "$INV_VDESKTOP" ]; then
     info "    inside Wine virtual desktop $INV_VDESKTOP"
-    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
+    wine explorer "/desktop=$APP_TITLE,$INV_VDESKTOP" "$APP_EXE" "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
 else
-    wine Inventor.exe "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
+    wine "$APP_EXE" "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
 fi
 INV_PID=$!
 # Inventor writes the old icons to HKCR (= HKLM in Wine) again while it
 # starts: keep putting the per-user icons back during the first minutes (live
 # registry; the .reg files on disk lag behind). A New dialog opened before
 # that shows the old icons once.
-(
+[ "$INV_PRODUCT" != inventor ] || (
     python3 -I "$COMMON_DIR/sync-class-icons.py" --list "$WINEPREFIX" > "$LOGDIR/.class-icons-$TS" 2>/dev/null
     END=$(( $(date +%s) + ${INV_ICON_SYNC_SECONDS:-180} ))
     while [ "$(date +%s)" -lt "$END" ] && kill -0 "$INV_PID" 2>/dev/null; do
@@ -205,4 +207,4 @@ tail -n +1 -f --pid="$INV_PID" "$LOG" &
 wait "$INV_PID"
 RC=$?
 sleep 1
-info "Inventor exited (code $RC)"
+info "$APP_TITLE exited (code $RC)"

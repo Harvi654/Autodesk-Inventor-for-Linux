@@ -38,10 +38,28 @@ unset _cfg _env_inv _env_save
 # Inventor release: given (environment, config.env), else the one installed in
 # INV_PREFIX (newest if several), else 2026. INV_YEAR_GIVEN=1 when it was given.
 INV_YEAR_GIVEN=0; [ -z "${INV_YEAR:-}" ] || INV_YEAR_GIVEN=1
-inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
+# The Autodesk program (experimental: autocad). Its folder is
+# "C:\Program Files\Autodesk\<APP_TITLE> <year>", the program APP_EXE in
+# APP_BIN below it, APP_MANIFESTS the install image's manifest/app.<name>.xml.
+# Not given: the program installed in INV_PREFIX (AutoCAD only when there is no Inventor).
+if [ -z "${INV_PRODUCT:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
+    _a="$INV_PREFIX/drive_c/Program Files/Autodesk"
+    if ! compgen -G "$_a/Inventor 20[0-9][0-9]/Bin/Inventor.exe" >/dev/null && \
+         compgen -G "$_a/AutoCAD 20[0-9][0-9]/acad.exe" >/dev/null; then INV_PRODUCT=autocad; fi
+    unset _a
+fi
+INV_PRODUCT="${INV_PRODUCT:-inventor}"
+case "$INV_PRODUCT" in
+    inventor) APP_TITLE=Inventor; APP_BIN=Bin; APP_EXE=Inventor.exe; APP_MANIFESTS=(inventor)
+              APP_DOWNLOAD_RE='^Inventor(_Professional)?_20[0-9]{2}' ;;
+    autocad)  APP_TITLE=AutoCAD;  APP_BIN="";  APP_EXE=acad.exe;     APP_MANIFESTS=(acad.en-US acad.en-US.ui)
+              APP_DOWNLOAD_RE='^(ACD|AutoCAD)_20[0-9]{2}' ;;
+    *) echo "unknown INV_PRODUCT=$INV_PRODUCT (inventor, autocad)" >&2; exit 1 ;;
+esac
+inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest release of the program in it)
     local d y=""
-    for d in "$1/drive_c/Program Files/Autodesk/Inventor 20"[0-9][0-9]; do
-        [ -f "$d/Bin/Inventor.exe" ] && y="${d##* }"
+    for d in "$1/drive_c/Program Files/Autodesk/$APP_TITLE 20"[0-9][0-9]; do
+        [ -f "$d${APP_BIN:+/$APP_BIN}/$APP_EXE" ] && y="${d##* }"
     done
     echo "$y"
 }
@@ -52,7 +70,7 @@ INV_YEAR="${INV_YEAR:-2026}"
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
 INV_REGMAJOR="${INV_REGMAJOR:-$((INV_YEAR - 1996))}"
 WIN_ROOT="${WIN_ROOT:-/mnt/windows}"
-INV_PREFIX="${INV_PREFIX:-$HOME/.wine-inventor$INV_YEAR}"
+INV_PREFIX="${INV_PREFIX:-$HOME/.wine-$INV_PRODUCT$INV_YEAR}"
 LOGDIR="${INV_LOGDIR:-$PROJECT_DIR/logs}"
 REG_FILE="${REG_FILE:-$PROJECT_DIR/registry/autodesk-full.reg}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
@@ -192,6 +210,8 @@ WIN_PROGDATA="$WIN_ROOT/ProgramData/Autodesk"
 # Prefix-side paths
 P_C="$WINEPREFIX/drive_c"
 P_INV="$P_C/Program Files/Autodesk/Inventor $INV_YEAR"
+P_APP="$P_C/Program Files/Autodesk/$APP_TITLE $INV_YEAR"
+P_APP_BIN="$P_APP${APP_BIN:+/$APP_BIN}"
 P_ASC_BASE="$P_C/Program Files/Common Files/Autodesk Shared/Components/$INV_YEAR"
 P_LIC_BASE="$P_C/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
 P_IDMGR_BASE="$P_C/Program Files/Autodesk/AdskIdentityManager"

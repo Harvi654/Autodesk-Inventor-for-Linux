@@ -27,8 +27,8 @@ done
 _STEPS=13
 
 step "Checking the installation in $WINEPREFIX..."
-[ -f "$P_INV/Bin/Inventor.exe" ] || die "no Inventor in $P_INV - run install-from-image.py first"
-[ "$(readlink -f "$WINEPREFIX")" != "$(readlink -f "$HOME/.wine-inventor$INV_YEAR")" ] \
+[ -f "$P_APP_BIN/$APP_EXE" ] || die "no $APP_TITLE in $P_APP - run install-from-image.py first"
+[ "$(readlink -f "$WINEPREFIX")" != "$(readlink -f "$HOME/.wine-$INV_PRODUCT$INV_YEAR")" ] \
     || [ "${INV_FINISH_MAIN:-0}" = 1 ] \
     || die "this is your working prefix - set INV_FINISH_MAIN=1 if you really mean it"
 wine_stop
@@ -56,7 +56,7 @@ wine_reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v InstallP
     /d "C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR"
 wine_reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v Version /t REG_EXPAND_SZ /d "$ASC_VER"
 wine_reg_add 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' /v Path /t REG_EXPAND_SZ \
-    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\$ASC_VER;C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin"
+    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\$ASC_VER;C:\\Program Files\\Autodesk\\$APP_TITLE $INV_YEAR${APP_BIN:+\\$APP_BIN}"
 IDMGR_EXE='C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe'
 wine_reg_add 'HKCR\adskidmgr' /ve /t REG_SZ /d "URL:Autodesk Identity Manager Protocol"
 wine_reg_add 'HKCR\adskidmgr' /v "URL Protocol" /t REG_SZ /d ""
@@ -74,33 +74,40 @@ step "Installing IdSDK SSO plugin into the Licensing Agent..."
 cfg_sso_plugin
 
 step "Disabling non-essential and Wine-broken add-ins, known crash sources..."
-cfg_disable_addins
-cfg_crash_sources
+if [ "$INV_PRODUCT" = inventor ]; then
+    cfg_disable_addins
+    cfg_crash_sources
+fi
 cfg_wpf_stubs
 
-step "RealDWG settings (Inventor's access to AutoCAD files)..."
-# Without it Inventor stops at the splash screen: "Failed to initialize a
-# component for accessing AutoCAD files. Error 82". On Windows the file is
-# in the user profile; Inventor normally writes it itself (a copy of what a
-# working Windows install has - UTF-16 with BOM, CRLF).
-RDWG_DIR="C:\\Program Files\\Common Files\\Autodesk Shared\\RealDWG Shared $INV_YEAR"
-RDWG_XML="$P_USER/AppData/Roaming/Autodesk/Inventor $INV_YEAR/RealDWGSettings.xml"
-if [ -d "$P_C/Program Files/Common Files/Autodesk Shared/RealDWG Shared $INV_YEAR" ]; then
-    mkdir -p "$(dirname "$RDWG_XML")"
-    if [ ! -f "$RDWG_XML" ]; then
-        { printf '\xff\xfe'; printf '<?xml version="1.0" encoding="utf-16" standalone="no" ?>\r\n<RealDWGSettings InstallDirectory="%s"></RealDWGSettings>\r\n' \
-            "$RDWG_DIR" | iconv -f UTF-8 -t UTF-16LE; } > "$RDWG_XML"
+if [ "$INV_PRODUCT" = inventor ]; then
+    step "RealDWG settings (Inventor's access to AutoCAD files)..."
+    # Without it Inventor stops at the splash screen: "Failed to initialize a
+    # component for accessing AutoCAD files. Error 82". On Windows the file is
+    # in the user profile; Inventor normally writes it itself (a copy of what a
+    # working Windows install has - UTF-16 with BOM, CRLF).
+    RDWG_DIR="C:\\Program Files\\Common Files\\Autodesk Shared\\RealDWG Shared $INV_YEAR"
+    RDWG_XML="$P_USER/AppData/Roaming/Autodesk/Inventor $INV_YEAR/RealDWGSettings.xml"
+    if [ -d "$P_C/Program Files/Common Files/Autodesk Shared/RealDWG Shared $INV_YEAR" ]; then
+        mkdir -p "$(dirname "$RDWG_XML")"
+        if [ ! -f "$RDWG_XML" ]; then
+            { printf '\xff\xfe'; printf '<?xml version="1.0" encoding="utf-16" standalone="no" ?>\r\n<RealDWGSettings InstallDirectory="%s"></RealDWGSettings>\r\n' \
+                "$RDWG_DIR" | iconv -f UTF-8 -t UTF-16LE; } > "$RDWG_XML"
+        fi
+        ok "RealDWGSettings.xml -> $RDWG_DIR"
+    else
+        warn "RealDWG Shared $INV_YEAR not installed - DWG import/export will not work"
     fi
-    ok "RealDWGSettings.xml -> $RDWG_DIR"
-else
-    warn "RealDWG Shared $INV_YEAR not installed - DWG import/export will not work"
-fi
 
-step "Checking project and Home page files..."
-[ -f "$P_PUBDOCS/Default.ipj" ] && ok "Default.ipj" \
-    || warn "Default.ipj not found in $P_PUBDOCS - create a project in Inventor (Get Started > Projects)"
-[ -f "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/WebBrowser/index.html" ] && ok "App Home page" \
-    || warn "WebBrowser/index.html not found - the Home tab will stay empty"
+    step "Checking project and Home page files..."
+    [ -f "$P_PUBDOCS/Default.ipj" ] && ok "Default.ipj" \
+        || warn "Default.ipj not found in $P_PUBDOCS - create a project in Inventor (Get Started > Projects)"
+    [ -f "$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/WebBrowser/index.html" ] && ok "App Home page" \
+        || warn "WebBrowser/index.html not found - the Home tab will stay empty"
+else
+    step "RealDWG settings: not needed for $APP_TITLE"
+    step "Project files: not needed for $APP_TITLE"
+fi
 
 step "WebView2 for Wine (Windows 7 + wined3d for msedgewebview2.exe, policy switches)..."
 webview2_reg
