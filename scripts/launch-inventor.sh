@@ -147,6 +147,30 @@ wine "$LIC_EXE" >"$LOGDIR/licensing-$TS.log" 2>&1 &
 sleep 5
 pgrep -if '(^|[\\/])adsklicensingservice\.exe( |$)' >/dev/null && ok "Licensing Service running" || err "Licensing Service failed to start"
 
+# Experimental (INV_DRIVER_NAMES=1): the display adapters' user-mode driver
+# names (InstalledDisplayDrivers), which Windows drivers register and Wine
+# leaves out - Inventor reports "Graphics driver file Unknown" without them and
+# may refuse GPU ray tracing. Wine rewrites these keys when its display devices
+# start, so this runs after that and before Inventor.
+if [ "${INV_DRIVER_NAMES:-0}" = 1 ]; then
+    CLS='HKLM\System\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}'
+    wine reg query 'HKLM\System\CurrentControlSet\Enum\PCI' /s /v Driver 2>/dev/null | tr -d '\r' |
+    while read -r line; do
+        case "$line" in
+            HKEY_*VEN_*) ven="${line#*VEN_}"; ven="${ven%%&*}" ;;
+            Driver*REG_SZ*) n="${line##*\\}"
+                case "$ven" in
+                    1002) names='aticfx64\0aticfx64\0aticfx64\0amdxc64' ;;
+                    10DE|10de) names='nvldumdx\0nvldumdx\0nvldumdx\0nvldumdx' ;;
+                    8086) names='igdumdim64\0igd10iumd64\0igd10iumd64\0igd12umd64' ;;
+                    *) continue ;;
+                esac
+                wine reg add "$CLS\\$n" /v InstalledDisplayDrivers /t REG_MULTI_SZ /d "$names" /f >/dev/null 2>&1 \
+                    && info "    driver names for GPU $n (vendor $ven)" ;;
+        esac
+    done
+fi
+
 info "[4/4] launching Inventor"
 cd "$P_INV/Bin" || exit 1
 # Not "wine ... | tee": processes Inventor starts (WebView2, licensing agent)
