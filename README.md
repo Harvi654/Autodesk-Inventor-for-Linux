@@ -482,6 +482,11 @@ of AI (Claude, by Anthropic) and tested by people on real machines.
 
 ## License
 
-[MIT](LICENSE), like the original project. The files in `patches/` change
-Wine's source code; when they are sent to Wine they are offered under Wine's
-license (LGPL 2.1 or later).
+[MIT](LICENSE), like the original project. The top-level Wine patches in
+`patches/` are offered under Wine's license (LGPL 2.1 or later) when sent
+upstream. See [the patch layout](patches/README.md) for patches targeting other
+components and optional runtimes.
+
+Autodesk Inventor and Microsoft WebView2 remain proprietary. The Nix packages
+and installer sources are marked unfree; this repository's license does not
+cover those applications.
