@@ -314,7 +314,7 @@ class Installer:
             os.makedirs(dest, exist_ok=True)
             with zipfile.ZipFile(path) as z:
                 z.extractall(dest)
-        return self.do_actions(s, logname)
+        return True
 
     def do_7z(self, s, logname, path):
         dest = self.target_dir(s)
@@ -386,10 +386,10 @@ class Installer:
         self.log("      registry: %d keys from %s imported" % (keys, os.path.basename(path)))
         return rc == 0
 
-    def do_actions(self, s, logname, media=None):
+    def do_actions(self, s, logname, media=None, kinds=("preInstall", "postInstall")):
         ok = True
         for act in s["actions"]:
-            if act["type"] not in ("preInstall", "postInstall"):
+            if act["type"] not in kinds:
                 continue
             path = act["path"] or ""
             if "%INSTALLERPATH%" in path or "Installer.exe" in path:
@@ -444,6 +444,12 @@ class Installer:
 
     def _install(self, s, logname, path, media):
         t = s["type"]
+        # preInstall actions run before the package, postInstall after it.
+        # Order matters: ADP Desktop SDK's "InstallCustomAction action=pre"
+        # removes its install folder (an older version), so running it after
+        # unpacking deleted the fresh AdpDesktopSDK\bin (AdpSDKCore.dll etc.).
+        pre = lambda: self.do_actions(s, logname, media, ("preInstall",))
+        post = lambda: self.do_actions(s, logname, media, ("postInstall",))
         if self.a.dry_run and t in ("ZIP", "7Z", "ADIX"):
             self.log("      unpack %s (%s)" % (s["file"], t))
             return self.do_actions(s, logname, media)
@@ -452,16 +458,16 @@ class Installer:
         elif t == "MSP":
             ok = self.do_msp(s, logname, media)
         elif t == "EXE":
-            ok = self.do_exe(s, logname, media) and self.do_actions(s, logname, media)
+            ok = pre() and self.do_exe(s, logname, media) and post()
         elif t == "ZIP":
-            ok = self.do_zip(s, logname, path)
+            ok = pre() and self.do_zip(s, logname, path) and post()
         elif t == "7Z":
             # e.g. Shared Components' asc-install-helper-tool runs
             # ASCRegistryTool.exe --registry set afterwards
-            ok = self.do_7z(s, logname, path) and self.do_actions(s, logname, media)
+            ok = pre() and self.do_7z(s, logname, path) and post()
         elif t == "ADIX":
             # e.g. REX Framework registers REX.exe (/RegServer) afterwards
-            ok = self.do_adix(s, logname, path) and self.do_actions(s, logname, media)
+            ok = pre() and self.do_adix(s, logname, path) and post()
         else:
             self.log("     WARN don't know how to install type %s - skipped" % t); return True
         if not ok:
