@@ -45,19 +45,26 @@ for state_file in AdskLicensingService.sds AdskLicensingService.data; do
     fi
 done
 # Wine creates a profile for the runtime user; seed the build-time default once.
-realdwg_relative="AppData/Roaming/Autodesk/Inventor 2026/RealDWGSettings.xml"
+realdwg_relative="AppData/Roaming/Autodesk/Inventor $inventor_year/RealDWGSettings.xml"
 realdwg_settings="$WINEPREFIX/drive_c/users/$USER/$realdwg_relative"
 if [ ! -f "$realdwg_settings" ]; then
     mkdir -p "$(dirname "$realdwg_settings")"
     cp "$WINEPREFIX/drive_c/users/nixbld/$realdwg_relative" "$realdwg_settings" || exit 1
     chmod u+w "$realdwg_settings"
 fi
+# The script-based installer creates a writable working prefix. A declarative
+# layer only seeds RealDWG settings, so prepare Inventor's generated user files
+# before its first document opens (2027 otherwise reports failed folder/add-in saves).
+inventor_public="$WINEPREFIX/drive_c/users/Public/Documents/Autodesk/Inventor $inventor_year"
+inventor_addins="$WINEPREFIX/drive_c/users/$USER/AppData/Roaming/Autodesk/Inventor $inventor_year/Addins"
+mkdir -p "$inventor_public/Macros" "$inventor_addins" || exit 1
+chmod u+rwx "$inventor_public/Macros" "$inventor_addins" || exit 1
 # As in the source launcher, remove stale per-user Boost IPC session files.
 idsdk_user_hex=$(printf %s "$USER" | od -An -tx1 -v | tr -d ' \n' | tr 'a-f' 'A-F')
 idsdk_ipc="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$idsdk_user_hex/interprocess"
 rm -rf -- "$idsdk_ipc"
 mkdir -p "$idsdk_ipc/01000000"
-inventor_log_root="${XDG_STATE_HOME:-$HOME/.local/state}/autodesk-inventor-2026"
+inventor_log_root="${XDG_STATE_HOME:-$HOME/.local/state}/autodesk-inventor-$inventor_year"
 mkdir -p "$inventor_log_root"
 wine 'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' \
     >>"$inventor_log_root/identity.log" 2>&1 &
