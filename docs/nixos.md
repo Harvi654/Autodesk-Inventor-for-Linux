@@ -207,6 +207,9 @@ Service logs are under `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-<yea
 Do not delete existing writable state when testing upgrades. Use temporary XDG
 data/cache/state directories for clean smoke tests.
 
+The launcher prepares each release's writable public `Macros` directory and
+per-user `Addins` directory before startup, preserving existing files.
+
 Launchers prevent overlapping sessions that share this state. The licensing
 database is linked to `.nix-overlayfs/licensing-data/AdskLicensingService.sds`
 inside the writable state directory so its memory-mapped file stays outside the

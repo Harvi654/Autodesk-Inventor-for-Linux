@@ -89,6 +89,13 @@ class RuntimeState(unittest.TestCase):
         script = f'. "{LOCK}"; . "{SERVICES}"'
         first = self.run_script(script)
         self.assertEqual(first.returncode, 0, first.stderr)
+        public_macros = prefix / f"drive_c/users/Public/Documents/Autodesk/Inventor {year}/Macros"
+        user_addins = profile.parent / "Addins"
+        for directory in [public_macros, user_addins]:
+            self.assertTrue(directory.is_dir())
+            probe = directory / "write-test.tmp"
+            probe.write_text("writable")
+            probe.unlink()
         self.assertTrue(database.is_symlink())
         native = database.resolve()
         self.assertFalse(native.is_relative_to(prefix))

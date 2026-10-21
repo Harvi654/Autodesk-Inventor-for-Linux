@@ -52,6 +52,13 @@ if [ ! -f "$realdwg_settings" ]; then
     cp "$WINEPREFIX/drive_c/users/nixbld/$realdwg_relative" "$realdwg_settings" || exit 1
     chmod u+w "$realdwg_settings"
 fi
+# The script-based installer creates a writable working prefix. A declarative
+# layer only seeds RealDWG settings, so prepare Inventor's generated user files
+# before its first document opens (2027 otherwise reports failed folder/add-in saves).
+inventor_public="$WINEPREFIX/drive_c/users/Public/Documents/Autodesk/Inventor $inventor_year"
+inventor_addins="$WINEPREFIX/drive_c/users/$USER/AppData/Roaming/Autodesk/Inventor $inventor_year/Addins"
+mkdir -p "$inventor_public/Macros" "$inventor_addins" || exit 1
+chmod u+rwx "$inventor_public/Macros" "$inventor_addins" || exit 1
 # As in the source launcher, remove stale per-user Boost IPC session files.
 idsdk_user_hex=$(printf %s "$USER" | od -An -tx1 -v | tr -d ' \n' | tr 'a-f' 'A-F')
 idsdk_ipc="$WINEPREFIX/drive_c/ProgramData/Autodesk/IDSDK/$idsdk_user_hex/interprocess"
