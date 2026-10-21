@@ -1,9 +1,16 @@
 # NixOS setup
 
+> **Do not upload Inventor to a public binary cache.** The built Inventor package
+> contains Autodesk’s proprietary software. Publishing it to Cachix or any other
+> public binary cache would redistribute that software and must never be done.
+> This also applies to Autodesk installation media, extracted images, application
+> layers, and cache uploads of a system closure that includes Inventor.
+
 The exact pinned Inventor package builds, and `nix flake check` passes.
 The built application layer contains the verified x86-64 `Inventor.exe`,
 packaged fonts, and valid licensing and Identity Manager links. Fresh-state
-GUI validation is in progress; application compatibility is not yet proven.
+GUI validation passed browser sign-in and basic part creation, save, and reopen.
+Broader application compatibility has not been validated.
 
 The default target is Inventor Professional 2026 English with the 2026.4 update
 and Content Center, on x86_64 Linux. The runtime builds Wine 11.20 with every
@@ -49,12 +56,43 @@ When developing with new files that have not yet been added to Git, use
 
 ## Declarative integration
 
-Add this project as an input to your system flake, import
-`inputs.inventor.nixosModules.default`, and enable:
+Requires x86_64 NixOS with flakes enabled and Vulkan-capable system graphics
+drivers. Add this repository as an input to your system flake and import its
+module (pin a committed revision when deploying):
 
 ```nix
-programs.autodesk-inventor.enable = true;
+inputs.inventor.url = "github:Harvi654/Autodesk-Inventor-for-Linux";
 ```
+
+Include the input in your outputs and host modules, keeping your existing
+configuration and GPU driver settings:
+
+```nix
+outputs = inputs@{ nixpkgs, ... }: {
+  nixosConfigurations.your-host = nixpkgs.lib.nixosSystem {
+    system = "x86_64-linux";
+    modules = [
+      ./configuration.nix
+      inputs.inventor.nixosModules.default
+      { programs.autodesk-inventor.enable = true; }
+    ];
+  };
+};
+```
+
+For a local checkout, use `path:/absolute/path/to/Autodesk-Inventor-for-Linux`
+as the input URL instead. The initial build compiles patched Wine and can take
+substantial time and disk space.
+
+Rebuild your system and launch Inventor:
+
+```sh
+sudo nixos-rebuild switch --flake /path/to/system-flake#your-host
+inventor
+```
+
+Or select **Autodesk Inventor 2026** in your application menu. Complete first
+sign-in in your normal browser and allow the Autodesk callback to open Inventor.
 
 The module installs the application and desktop entry, enables NixOS graphics
 and FUSE support, and associates `adskidmgr://` links with the launcher. nix-overlayfs

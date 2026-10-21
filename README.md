@@ -2,10 +2,6 @@
 
 # Autodesk Inventor 2026 on Linux
 
-**NixOS:** use the pinned flake and NixOS module below. Inventor 2026.4 has
-passed build checks, browser sign-in, and basic part creation/save/reopen on
-the normal desktop with system graphics. See [validation details](docs/nixos.md).
-
 Install and run **Autodesk Inventor Professional 2026** on Linux with Wine -
 from Autodesk's own download, without Windows or a virtual machine, with one
 command.
@@ -109,103 +105,7 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 - an Autodesk account with an Inventor 2026 license
 - about an hour, most of it waiting
 
-## NixOS setup
-
-Requires x86_64 NixOS, flakes enabled, Vulkan-capable system graphics drivers,
-and your own Autodesk Inventor 2026 license. The flake builds patched Wine and
-immutable dependency/application layers; settings and sign-in persist separately.
-The first build can take substantial time and disk space, including compiling Wine.
-The feature table below describes the original script project; the Nix package
-has been smoke-tested for sign-in and basic part creation, save, and reopen.
-
-### 1. Import your installation media
-
-Download the English Inventor 2026 direct-download archive and the 2026.4 update
-from Autodesk, then import the original files into the Nix store:
-
-```sh
-nix-store --add-fixed sha256 ~/downloads/Inventor/Inventor_Professional_2026_English_Win_64bit_db_002_002.7z
-nix-store --add-fixed sha256 ~/downloads/Inventor/Inventor_2026.4_Update.exe
-```
-
-Adjust the directory to match your downloads. The flake verifies the hashes in
-[nix/media.nix](nix/media.nix); it does not redistribute Autodesk software. The
-small `001_002.exe` unpacker is unnecessary. Other media versions need explicit
-package overrides; see [the detailed guide](docs/nixos.md).
-
-### 2. Add the module to your system flake
-
-Add an input (use a committed revision when deploying):
-
-```nix
-inputs.inventor.url = "github:krokosik/Autodesk-Inventor-for-Nix";
-```
-
-Include it in your outputs arguments and host modules:
-
-```nix
-outputs = inputs@{ nixpkgs, ... }: {
-  nixosConfigurations.your-host = nixpkgs.lib.nixosSystem {
-    system = "x86_64-linux";
-    modules = [
-      ./configuration.nix
-      inputs.inventor.nixosModules.default
-      { programs.autodesk-inventor.enable = true; }
-    ];
-  };
-};
-```
-
-For an unpublished local checkout, use
-`inputs.inventor.url = "path:/absolute/path/to/Autodesk-Inventor-for-Nix";`
-instead. Keep your existing system modules and settings.
-
-The module installs Inventor and its desktop entry, enables graphics and FUSE,
-and registers the browser sign-in callback. Keep your normal GPU driver
-configuration; the launcher uses the system graphics stack by default.
-
-If Home Manager manages your MIME defaults, also add to its configuration:
-
-```nix
-xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor.desktop";
-```
-
-### 3. Rebuild and launch
-
-```sh
-sudo nixos-rebuild switch --flake /path/to/system-flake#your-host
-inventor
-```
-
-Or select **Autodesk Inventor 2026** in your application menu. Complete first
-sign-in in your normal browser and allow the Autodesk callback to open Inventor.
-
-**Use the regular launcher on Wayland desktops:** it runs through XWayland and
-is the validated setup. Native fractional scaling is currently unavailable with
-this setup.
-
-The separate **Autodesk Inventor 2026 (Wayland)** entry is experimental and
-**not working yet**. It selects Wine’s native Wayland driver, but testing on
-2026-10-20 produced an unresponsive Inventor window after resolving sign-in.
-The earlier licensing error was a separate sign-in issue. Close Inventor before
-switching entries: both use the same persistent state and running Wine session.
-
-For a build/run without adding the system module, from this checkout:
-
-```sh
-nix flake check
-nix build .#inventor
-nix run .#inventor
-```
-
-Browser callback registration is provided by the module; prefer it for regular use.
-User state lives in `${XDG_DATA_HOME:-~/.local/share}/autodesk-inventor-2026`;
-logs live in `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-2026`.
-Preserve that state when updating the flake lock or rebuilding. Installation
-media and immutable layers stay separate from your documents and writable state.
-See [docs/nixos.md](docs/nixos.md) for overrides, diagnostics, and validation.
-
-## Installation (script-based distributions)
+## Installation
 
 ### 1. Download Inventor from Autodesk
 
@@ -350,6 +250,13 @@ Removes the launcher entry, this project's Wine (and fixes copied into the
 system's Wine by v0.1, by reinstalling Arch's `wine` package) and, after
 asking, the Wine prefix. Your Inventor files in
 `~/Inventor` are kept.
+
+## NixOS
+
+On x86_64 NixOS, a flake and module provide a declarative setup using your own
+Autodesk installation media and license. See [the NixOS setup guide](docs/nixos.md)
+for installation, system integration, and known limitations. The module uses
+system graphics drivers and keeps sign-in and settings in persistent user state.
 
 ## FAQ
 
