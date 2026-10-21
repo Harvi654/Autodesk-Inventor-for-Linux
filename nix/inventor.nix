@@ -157,7 +157,8 @@ overlayfsLib.mkWindowsPackage {
       'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
   '';
   extraPreLaunchCommands = ''
-    export PATH=${modules.runtime.toolsPackage}/bin:${lib.makeBinPath tools}:$PATH
+    export PATH=${modules.runtime.toolsPackage}/bin:${lib.makeBinPath (tools ++ [ pkgs.util-linux ])}:$PATH
+    ${builtins.readFile ./launch-lock.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
       inherit (modules) runtime;
       defaultMode = "system";

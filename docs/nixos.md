@@ -85,6 +85,12 @@ Service logs are under `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-2026
 Do not delete existing writable state when testing upgrades. Use temporary XDG
 data/cache/state directories for clean smoke tests.
 
+Launchers prevent overlapping sessions that share this state. The licensing
+database is linked to `.nix-overlayfs/licensing-data/AdskLicensingService.sds`
+inside the writable state directory so its memory-mapped file stays outside the
+overlay mount. The first launch migrates the existing database without resetting
+sign-in. Include this directory when backing up your installation's user state.
+
 The launcher defaults to automatic namespace selection and the system graphics
 stack at `/run/opengl-driver`. Keep the default host security policy. Diagnostics
 can select `NIX_OVERLAYFS_NAMESPACE_MODE=direct` or

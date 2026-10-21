@@ -21,8 +21,24 @@ if [ -z "$licensing_version" ]; then
     echo "Inventor: no Autodesk licensing service in the composed prefix" >&2
     exit 1
 fi
-# Nix store files arrive read-only; copy up the service's mutable database.
+# bbolt memory-maps this database. Keep its live inode on the native filesystem,
+# outside the composed overlay, and serialize users of it with launch-lock.sh.
 licensing_state="$WINEPREFIX/drive_c/ProgramData/Autodesk/AdskLicensingService"
+licensing_native_state="$inventor_state_dir/licensing-data"
+mkdir -p "$licensing_native_state" || exit 1
+chmod 700 "$licensing_native_state" || exit 1
+licensing_database="$licensing_state/AdskLicensingService.sds"
+licensing_native_database="$licensing_native_state/AdskLicensingService.sds"
+if [ ! -f "$licensing_native_database" ]; then
+    cp -- "$licensing_database" "$licensing_native_database.tmp" || exit 1
+    chmod 600 "$licensing_native_database.tmp" || exit 1
+    mv -T -- "$licensing_native_database.tmp" "$licensing_native_database" || exit 1
+fi
+if [ "$(readlink "$licensing_database" 2>/dev/null || true)" != "$licensing_native_database" ]; then
+    rm -f -- "$licensing_database" || exit 1
+    ln -s -- "$licensing_native_database" "$licensing_database" || exit 1
+fi
+# Other mutable service files still need to be copied up from the Nix layer.
 for state_file in AdskLicensingService.sds AdskLicensingService.data; do
     if [ -f "$licensing_state/$state_file" ]; then
         chmod u+w "$licensing_state/$state_file" || exit 1

@@ -53,6 +53,26 @@
           meta.description = "Autodesk Inventor Professional 2026.4";
         };
       };
+      checks.${system}.runtime-state =
+          pkgs.runCommand "inventor-runtime-state-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+                pkgs.coreutils
+                pkgs.findutils
+                pkgs.gnugrep
+                pkgs.util-linux
+              ];
+            }
+            ''
+              mkdir -p tests nix
+              cp ${./tests/test_runtime_state.py} tests/test_runtime_state.py
+              cp ${./nix/launch-lock.sh} nix/launch-lock.sh
+              cp ${./nix/launch-services.sh} nix/launch-services.sh
+              python3 tests/test_runtime_state.py
+              touch "$out"
+            '';
       checks.${system}.installer =
         pkgs.runCommand "inventor-installer-tests"
           {
