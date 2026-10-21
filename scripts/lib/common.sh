@@ -170,7 +170,7 @@ INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:---no-sandbox --enable-unsafe-swiftshader
 INV_WEBVIEW2_ARGS_INVENTOR="${INV_WEBVIEW2_ARGS_INVENTOR:-$INV_WEBVIEW2_ARGS --disable-gpu}"
 
 export WINEPREFIX="$INV_PREFIX"
-export WINEARCH=win64
+export WINEARCH="${WINEARCH:-win64}"
 # No Wine menu entries and file associations: Autodesk's installers create
 # Start-menu shortcuts and register .ipt/.iam/.dwg/... - Wine's winemenubuilder
 # would copy them to ~/.local/share/applications as entries that start the

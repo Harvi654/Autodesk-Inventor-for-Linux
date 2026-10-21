@@ -39,22 +39,23 @@ mkdir -p "$DST"
 # file globs per font directory candidates (Arch, Debian/Ubuntu, Fedora paths)
 find_fonts() {
     local pat dirs=()
-    for pat in /usr/share/fonts /usr/local/share/fonts; do [ -d "$pat" ] && dirs+=("$pat"); done
+    for pat in "${INV_FONT_DIRS[@]}"; do [ -d "$pat" ] && dirs+=("$pat"); done
+    [ ${#dirs[@]} -gt 0 ] || return 0
     # "|| true": under set -e a find error (unreadable dir) would end the loop
     for pat in "$@"; do
-        find "${dirs[@]}" -type f -name "$pat" 2>/dev/null || true
+        find -L "${dirs[@]}" -type f -name "$pat" 2>/dev/null || true
     done | sort -u
 }
 
 mapfile -t FILES < <(
     # Noto comes as static (NotoSans-Regular.ttf) or variable fonts
-    # (NotoSans[wdth,wght].ttf, NotoSans-Italic[wdth,wght].ttf - Arch)
+    # (NotoSans[wdth,wght].ttf on Arch, NotoSans.ttf on Nixpkgs)
     find_fonts 'Liberation*.ttf' \
                'DejaVuSans*.ttf' 'DejaVuSerif*.ttf' \
-               'NotoSans-*.ttf' 'NotoSans\[*.ttf' 'NotoSerif-*.ttf' 'NotoSerif\[*.ttf' \
-               'NotoSansMono-*.ttf' 'NotoSansMono\[*.ttf' \
-               'NotoSansSymbols-*.ttf' 'NotoSansSymbols\[*.ttf' 'NotoSansSymbols2-*.ttf' \
-               'NotoSansMath-*.ttf' \
+               'NotoSans.ttf' 'NotoSans-*.ttf' 'NotoSans\[*.ttf' 'NotoSerif.ttf' 'NotoSerif-*.ttf' 'NotoSerif\[*.ttf' \
+               'NotoSansMono.ttf' 'NotoSansMono-*.ttf' 'NotoSansMono\[*.ttf' \
+               'NotoSansSymbols.ttf' 'NotoSansSymbols2.ttf' 'NotoSansSymbols-*.ttf' 'NotoSansSymbols\[*.ttf' 'NotoSansSymbols2-*.ttf' \
+               'NotoSansMath.ttf' 'NotoSansMath-*.ttf' \
                'Carlito-*.ttf' 'Caladea-*.ttf'
     find "$WINE_DATA_DIR/fonts" -maxdepth 1 -type f -name '*.ttf' 2>/dev/null
 )
@@ -72,7 +73,7 @@ have() {
 }
 MISSING=()
 have 'LiberationSans-Regular.ttf'                 || MISSING+=(ttf-liberation)
-have 'NotoSans-Regular.ttf' 'NotoSans\[*.ttf'      || MISSING+=(noto-fonts)
+have 'NotoSans.ttf' 'NotoSans-Regular.ttf' 'NotoSans\[*.ttf'      || MISSING+=(noto-fonts)
 have 'DejaVuSans.ttf'                             || MISSING+=(ttf-dejavu)
 if [ ${#MISSING[@]} -gt 0 ]; then
     die "missing fonts - install them first: sudo pacman -S --needed ${MISSING[*]}"
