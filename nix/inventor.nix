@@ -65,6 +65,7 @@ let
     pkgs.gawk
     pkgs.gnutar
     pkgs.xz
+    pkgs.zstd
   ];
   fonts = pkgs.symlinkJoin {
     name = "inventor-fonts";
@@ -79,6 +80,10 @@ let
   dxvkArchive = pkgs.fetchurl {
     url = "https://github.com/doitsujin/dxvk/releases/download/v2.7.1/dxvk-2.7.1.tar.gz";
     hash = "sha256-2Fznx59X7NdlqqG55wB8uHXm/en20zHfeZvOc9UTzoc=";
+  };
+  vkd3dArchive = pkgs.fetchurl {
+    url = "https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v3.0.1/vkd3d-proton-3.0.1.tar.zst";
+    sha256 = "3cf2315522af5e43605ef6d3c41dad91387040bf97199934f3f7ab76caaa2f0c";
   };
   webview2 =
     (overlayfsLib.mkWindowsPackage {
@@ -125,6 +130,8 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
           "d3d9"
           "d3d10core"
           "d3d11"
+          "d3d12"
+          "d3d12core"
           "dxgi"
         ]
       )
@@ -149,6 +156,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     EOF
     export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
     ln -s ${dxvkArchive} "$DOWNLOAD_DIR/dxvk-2.7.1.tar.gz"
+    ln -s ${vkd3dArchive} "$DOWNLOAD_DIR/vkd3d-proton-3.0.1.tar.zst"
     python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
       --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 ${
         lib.optionalString (!contentCenter) "--no-content"
