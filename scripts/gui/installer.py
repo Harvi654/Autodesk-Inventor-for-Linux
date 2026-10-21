@@ -698,6 +698,9 @@ class Installer(Gtk.ApplicationWindow):
                          "are optional. Found on this computer:"))
         self.dl_list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
         self.dl_list.add_css_class("boxed-list")
+        # with downloads of several releases: which one to install now
+        self.rel_bar = Gtk.Box(spacing=8, visible=False)
+        box.append(self.rel_bar)
         scroll = Gtk.ScrolledWindow(vexpand=True, min_content_height=200)
         scroll.set_child(self.dl_list)
         box.append(scroll)
@@ -739,28 +742,65 @@ class Installer(Gtk.ApplicationWindow):
         for p, k in paths:
             if p not in [q for q, _ in uniq]:
                 uniq.append((p, k))
-        have_product = any(k == "product" for _, k in uniq)
-        names_on = set()
+        # one release is selected by default: the newest one not installed yet,
+        # else the newest (a repair); buttons above the list switch to another
+        rels = sorted({y for y in (release_of(p) for p, _ in uniq) if y})
+        installed = {y for y, _ in self.settings["installs"]}
+        new = [y for y in rels if y not in installed]
+        self.default_release = (new or rels or [None])[-1]
+        defaults = self.default_selection(uniq, self.default_release)
         for p, kind in uniq:
             check = Gtk.CheckButton()
-            # by default one copy of each file; an earlier unpacked download only without a fresh one
-            name = os.path.basename(p.rstrip("/")).lower()
-            default = (kind != "unpacked earlier" or not have_product) and name not in names_on
-            if default:
-                names_on.add(name)
-            check.set_active(old.get(p, default))
+            check.set_active(old.get(p, p in defaults))
             check.connect("toggled", lambda *_: self.update_downloads_state())
             line = Gtk.Box(spacing=10)
             margin(line, 6)
             line.append(check)
             text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
             text.append(label(os.path.basename(p.rstrip("/")) or p, wrap=False))
-            text.append(label("%s · %s · %s" % (kind, human_size(p), os.path.dirname(p)), css="dim-label caption"))
+            rel = release_of(p)
+            text.append(label("%s%s · %s · %s" % ("Inventor %s · " % rel if rel else "", kind, human_size(p),
+                                                  os.path.dirname(p)), css="dim-label caption"))
             line.append(text)
             self.dl_list.append(line)
             self.dl_rows.append((p, kind, check))
         if not uniq:
             self.dl_list.append(margin(label("Nothing found in Downloads - use Add files… or Add folder…"), 12))
+        self.fill_release_bar(rels, installed)
+        self.update_downloads_state()
+
+    def default_selection(self, rows, year):
+        """Paths selected for release <year>: one copy of each file; a download unpacked
+        earlier only when there is no fresh one of that release."""
+        mine = [(p, k) for p, k in rows if release_of(p) in (year, None)]
+        have_product = any(k == "product" for _, k in mine)
+        names_on, chosen = set(), set()
+        for p, kind in mine:
+            name = os.path.basename(p.rstrip("/")).lower()
+            if (kind != "unpacked earlier" or not have_product) and name not in names_on:
+                names_on.add(name)
+                chosen.add(p)
+        return chosen
+
+    def fill_release_bar(self, rels, installed):
+        child = self.rel_bar.get_first_child()
+        while child:
+            nxt = child.get_next_sibling()
+            self.rel_bar.remove(child)
+            child = nxt
+        self.rel_bar.set_visible(len(rels) > 1)
+        if len(rels) < 2:
+            return
+        self.rel_bar.append(label("Downloads of %d releases - install:" % len(rels), wrap=False))
+        for y in rels:
+            b = Gtk.Button(label="Inventor %s%s" % (y, " (repair)" if y in installed else ""))
+            b.connect("clicked", lambda _b, y=y: self.select_release(y))
+            self.rel_bar.append(b)
+
+    def select_release(self, year):
+        chosen = self.default_selection([(p, k) for p, k, _ in self.dl_rows], year)
+        for p, _, check in self.dl_rows:
+            check.set_active(p in chosen)
         self.update_downloads_state()
 
     def selected_downloads(self):
