@@ -15,6 +15,8 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs {
         inherit system;
+        # This flake explicitly packages proprietary Autodesk and WebView2 inputs.
+        config.allowUnfree = true;
         overlays = [
           (final: prev: {
             # libgsf 1.14.59 rejects valid empty OLE streams, crashing msitools.
@@ -53,7 +55,8 @@
           meta.description = "Autodesk Inventor Professional 2026.4";
         };
       };
-      checks.${system}.runtime-state =
+      checks.${system} = {
+        runtime-state =
           pkgs.runCommand "inventor-runtime-state-tests"
             {
               nativeBuildInputs = [
@@ -73,22 +76,23 @@
               python3 tests/test_runtime_state.py
               touch "$out"
             '';
-      checks.${system}.installer =
-        pkgs.runCommand "inventor-installer-tests"
-          {
-            nativeBuildInputs = [
-              pkgs.python3
-              pkgs.bash
-            ];
-          }
-          ''
-            export PYTHONPYCACHEPREFIX="$TMPDIR/pycache"
-            mkdir -p tests
-            cp ${./tests/test_declarative_installer.py} tests/test_declarative_installer.py
-            cp -R ${./scripts} scripts
-            python3 tests/test_declarative_installer.py
-            touch "$out"
-          '';
+        installer =
+          pkgs.runCommand "inventor-installer-tests"
+            {
+              nativeBuildInputs = [
+                pkgs.python3
+                pkgs.bash
+              ];
+            }
+            ''
+              export PYTHONPYCACHEPREFIX="$TMPDIR/pycache"
+              mkdir -p tests
+              cp ${./tests/test_declarative_installer.py} tests/test_declarative_installer.py
+              cp -R ${./scripts} scripts
+              python3 tests/test_declarative_installer.py
+              touch "$out"
+            '';
+      };
       formatter.${system} = pkgs.nixfmt;
       nixosModules.default = import ./nix/nixos-module.nix { inherit self; };
       devShells.${system}.default = pkgs.mkShell {

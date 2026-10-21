@@ -12,6 +12,23 @@
 }:
 let
   inherit (pkgs) lib;
+  inventorMeta = {
+    description = "Autodesk Inventor 2026 through Wine and nix-overlayfs";
+    homepage = "https://www.autodesk.com/products/inventor/overview";
+    license = lib.licenses.unfree;
+    platforms = [ "x86_64-linux" ];
+  };
+  # The composed launcher and captured installation both contain Autodesk code.
+  withInventorMeta =
+    package: executable:
+    package.overrideAttrs (old: {
+      meta = (old.meta or { }) // inventorMeta // { mainProgram = executable; };
+      passthru = (old.passthru or { }) // {
+        basePackage = package.basePackage.overrideAttrs (base: {
+          meta = (base.meta or { }) // inventorMeta;
+        });
+      };
+    });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
   # session when the main process exits so overlayfs can unmount it cleanly.
   launchWine = pkgs.writeShellScript "inventor-wine-session" ''
@@ -63,24 +80,31 @@ let
     url = "https://github.com/doitsujin/dxvk/releases/download/v2.7.1/dxvk-2.7.1.tar.gz";
     hash = "sha256-2Fznx59X7NdlqqG55wB8uHXm/en20zHfeZvOc9UTzoc=";
   };
-  webview2 = overlayfsLib.mkWindowsPackage {
-    inherit (modules) runtime;
-    pname = "inventor-webview2";
-    version = "154.0.4258.62";
-    packageName = "inventor-webview2";
-    src = pkgs.fetchurl {
-      url = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/18c66e75-0385-4019-be3f-3f4a2bb867d5/MicrosoftEdgeWebView2RuntimeInstallerX64.exe";
-      hash = "sha256-rCLs3BnFuIuH8/p1LADalUFlOo9cDF/Eo7K26+ZZH2k=";
-    };
-    unshareInstall = { session, ... }: ''
-      set -euo pipefail
-      ${session.commands.wine} "$src" /silent /install
-      ${pkgs.coreutils}/bin/timeout 60 ${session.commands.wineserver} --wait || ${session.commands.wineserver} -k
-      test -n "$(${pkgs.findutils}/bin/find "$WINEPREFIX/drive_c" -name msedgewebview2.exe -print -quit)"
-    '';
-  };
+  webview2 =
+    (overlayfsLib.mkWindowsPackage {
+      inherit (modules) runtime;
+      pname = "inventor-webview2";
+      version = "154.0.4258.62";
+      packageName = "inventor-webview2";
+      src = pkgs.fetchurl {
+        url = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/18c66e75-0385-4019-be3f-3f4a2bb867d5/MicrosoftEdgeWebView2RuntimeInstallerX64.exe";
+        hash = "sha256-rCLs3BnFuIuH8/p1LADalUFlOo9cDF/Eo7K26+ZZH2k=";
+        meta.license = lib.licenses.unfree;
+      };
+      unshareInstall = { session, ... }: ''
+        set -euo pipefail
+        ${session.commands.wine} "$src" /silent /install
+        ${pkgs.coreutils}/bin/timeout 60 ${session.commands.wineserver} --wait || ${session.commands.wineserver} -k
+        test -n "$(${pkgs.findutils}/bin/find "$WINEPREFIX/drive_c" -name msedgewebview2.exe -print -quit)"
+      '';
+    }).overrideAttrs
+      (old: {
+        meta = (old.meta or { }) // {
+          license = lib.licenses.unfree;
+        };
+      });
 in
-overlayfsLib.mkWindowsPackage {
+withInventorMeta (overlayfsLib.mkWindowsPackage {
   inherit runtime;
   inherit version;
   portableReparsePoints = true;
@@ -157,7 +181,9 @@ overlayfsLib.mkWindowsPackage {
       'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
   '';
   extraPreLaunchCommands = ''
-    export PATH=${modules.runtime.toolsPackage}/bin:${lib.makeBinPath (tools ++ [ pkgs.util-linux ])}:$PATH
+    export PATH=${modules.runtime.toolsPackage}/bin:${
+      lib.makeBinPath (tools ++ [ pkgs.util-linux ])
+    }:$PATH
     ${builtins.readFile ./launch-lock.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
       inherit (modules) runtime;
@@ -166,4 +192,4 @@ overlayfsLib.mkWindowsPackage {
     }
     ${builtins.readFile ./launch-services.sh}
   '';
-}
+}) "inventor"

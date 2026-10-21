@@ -34,6 +34,9 @@ nix-store --add-fixed sha256 ~/downloads/Inventor/Inventor_2026.4_Update.exe
 The small `001_002.exe` unpacker is unnecessary. The archive and update must
 match the hashes in `nix/media.nix`. Installation runs from original media in a
 build prefix; existing personal prefixes are not used as package sources.
+Autodesk media, updates, the installed application, and Microsoft WebView2 are
+marked unfree. This application flake explicitly enables unfree packages in its
+private Nixpkgs instance; it does not change your system-wide Nixpkgs policy.
 
 ```sh
 nix flake check
