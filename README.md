@@ -80,6 +80,9 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
+| Inventor 2027 (2027.1) | ✅ | first test: install, sign-in, parts, Stress Analysis; install with `INV_YEAR=2027` |
+| 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
+| CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
@@ -91,7 +94,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Frame Analysis | ❌ | study, constraints and loads work; Simulate crashes the solver (`rkernel.exe`) in Wine's compound-file code (ole32) - being looked into; off by default |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | Open dialog: browsing folders with DWG files | ⚠️ | can crash Inventor while the preview of a file loads (.NET fails while handling an exception in a background thread) - being looked into |
-| GPU ray tracing | ❌ | needs Direct3D 12 ray tracing |
+| GPU ray tracing | ❓ | needs a GPU with ray tracing hardware (not RX 580); vkd3d-proton has DirectX 12 ray tracing - untested |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
 
@@ -324,7 +327,8 @@ Planned, roughly in this order:
 - [ ] a simpler graphical installer
 - [ ] send the Wine fixes to Wine upstream
 - [ ] Frame Analysis, 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
-- [ ] Inventor 2025 and 2027
+- [x] Inventor 2027 (2027.1 - first test on Arch)
+- [ ] Inventor 2025
 
 ## Reporting problems
 
