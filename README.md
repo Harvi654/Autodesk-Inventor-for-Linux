@@ -1,18 +1,19 @@
-![Inventor for Linux - Autodesk Inventor 2026 on Linux with Wine, unofficial community project](docs/images/banner.png)
+![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/banner.png)
 
-# Autodesk Inventor 2026 on Linux
+# Autodesk Inventor 2026 and 2027 on Linux
 
-Install and run **Autodesk Inventor Professional 2026** on Linux with Wine -
-from Autodesk's own download, without Windows or a virtual machine, with one
-command.
+Install and run **Autodesk Inventor Professional 2026 and 2027** on Linux with
+Wine - from Autodesk's own download, without Windows or a virtual machine,
+with one command. Both releases can be installed side by side.
 
-> **Status: early release (v0.2), in active development.** Works for everyday
+> **Status: early release (v0.3), in active development.** Works for everyday
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
 > on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on two
 > machines: AMD RX 580, and an Intel UHD 630 + NVIDIA GTX 1050 laptop - the
 > laptop with a slightly older version). **Ubuntu 26.04** and **Fedora 44**
-> install and run too (first tests, in a virtual machine). An easier
-> installer is planned - see [Roadmap](#roadmap). Reports are welcome.
+> install and run too (first tests, in a virtual machine). Inventor 2027 is
+> newer here and less tested than 2026. NixOS: a declarative flake (see
+> [NixOS](#nixos)). Reports are welcome.
 >
 > This is an unofficial community project. It is not made, supported or
 > endorsed by Autodesk. You need your own Inventor license (an education
@@ -347,7 +348,7 @@ Planned, roughly in this order:
 - [ ] openSUSE
 - [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
-- [ ] a simpler graphical installer
+- [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
 - [ ] send the Wine fixes to Wine upstream
 - [ ] Frame Analysis, 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
 - [x] Inventor 2027 (2027.1 - first test on Arch)
