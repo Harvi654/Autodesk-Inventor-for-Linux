@@ -75,7 +75,7 @@ INV_YEAR="${INV_YEAR:-2026}"
 # ~/.wine-inventor<year> (one release per prefix).
 if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
     _y="$(inventor_year_in_prefix "$INV_PREFIX")"
-    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"
+    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || INV_PREFIX="$HOME/.wine-$INV_PRODUCT$INV_YEAR"
     unset _y
 fi
 # Installed Inventor releases: "YEAR<TAB>PREFIX" lines, oldest release first.
