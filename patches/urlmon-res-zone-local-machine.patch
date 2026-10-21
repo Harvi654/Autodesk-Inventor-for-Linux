@@ -1,0 +1,18 @@
+--- a/dlls/urlmon/sec_mgr.c
++++ b/dlls/urlmon/sec_mgr.c
+@@ -544,6 +544,15 @@
+         SysFreeString(path);
+     }
+ 
++    /* res: URLs name resources of modules on this machine. A res:/// URL
++     * without a module (AutoCAD's res:///%prodname%btn.xmx/... icons) has
++     * no host, which get_zone_from_domains() would turn into
++     * URLZONE_INVALID; WPF then refuses to load the image. */
++    if(*zone == URLZONE_INVALID && !wcsicmp(scheme, L"res")) {
++        *zone = URLZONE_LOCAL_MACHINE;
++        hres = S_OK;
++    }
++
+     if(*zone == URLZONE_INVALID) {
+         hres = get_zone_from_domains(uri, zone);
+         if(hres == S_FALSE)
