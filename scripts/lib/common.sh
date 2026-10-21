@@ -26,6 +26,7 @@ PROJECT_DIR="$(dirname "$SCRIPTS_DIR")"
 # "INV_PREFIX=... bash scripts/x.sh" and install.sh --prefix reach the scripts
 # it starts).
 _env_inv="$(compgen -e | grep '^INV_' || true)"
+INV_PREFIX_FROM_ENV=0; [ -z "${INV_PREFIX:-}" ] || INV_PREFIX_FROM_ENV=1
 _env_save=""
 [ -z "$_env_inv" ] || _env_save="$(declare -px $_env_inv)"
 for _cfg in "$PROJECT_DIR/config.env" "${XDG_CONFIG_HOME:-$HOME/.config}/inventor-on-linux/config.env"; do
@@ -63,10 +64,37 @@ inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest release of the progr
     done
     echo "$y"
 }
+# the prefix from config.env, before it is adjusted below (inventor_installs)
+INV_CONFIG_PREFIX="${INV_PREFIX:-}"
 if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
     INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
 fi
 INV_YEAR="${INV_YEAR:-2026}"
+# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
+# another release: that release's prefix is not this one's - use the default
+# ~/.wine-inventor<year> (one release per prefix).
+if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
+    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
+    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"
+    unset _y
+fi
+# Installed Inventor releases: "YEAR<TAB>PREFIX" lines, oldest release first.
+# Looks at the prefix from config.env and ~/.wine-inventor<year>, plus prefixes
+# this installer made (~/.wine-*/.odis-install-state.json); backups and copies
+# (*.backup*, *.bak, *.old) are left out.
+inventor_installs() {
+    local p y seen=" "
+    for p in "$INV_CONFIG_PREFIX" "$HOME"/.wine-inventor20[0-9][0-9] "$HOME"/.wine-*/.odis-install-state.json; do
+        p="${p%/.odis-install-state.json}"
+        [ -n "$p" ] && [ -d "$p/drive_c" ] || continue
+        case "${p##*/}" in *.backup*|*.bak|*.old|*-old) continue ;; esac
+        p="$(realpath -m "$p")"
+        case "$seen" in *" $p "*) continue ;; esac
+        seen+="$p "
+        y="$(inventor_year_in_prefix "$p")"
+        [ -z "$y" ] || printf '%s\t%s\n' "$y" "$p"
+    done | sort -n -k1,1 -s
+}
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
 INV_REGMAJOR="${INV_REGMAJOR:-$((INV_YEAR - 1996))}"
 WIN_ROOT="${WIN_ROOT:-/mnt/windows}"

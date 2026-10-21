@@ -3,6 +3,12 @@
 # (works with rofi/wofi/fuzzel/walker on Hyprland - anything reading .desktop files).
 #
 # Usage: bash scripts/install-desktop-integration.sh [--uninstall]
+#
+# One entry per Inventor release ("Autodesk Inventor 2026", "... 2027"), each
+# starting its own prefix. The sign-in handler and the file types are shared:
+# .ipt/.iam/... open in the newest installed release, the others are offered
+# under "Open with". --uninstall removes this release's entry; the shared
+# parts go with the last one.
 
 set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
@@ -22,12 +28,30 @@ INV_TYPES=(
     "application/x-autodesk-inventor-project|*.ipj|Autodesk Inventor project"
 )
 
+# entries of the other releases (autodesk-inventor-2027.desktop, ...)
+other_entries() {
+    local f
+    for f in "$APPS"/autodesk-inventor-20[0-9][0-9].desktop; do
+        [ -e "$f" ] && [ "$f" != "$APPS/$NAME.desktop" ] && echo "$f"
+    done
+    return 0
+}
+
 if [ "${1:-}" = "--uninstall" ]; then
-    rm -f "$APPS/adskidmgr-handler.desktop" "$APPS/$NAME.desktop" "$ICONS/$NAME.png" "$ICONS/$NAME"-*.png \
-          "$BIN/adskidmgr-callback" "$BIN/launch-inventor" "$MIME_XML"
+    rm -f "$APPS/$NAME.desktop" "$ICONS/$NAME.png" "$ICONS/$NAME"-*.png
+    if [ -z "$(other_entries)" ]; then
+        rm -f "$APPS/adskidmgr-handler.desktop" "$BIN/adskidmgr-callback" "$BIN/launch-inventor" "$MIME_XML"
+        ok "removed (Inventor $INV_YEAR, and the shared sign-in handler and file types)"
+    else
+        # the file types now open in the newest release that is left
+        newest="$(other_entries | sort | tail -1)"
+        for t in "${INV_TYPES[@]}"; do xdg-mime default "$(basename "$newest")" "${t%%|*}" 2>/dev/null || true; done
+        ok "removed Inventor $INV_YEAR (file types now open in $(basename "$newest" .desktop))"
+    fi
     update-desktop-database "$APPS" 2>/dev/null || true
     update-mime-database "$MIME_DIR" 2>/dev/null || true
-    ok "removed"; exit 0
+    for k in kbuildsycoca6 kbuildsycoca5; do command -v "$k" >/dev/null && { "$k" >/dev/null 2>&1 || true; break; }; done
+    exit 0
 fi
 
 mkdir -p "$APPS" "$ICONS" "$BIN"
@@ -79,10 +103,9 @@ elif [ -n "$IM" ] && [ -f "$ICO" ]; then
         || warn "icon extraction failed"
 fi
 gtk-update-icon-cache -q -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
-EXEC="$BIN/launch-inventor"
-# a prefix other than the default has to be passed on
-[ "$(realpath -m "$INV_PREFIX")" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ] \
-    || EXEC="env INV_PREFIX=$(realpath -m "$INV_PREFIX") $EXEC"
+# Always with its prefix: without it the launcher would start the prefix from
+# config.env - with several releases installed, maybe another one.
+EXEC="env INV_PREFIX=$(realpath -m "$INV_PREFIX") $BIN/launch-inventor"
 # File types: the files are OLE compound documents, so without this file
 # managers call them "document" and offer an office suite. Sub-class of
 # application/x-ole-storage: the file name decides, not the content sniffing.
@@ -127,11 +150,15 @@ StartupWMClass=inventor.exe
 Keywords=CAD;3D;Modeling;Engineering;Inventor;Autodesk;
 EOF
 update-desktop-database "$APPS" 2>/dev/null || true
-for t in "${INV_TYPES[@]}"; do xdg-mime default "$NAME.desktop" "${t%%|*}" 2>/dev/null || true; done
+# the file types open in the newest release; an older one is only offered
+NEWEST="$( { other_entries; echo "$APPS/$NAME.desktop"; } | sort | tail -1)"
+if [ "$NEWEST" = "$APPS/$NAME.desktop" ]; then
+    for t in "${INV_TYPES[@]}"; do xdg-mime default "$NAME.desktop" "${t%%|*}" 2>/dev/null || true; done
+fi
 # KDE (Dolphin) reads its own cache of file types and apps
 for k in kbuildsycoca6 kbuildsycoca5; do command -v "$k" >/dev/null && { "$k" >/dev/null 2>&1 || true; break; }; done
 ok "launcher entry: $APPS/$NAME.desktop"
-ok "file types: .ipt .iam .idw .ipn .ipj open in Inventor ($(xdg-mime query default application/x-autodesk-inventor-part 2>/dev/null)), own icons: ${OWN_ICONS:-none found}"
+ok "file types: .ipt .iam .idw .ipn .ipj open in $(xdg-mime query default application/x-autodesk-inventor-part 2>/dev/null), own icons: ${OWN_ICONS:-none found}"
 info "(a file manager that is open shows the new icons after a restart: close Dolphin, or nautilus -q)"
 
 BROWSER_DEFAULT="$(xdg-settings get default-web-browser 2>/dev/null || true)"

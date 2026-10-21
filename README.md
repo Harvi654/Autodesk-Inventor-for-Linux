@@ -203,9 +203,10 @@ bash scripts/install-gui.sh
 The same installation with a window: it checks your system, finds Autodesk's
 download in your Downloads folder, shows the eight phases with a progress bar
 and the installer's output, and asks for your password in a dialog. It needs
-GTK 4 for Python and installs it first if it is missing. With Inventor already
-installed it offers to start it, repair the installation or update this
-project and its Wine.
+GTK 4 for Python and installs it first if it is missing. It lists the
+installed releases (each with a Start button), installs the release of the
+selected download next to them - or repairs it - and can update this project
+and its Wine. Uninstall removes releases one by one.
 
 ### 4. Hyprland only: window rules
 
@@ -220,7 +221,9 @@ With a Lua config (`hyprland.lua`, Hyprland 0.55+) copy the contents of
 
 ### 5. Start
 
-Start **Autodesk Inventor 2026** (or 2027) from your app launcher, or:
+Start **Autodesk Inventor 2026** (or 2027) from your app launcher - each
+installed release has its own entry; `.ipt`/`.iam`/... open in the newest one,
+the others are under "Open with". Or:
 
 ```bash
 bash ~/inventor-on-linux/scripts/launch-inventor.sh
