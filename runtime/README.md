@@ -79,3 +79,7 @@ texture descriptor without replacing Vulkan's allocation data.
 Imported textures keep the caller-owned shared handle for D3DKMT bookkeeping;
 they are not re-exported through Vulkan. Runtime descriptor buffers are queried
 before opening a resource so existing metadata is retained.
+
+The RT launcher selects GLX for Inventor on X11. On the tested NVIDIA/Xwayland
+stack, Wine’s EGL path cannot supply the alpha-capable window format needed by
+the capability probe; GLX passes both pixel-format selections with OpenGL 4.6.
