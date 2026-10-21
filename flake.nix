@@ -1,5 +1,5 @@
 {
-  description = "Declarative Autodesk Inventor 2026 environment for NixOS";
+  description = "Declarative Autodesk Inventor 2026 and 2027 environment for NixOS";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
@@ -35,6 +35,16 @@
         windowsArch = "wow64";
       };
       mediaSources = import ./nix/media.nix { inherit pkgs; };
+      mediaSources2027 = import ./nix/media.nix {
+        inherit pkgs;
+        year = "2027";
+      };
+      inventor2027 = self.lib.mkInventor {
+        year = "2027";
+        inherit (mediaSources2027) media;
+        updates = [ mediaSources2027.update ];
+        version = "2027.1";
+      };
       inventor = self.lib.mkInventor {
         inherit (mediaSources) media;
         updates = [ mediaSources.update ];
@@ -44,11 +54,19 @@
     {
       packages.${system} = {
         inherit wine inventor;
+        inventor-2026 = inventor;
+        inventor-2027 = inventor2027;
         inventor-media = mediaSources.media;
         default = inventor;
       };
       apps.${system} = {
         default = self.apps.${system}.inventor;
+        inventor-2026 = self.apps.${system}.inventor;
+        inventor-2027 = {
+          type = "app";
+          program = "${inventor2027}/bin/inventor-2027";
+          meta.description = "Autodesk Inventor Professional 2027.1";
+        };
         inventor = {
           type = "app";
           program = "${inventor}/bin/inventor";
