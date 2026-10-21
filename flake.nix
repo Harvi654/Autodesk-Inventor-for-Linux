@@ -21,7 +21,7 @@
           (final: prev: {
             # libgsf 1.14.59 rejects valid empty OLE streams, crashing msitools.
             libgsf = prev.libgsf.overrideAttrs (old: {
-              patches = (old.patches or [ ]) ++ [ ./nix/libgsf-empty-stream.patch ];
+              patches = (old.patches or [ ]) ++ [ ./patches/libgsf/libgsf-empty-stream.patch ];
             });
           })
           inputs.nix-overlayfs.overlays.default
