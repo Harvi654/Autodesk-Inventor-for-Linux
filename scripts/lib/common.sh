@@ -121,6 +121,14 @@ INV_DXVK="${INV_DXVK:-pinned}"
 DXVK_VER="${DXVK_VER:-2.7.1}"
 DXVK_SHA256="${DXVK_SHA256:-d85ce7c79f57ecd765aaa1b9e7007cb875e6fde9f6d331df799bce73d513ce87}"
 DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
+# vkd3d-proton: Direct3D 12 on Vulkan (works with DXVK's dxgi). Inventor 2027
+# tests for Direct3D 12 and warns when Wine's own d3d12 (vkd3d) is not enough.
+# Pinned release from github.com/HansKristian-Work/vkd3d-proton, SHA-256 of
+# the release file. INV_VKD3D=off keeps Wine's builtin d3d12.
+INV_VKD3D="${INV_VKD3D:-pinned}"
+VKD3D_VER="${VKD3D_VER:-3.0.1}"
+VKD3D_SHA256="${VKD3D_SHA256:-3cf2315522af5e43605ef6d3c41dad91387040bf97199934f3f7ab76caaa2f0c}"
+VKD3D_DLLS=(d3d12 d3d12core)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
@@ -380,6 +388,42 @@ install_dxvk() {
     done
 }
 
+# Same for vkd3d-proton (Direct3D 12). INV_VKD3D=off: Wine's builtin d3d12 again.
+install_vkd3d() {
+    local d
+    if [ "$INV_VKD3D" = off ]; then
+        for d in "${VKD3D_DLLS[@]}"; do
+            # builtin explicitly: vkd3d-proton's DLLs may still be in system32
+            wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d builtin
+        done
+        info "vkd3d-proton off (INV_VKD3D=off) - Wine's own d3d12"
+        return 0
+    fi
+    local tzst="$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" tmp
+    local url="https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst"
+    mkdir -p "$DOWNLOAD_DIR"
+    if [ ! -f "$tzst" ]; then
+        info "downloading $url"
+        curl -fL --retry 3 -o "$tzst.part" "$url" || die "vkd3d-proton download failed"
+        mv "$tzst.part" "$tzst"
+    fi
+    if ! echo "$VKD3D_SHA256  $tzst" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$tzst"
+        die "vkd3d-proton $VKD3D_VER checksum mismatch - file deleted. (Changed VKD3D_VER? Set VKD3D_SHA256 too.)"
+    fi
+    ok "vkd3d-proton $VKD3D_VER sha256 verified"
+    tmp="$(mktemp -d)"
+    tar --zstd -xf "$tzst" -C "$tmp" || { rm -rf "$tmp"; die "unpacking vkd3d-proton failed (zstd missing?)"; }
+    for d in "${VKD3D_DLLS[@]}"; do
+        cp "$tmp/vkd3d-proton-$VKD3D_VER/x64/$d.dll" "$P_C/windows/system32/"
+        if [ -d "$P_C/windows/syswow64" ]; then cp "$tmp/vkd3d-proton-$VKD3D_VER/x86/$d.dll" "$P_C/windows/syswow64/"; fi
+    done
+    rm -rf "$tmp"
+    for d in "${VKD3D_DLLS[@]}"; do
+        wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d native
+    done
+}
+
 # --- isolation ---------------------------------------------------------------
 # Limits what the Windows programs SEE: drive letters and the user's shell
 # folders. This is not a security boundary - Wine programs run as your user and
@@ -467,7 +511,7 @@ sandbox_reg() {
 # ("GPU process isn't usable. Goodbye.") -> white windows. What made it render:
 #   - msedgewebview2.exe reported as Windows 7 (Wine AppDefaults), so Chromium
 #     avoids the Windows 10 presentation paths Wine lacks;
-#   - wined3d instead of DXVK for msedgewebview2.exe only (wined3d accepts a
+#   - wined3d instead of DXVK (and Wine's d3d12, not vkd3d-proton) for msedgewebview2.exe only (wined3d accepts a
 #     D3D_DRIVER_TYPE_WARP device, DXVK rejects it);
 #   - switches via the HKLM WebView2 policy - the WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS
 #     environment variable does not reach the browsers started by
@@ -475,7 +519,7 @@ sandbox_reg() {
 webview2_reg() {
     local k='HKCU\Software\Wine\AppDefaults\msedgewebview2.exe' d app
     wine_reg_add "$k" /v Version /t REG_SZ /d win7
-    for d in d3d11 dxgi d3d10core d3d9; do wine_reg_add "$k\\DllOverrides" /v "$d" /t REG_SZ /d builtin; done
+    for d in d3d11 dxgi d3d10core d3d9 d3d12 d3d12core; do wine_reg_add "$k\\DllOverrides" /v "$d" /t REG_SZ /d builtin; done
     k='HKLM\Software\Policies\Microsoft\Edge\WebView2\AdditionalBrowserArguments'
     for app in '*' AdskLicensingAgent.exe AdskIdentityManager.exe; do
         wine_reg_add "$k" /v "$app" /t REG_SZ /d "$INV_WEBVIEW2_ARGS"

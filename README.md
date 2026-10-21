@@ -275,7 +275,8 @@ Python, no compiled programs are in this repository. What they do:
   by the [Build Wine](.github/workflows/build-wine.yml) workflow from Wine's
   source and `patches/`, checked against the SHA-256 in `wine/SHA256SUMS`
   (you can build it yourself instead: `scripts/get-wine.sh --build`), DXVK
-  2.7.1 from its GitHub release (SHA-256 checked) and Microsoft's WebView2
+  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked)
+  and Microsoft's WebView2
   runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
   (`~/.wine-inventor2026`), this project's Wine, the launcher entry.
@@ -303,6 +304,7 @@ Inventor itself is not modified. The work is in three places:
   reads Autodesk's install image and runs its packages in the right order
   under Wine, in place of Autodesk's Windows installer front end.
 - **Prefix setup** (`scripts/finish-install.sh`): DXVK for Direct3D 11,
+  vkd3d-proton for Direct3D 12 (Inventor 2027 checks for it),
   WebView2 for the home page and sign-in, free fonts in place of Windows fonts,
   browser sign-in, and isolation of the Wine prefix from your home folder.
 
@@ -363,7 +365,7 @@ the Wine project, and I wanted to use Inventor on Linux without a virtual
 machine. Nobody pays for it and it is not connected to any company.
 
 It is only possible thanks to the people who build, for free and in the open,
-what it stands on: **Wine** and **DXVK** first of all, and Mesa / the Vulkan
+what it stands on: **Wine**, **DXVK** and **vkd3d-proton** first of all, and Mesa / the Vulkan
 drivers, Arch Linux, Hyprland and KDE. And thanks to **AI** - most of the code
 and the Wine patches were worked out together with Claude (Anthropic), which
 made a project like this doable for one person in their free time.

@@ -224,7 +224,7 @@ Please report which one was needed.
 | IPC cleanup | only `interprocess/01000000` | whole `interprocess/` (Open Problem #4) |
 | `msquic=` override | documented, not set | set in `launch-inventor.sh` |
 | Packages | `dxvk-mingw-git` via pacman (not in Arch repos) | official repos only, no AUR |
-| DXVK | `setup_dxvk` from a system package | release 2.7.1 from github.com/doitsujin/dxvk, SHA-256 pinned (same hash as winetricks `dxvk2071`); `INV_DXVK=system` to use `setup_dxvk` |
+| DXVK | `setup_dxvk` from a system package | release 2.7.1 from github.com/doitsujin/dxvk, SHA-256 pinned (same hash as winetricks `dxvk2071`); `INV_DXVK=system` to use `setup_dxvk`; vkd3d-proton 3.0.1 (Direct3D 12) from github.com/HansKristian-Work/vkd3d-proton, SHA-256 pinned, `INV_VKD3D=off` keeps Wine's d3d12 |
 | File access | `Z:` = whole filesystem, Documents/Desktop/... linked into `$HOME` | only `C:` (prefix) and `D:` = `~/Inventor`; `--no-sandbox` restores Wine defaults |
 
 ## OGSFactory.dll is not modified

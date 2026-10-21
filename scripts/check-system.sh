@@ -66,6 +66,7 @@ if [ "$INV_DXVK" = system ]; then
 else
     info "DXVK: pinned $DXVK_VER from GitHub (sha256 ${DXVK_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/dxvk-$DXVK_VER.tar.gz" ] && echo ', already downloaded')"
 fi
+[ "$INV_VKD3D" = off ] || info "vkd3d-proton: pinned $VKD3D_VER from GitHub (sha256 ${VKD3D_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" ] && echo ', already downloaded')"
 info "Isolation: INV_SANDBOX=$INV_SANDBOX, data folder (D:) = ${INV_DATA_DIR:-<none>}"
 
 hdr "Windows partition ($WIN_ROOT)"

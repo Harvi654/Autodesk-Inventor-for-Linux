@@ -45,8 +45,9 @@ info "Licensing $LIC_VER | Shared Components $ASC_VER | Identity Manager $(lates
 step "Windows 10 mode, X11 (XWayland) graphics driver..."
 cfg_wine_mode
 
-step "Installing DXVK ($([ "$INV_DXVK" = system ] && echo "system setup_dxvk" || echo "$DXVK_VER, pinned"))..."
+step "Installing DXVK ($([ "$INV_DXVK" = system ] && echo "system setup_dxvk" || echo "$DXVK_VER, pinned")) and vkd3d-proton ($([ "$INV_VKD3D" = off ] && echo off || echo "$VKD3D_VER, pinned"))..."
 install_dxvk
+install_vkd3d
 
 step "Registry: Shared Components, search path, adskidmgr:// handler..."
 # The Shared Components were unpacked by us, not by Autodesk's installer -
