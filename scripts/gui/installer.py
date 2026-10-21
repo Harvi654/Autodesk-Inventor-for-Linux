@@ -349,7 +349,7 @@ CSS = """
 class Installer(Gtk.ApplicationWindow):
     def __init__(self, app):
         super().__init__(application=app, title="Autodesk Inventor on Linux")
-        self.set_default_size(820, 640)
+        self.set_default_size(820, 680)
         self.settings = project_settings()
         self.proc = None
         self.cancelled = False
@@ -534,9 +534,15 @@ class Installer(Gtk.ApplicationWindow):
             grid.attach(label(mark, css="state-" + state, wrap=False), 0, row, 1, 1)
             grid.attach(label(title, wrap=False), 1, row, 1, 1)
             grid.attach(label(detail), 2, row, 1, 1)
-        frame = Gtk.Frame(label="Your system")
-        frame.set_child(margin(grid, 12))
-        box.append(frame)
+        # all fine: one line, the details folded away (the page fits the window
+        # with several installed releases); a warning or a problem: open
+        worst = "bad" if not self.checks_ok else ("warn" if any(s == "warn" for s, _, _ in checks) else "ok")
+        summary = {"ok": "✓ Your system is suitable", "warn": "! Your system - see the notes",
+                   "bad": "✗ Your system can't run the installation"}[worst]
+        exp = Gtk.Expander(expanded=worst != "ok")
+        exp.set_label_widget(label(summary, css="state-" + worst, wrap=False))
+        exp.set_child(margin(grid, 12))
+        box.append(exp)
         if not self.checks_ok:
             box.append(label(markup="<b>This system can't run the installation</b> - see the ✗ above."))
         cfg = self.settings.get("INV_CONFIG_PREFIX") or ""
