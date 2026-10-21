@@ -1,0 +1,12 @@
+--- a/dlls/urlmon/sec_mgr.c
++++ b/dlls/urlmon/sec_mgr.c
+@@ -564,7 +564,8 @@
+ 
+     hres = CoInternetGetSecurityUrl(url, &secur_url, PSU_SECURITY_URL_ONLY, 0);
+     if(hres != S_OK) {
+-        DWORD size = lstrlenW(url)*sizeof(WCHAR);
++        /* Copy the terminating null too: CreateUri() below reads to it. */
++        DWORD size = (lstrlenW(url)+1)*sizeof(WCHAR);
+ 
+         secur_url = CoTaskMemAlloc(size);
+         if(!secur_url)
