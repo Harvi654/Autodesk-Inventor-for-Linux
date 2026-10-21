@@ -1,0 +1,51 @@
+diff --git a/dlls/ntdll/exception.c b/dlls/ntdll/exception.c
+index 1802244..82891af 100644
+--- a/dlls/ntdll/exception.c
++++ b/dlls/ntdll/exception.c
+@@ -845,11 +845,15 @@ void * WINAPI RtlLocateExtendedFeature2( CONTEXT_EX *context_ex, ULONG feature_i
+     if (feature_id < 2 || feature_id >= 64)
+         return NULL;
+ 
+-    xs = (XSAVE_AREA_HEADER *)((BYTE *)context_ex + context_ex->XState.Offset);
+-
+     if (length)
+         *length = xstate_config->Features[feature_id].Size;
+ 
++    /* A feature that is not enabled can't be in any context: return before
++     * the XSAVE area is looked at, which may not be valid. */
++    if (!(feature_mask & xstate_config->EnabledFeatures)) return NULL;
++
++    xs = (XSAVE_AREA_HEADER *)((BYTE *)context_ex + context_ex->XState.Offset);
++
+     if (xstate_config->CompactionEnabled)
+     {
+         if (!(xs->CompactionMask & feature_mask)) return NULL;
+@@ -859,7 +863,6 @@ void * WINAPI RtlLocateExtendedFeature2( CONTEXT_EX *context_ex, ULONG feature_i
+     }
+     else
+     {
+-        if (!(feature_mask & xstate_config->EnabledFeatures)) return NULL;
+         offset = xstate_config->Features[feature_id].Offset - sizeof(XSAVE_FORMAT);
+     }
+ 
+diff --git a/dlls/ntdll/tests/exception.c b/dlls/ntdll/tests/exception.c
+index d465232..545411d 100644
+--- a/dlls/ntdll/tests/exception.c
++++ b/dlls/ntdll/tests/exception.c
+@@ -11388,6 +11388,16 @@ static void test_extended_context(void)
+         p = pRtlLocateExtendedFeature(context_ex, XSTATE_AVX, NULL);
+         ok(p == &xs->YmmContext, "Got unexpected p %p.\n", p);
+ 
++        if (pRtlGetEnabledExtendedFeatures && !pRtlGetEnabledExtendedFeatures(1 << XSTATE_CET_U))
++        {
++            /* a feature that is not enabled: NULL without touching the XSAVE area */
++            CONTEXT_EX bogus_ex = *context_ex;
++
++            bogus_ex.XState.Offset = 0x40000000;
++            p = pRtlLocateExtendedFeature(&bogus_ex, XSTATE_CET_U, NULL);
++            ok(!p, "Got unexpected p %p.\n", p);
++        }
++
+         length2 = 0xdeadbeef;
+         p = pLocateXStateFeature(context, 0, &length2);
+         if (flags & CONTEXT_NATIVE)
