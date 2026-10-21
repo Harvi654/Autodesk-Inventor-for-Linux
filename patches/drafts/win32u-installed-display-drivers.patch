@@ -1,0 +1,54 @@
+diff --git a/dlls/win32u/sysparams.c b/dlls/win32u/sysparams.c
+index 7095e41..a46893b 100644
+--- a/dlls/win32u/sysparams.c
++++ b/dlls/win32u/sysparams.c
+@@ -1150,6 +1150,24 @@ static const char* driver_vendor_to_version( UINT16 vendor )
+     }
+ }
+ 
++/* user-mode driver names (D3D9, D3D10, D3D11, D3D12) as a REG_MULTI_SZ, the way
++ * the vendors' drivers register them; applications read them for diagnostics
++ * and to check the driver version */
++static const char* driver_vendor_to_umd_names( UINT16 vendor, unsigned int *len )
++{
++    static const char amd[] = "aticfx64\0aticfx64\0aticfx64\0amdxc64\0";
++    static const char nvidia[] = "nvldumdx\0nvldumdx\0nvldumdx\0nvldumdx\0";
++    static const char intel[] = "igdumdim64\0igd10iumd64\0igd10iumd64\0igd12umd64\0";
++
++    switch (vendor)
++    {
++    case 0x1002: *len = sizeof(amd); return amd;
++    case 0x10de: *len = sizeof(nvidia); return nvidia;
++    case 0x8086: *len = sizeof(intel); return intel;
++    default:     *len = 0; return NULL;
++    }
++}
++
+ static const char* driver_vendor_to_name( UINT16 vendor )
+ {
+     switch (vendor)
+@@ -1509,6 +1527,8 @@ static BOOL write_gpu_to_registry( const struct gpu *gpu, const struct pci_id *p
+     LARGE_INTEGER ft;
+     ULONG value;
+     HKEY hkey;
++    const char *umd_names;
++    unsigned int umd_len;
+ 
+     static const BOOL present = TRUE;
+     static const WCHAR driver_date_dataW[] =
+@@ -1653,6 +1673,15 @@ static BOOL write_gpu_to_registry( const struct gpu *gpu, const struct pci_id *p
+     set_reg_value( hkey, memory_sizeW, REG_DWORD, &value, sizeof(value) );
+ 
+     set_reg_ascii_value( hkey, "DriverVersion", driver_vendor_to_version( pci->vendor ) );
++    if ((umd_names = driver_vendor_to_umd_names( pci->vendor, &umd_len )))
++    {
++        WCHAR umd_namesW[64];
++        unsigned int i;
++
++        for (i = 0; i < umd_len; i++) umd_namesW[i] = umd_names[i];
++        asciiz_to_unicode( bufferW, "InstalledDisplayDrivers" );
++        set_reg_value( hkey, bufferW, REG_MULTI_SZ, umd_namesW, umd_len * sizeof(WCHAR) );
++    }
+     NtClose( hkey );
+ 
+ 
