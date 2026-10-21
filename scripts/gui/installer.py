@@ -233,7 +233,7 @@ def wine_running():
 
 def project_version():
     try:
-        out = subprocess.run(["git", "-C", REPO, "describe", "--tags", "--always"],
+        out = subprocess.run(["git", "-C", REPO, "describe", "--tags", "--match", "v*", "--always"],
                              capture_output=True, text=True, timeout=10).stdout.strip()
         return out or "unknown"
     except (OSError, subprocess.SubprocessError):

@@ -15,7 +15,7 @@ if git symbolic-ref -q HEAD >/dev/null; then
     git pull --ff-only
 else
     latest="$(git tag -l 'v*' --sort=-v:refname | head -1)"
-    current="$(git describe --tags --exact-match 2>/dev/null || git rev-parse --short HEAD)"
+    current="$(git describe --tags --match 'v*' --exact-match 2>/dev/null || git rev-parse --short HEAD)"
     if [ -z "$latest" ] || [ "$latest" = "$current" ]; then
         echo "    up to date ($current)"
     else
