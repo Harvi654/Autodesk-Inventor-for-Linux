@@ -14,7 +14,8 @@ inside Inventor.
 - Source `enable-gpu-renderer.sh` before starting Inventor to set its
   `Driver\EnableHydra` preference to `1`. This changes writable user state.
   To undo it, use the same `wine reg add` command with `/d 0` while Inventor
-  is closed. The helper currently targets Inventor 2026's registry version.
+  is closed. Set `INVENTOR_YEAR` to select the release (default: `2026`);
+  its registry version, shader cache, and renderer log are kept release-specific.
 - `assemble-wine-opengl.sh WINE_ROOT PATCHED_OPENGL_DLL OUTPUT` builds a
   runtime tree using a matching Wine OpenGL DLL. Its physical bootstrap copies
   ensure Wine loads that DLL from the new tree. `gpu-ray-tracing.sh` enables

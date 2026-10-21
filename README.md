@@ -95,7 +95,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Frame Analysis | ❌ | study, constraints and loads work; Simulate crashes the solver (`rkernel.exe`) in Wine's compound-file code (ole32) - being looked into; off by default |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
-| GPU ray tracing | ⚠️ | Experimental Nix launcher previously validated on RTX 3060 with 2026.4. 2027 and AMD remain unvalidated; upstream RX 6400 testing still reports an unsupported card. [Setup](docs/nixos.md#experimental-gpu-ray-tracing) |
+| GPU ray tracing | ⚠️ | Experimental Nix launcher validated on RTX 3060 with 2026.4, including after the upstream rebase. 2027 and AMD remain unvalidated; upstream RX 6400 testing still reports an unsupported card. [Setup](docs/nixos.md#experimental-gpu-ray-tracing) |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
 

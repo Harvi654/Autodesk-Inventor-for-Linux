@@ -277,17 +277,18 @@ launchers because they share persistent state and the running Wine session.
 
 ## Experimental GPU ray tracing
 
-GPU ray tracing rendered the sample `madeinlinux.ipt` successfully on an NVIDIA
-RTX 3060 with the system Vulkan driver. The isolated X11 desktop showed a
+GPU ray tracing rendered the sample `madeinlinux.ipt` successfully in Inventor
+2026.4 on an NVIDIA RTX 3060 with the system Vulkan driver. The isolated X11 desktop showed a
 ray-traced viewport and the **GPU** progress panel completed its Low-quality
 render in about two seconds; High quality completed in about twelve seconds.
 This verifies the complete shader and shared-texture
 path, beyond the standalone DXR capability checks. Other GPUs and large assemblies
 have not been validated.
 
-The experimental package adds Nixpkgs' Windows vkd3d-proton DLLs to the existing
-DXVK setup and uses the system Vulkan drivers. It reuses the application layer
-without rerunning the Autodesk installer. Try it from this checkout:
+The experimental package adds patched Nixpkgs vkd3d-proton 2.14.1 Windows DLLs
+and DXVK to the application layer. This overrides the normal installer's pinned
+vkd3d-proton 3.0.1 for the experimental launcher only. It uses system Vulkan
+drivers and reuses the application layer without rerunning the Autodesk installer. Try it from this checkout:
 
 ```sh
 nix run .#inventor-rt
@@ -320,9 +321,23 @@ programs.autodesk-inventor = {
 };
 ```
 
-This selects `inventor-rt` for the desktop entries and browser callback handler.
-If you override `package`, also pass `gpuRayTracing = true` to `lib.mkInventor`.
+This selects the GPU-enabled package for each release in `versions`: `inventor-rt`
+for 2026 and `inventor-2027-rt` for 2027. Registry preferences, shader caches, and
+renderer logs remain separate by release. The 2027 GPU target is experimental
+and has not yet passed the viewport test. After the upstream rebase on
+2026-10-21, 2026.4 again completed a GPU render in two seconds, and opening and
+closing Application Options preserved GPU mode with its Hardware checkbox
+enabled and checked. Interactive verification on the normal desktop is pending.
+If you override `package` or `packages`, also pass `gpuRayTracing = true` to
+`lib.mkInventor`.
 The native Wayland limitation above still applies.
+
+Try 2027 with `nix run .#inventor-2027-rt` after closing any running 2027
+session. Its launcher builds and starts using its separate sign-in state, but
+the hidden X11 test remains at “Loading…” with repeated D3D12 swapchain errors
+(`E_INVALIDARG`, invalid format). The ordinary 2027 launcher also failed to
+complete sample loading on the same hidden display; this comparison does not
+establish the cause. GPU rendering in 2027 is not yet verified.
 
 `nix run .#dxr-check` checks DXR support in an ephemeral prefix.
 `nix run .#shared-texture-check` checks the D3D12-to-D3D11 texture handoff. For Autodesk
@@ -330,7 +345,8 @@ plugin diagnostics, build `.#dxr-check-inventor` and follow the
 [runtime helper notes](../runtime/README.md). Shader caching is under
 `$XDG_CACHE_HOME/autodesk-inventor-2026/vkd3d`, and renderer logs are under
 `$XDG_STATE_HOME/autodesk-inventor-2026/vkd3d.log`, with the usual `~/.cache`
-and `~/.local/state` defaults. A missing renderer log can mean Inventor has
+and `~/.local/state` defaults. Substitute `2027` for the 2027 launcher.
+A missing renderer log can mean Inventor has
 not attempted D3D12 initialization.
 
 The reusable installation, runtime configuration, and diagnostic sources live
