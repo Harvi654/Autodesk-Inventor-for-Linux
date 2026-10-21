@@ -272,6 +272,9 @@ class Installer:
         if rc in (0, 1641, 3010):
             return True
         q = QUIRKS.get(s["name"].lower())
+        # the same installer under another manifest name (AutoCAD's image)
+        if not q and os.path.basename(s["file"].replace("\\", "/")).lower() == "adsklicensing-installer.exe":
+            q = QUIRKS["adsklicensing"]
         if q and rc in q[0] and glob.glob(self.unix(q[1])):
             self.log("        known Wine quirk for %s, files are installed - finishing it" % s["name"])
             return getattr(self, q[2])() if len(q) > 2 else True
