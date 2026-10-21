@@ -64,7 +64,12 @@
         gpuRayTracing = true;
       };
       gpu = import ./nix/gpu-ray-tracing.nix {
-        inherit pkgs overlayfsLib modules wine;
+        inherit
+          pkgs
+          overlayfsLib
+          modules
+          wine
+          ;
       };
     in
     {
@@ -192,7 +197,12 @@
       lib.mkInventor =
         args:
         import ./nix/inventor.nix {
-          inherit pkgs overlayfsLib modules wine;
+          inherit
+            pkgs
+            overlayfsLib
+            modules
+            wine
+            ;
         } args;
     };
 }

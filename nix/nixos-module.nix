@@ -17,7 +17,8 @@ let
   '';
   defaultPackages = {
     "2026" = self.packages.x86_64-linux.${if cfg.gpuRayTracing then "inventor-rt" else "inventor"};
-    "2027" = self.packages.x86_64-linux.${if cfg.gpuRayTracing then "inventor-2027-rt" else "inventor-2027"};
+    "2027" =
+      self.packages.x86_64-linux.${if cfg.gpuRayTracing then "inventor-2027-rt" else "inventor-2027"};
   };
   packageFor =
     year: if year == "2026" then cfg.package else cfg.packages.${year} or defaultPackages.${year};

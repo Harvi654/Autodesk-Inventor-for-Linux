@@ -154,6 +154,8 @@ let
         }).extraPreLaunchCommands
         }
         ${builtins.readFile ../runtime/gpu-ray-tracing.sh}
+        # Match Inventor's GLX capability probe in this ephemeral diagnostic prefix.
+        wine reg add 'HKCU\Software\Wine\X11 Driver' /v UseEGL /t REG_SZ /d N /f
       '';
     };
 in
