@@ -6,7 +6,7 @@
 let
   dll = wine.overrideAttrs (old: {
     pname = "wine-inventor-opengl32";
-    patches = (old.patches or [ ]) ++ [ ./wine-opengl-require-alpha.patch ];
+    patches = (old.patches or [ ]) ++ [ ../patches/gpu/wine-opengl-require-alpha.patch ];
     buildPhase = ''
       runHook preBuild
       make -j"$NIX_BUILD_CORES" dlls/opengl32/x86_64-windows/opengl32.dll

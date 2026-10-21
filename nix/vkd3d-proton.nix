@@ -4,8 +4,8 @@
   pname = "vkd3d-proton-windows";
   # Aurora copies transform matrices through long-vector ray payloads.
   patches = (old.patches or [ ]) ++ [
-    ./vkd3d-ray-payload.patch
-    ./vkd3d-wine-shared-metadata.patch
+    ../patches/gpu/vkd3d-ray-payload.patch
+    ../patches/gpu/vkd3d-wine-shared-metadata.patch
   ];
   # D3DKMT declarations are supplied by the matching Wine package.
   NIX_CFLAGS_COMPILE = (old.NIX_CFLAGS_COMPILE or "") + " -idirafter ${wine}/include/wine/windows";

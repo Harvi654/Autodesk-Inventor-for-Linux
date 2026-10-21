@@ -301,6 +301,12 @@ shared textures. The ordinary launcher does not set the Hydra preference;
 Inventor may change it after its capability checks. To restore the prior value,
 see [the runtime helper notes](../runtime/README.md).
 
+The RT launcher selects Wine’s GLX backend for Inventor on X11. On the tested
+NVIDIA/Xwayland stack, EGL fails the alpha-capable pixel-format check and can
+cause Application Options to disable GPU ray tracing. GLX passes that check.
+The user confirmed startup on the normal desktop after this change and repair
+of a separate stale X11 socket. The launcher does not alter desktop sockets.
+
 In Inventor, enable **Tools → Application Options → Hardware → Viewport GPU
 Ray Tracing**, open a solid part, choose **View → Visual Style → Realistic**,
 and enable **Ray Tracing**. The progress panel should say **GPU**.

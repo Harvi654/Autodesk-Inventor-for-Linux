@@ -3,9 +3,9 @@
 { pkgs }:
 pkgs.dxvk.dxvk64.overrideAttrs (old: {
   patches = (old.patches or [ ]) ++ [
-    ./dxvk-invalid-refresh.patch
-    ./dxvk-upstream-sharing-backport.patch
-    ./dxvk-shared-runtime-buffer.patch
-    ./dxvk-imported-resource-handle.patch
+    ../patches/gpu/dxvk-invalid-refresh.patch
+    ../patches/gpu/dxvk-upstream-sharing-backport.patch
+    ../patches/gpu/dxvk-shared-runtime-buffer.patch
+    ../patches/gpu/dxvk-imported-resource-handle.patch
   ];
 })
