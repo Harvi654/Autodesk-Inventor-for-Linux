@@ -121,7 +121,8 @@ class Installer:
         self.image = os.path.abspath(a.image)
         self.prefix = os.path.abspath(os.path.expanduser(a.prefix))
         self.c = os.path.join(self.prefix, "drive_c")
-        self.logdir = os.path.join(PROJECT, "logs", time.strftime("odis-install-%Y%m%d-%H%M%S"))
+        self.logdir = os.path.join(os.environ.get("INV_LOGDIR", os.path.join(PROJECT, "logs")),
+                                   time.strftime("odis-install-%Y%m%d-%H%M%S"))
         self.state_file = os.path.join(self.prefix, ".odis-install-state.json")
         self.env = dict(os.environ, WINEPREFIX=self.prefix,
                         WINEDEBUG=os.environ.get("WINEDEBUG", "fixme-all"))
@@ -268,7 +269,33 @@ class Installer:
     def do_exe(self, s, logname, media=None):
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
-        rc = self.run(["wine", exe] + win_split(self.expand(s["params"], extra, s)), logname)
+        argv = ["wine", exe] + win_split(self.expand(s["params"], extra, s))
+        rc = self.run(argv, logname)
+        if rc == 250 and s["name"].lower() == "adsklicensing":
+            # Some filesystems cannot represent the installer's NTFS junction.
+            # Repair only this diagnosed failure, then rerun the vendor installer
+            # so its remaining service/registration actions still execute.
+            installer_log = self.unix(r"C:\users\%s\AppData\Local\Temp\AdskLicensing-install.log" % USER)
+            try:
+                with open(installer_log, encoding="utf-8", errors="replace") as f:
+                    details = f.read()
+            except OSError:
+                details = ""
+            if ("Error code=LIC-INST-ERROR-250." in details and
+                    "Creating 'Current' link to" in details and
+                    glob.glob(self.unix(QUIRKS["adsklicensing"][1]))):
+                self.log("        licensing junction failed; repairing links and retrying once")
+                if not self.finish_licensing():
+                    return False
+                rc = self.run(argv, "retry-" + logname)
+                if rc == 63:
+                    with open(installer_log, encoding="utf-8", errors="replace") as f:
+                        details = f.read()
+                    if ("Error code=LIC-INST-ERROR-69009471." in details and
+                            "Starting Windows service during installation-skip workflow failed" in details and
+                            "(error code 1053)" in details):
+                        self.log("        licensing registered; Wine cannot report the service as running")
+                        return self.finish_licensing()
         if rc in (0, 1641, 3010):
             return True
         q = QUIRKS.get(s["name"].lower())
@@ -281,6 +308,11 @@ class Installer:
         return False
 
     def finish_licensing(self):
+        # Declarative builders may store Wine reparse records as sidecar files.
+        # Normalize them before this native filesystem repair inspects the links.
+        normalizer = self.env.get("INV_NORMALIZE_REPARSE")
+        if normalizer:
+            subprocess.check_call([normalizer, self.prefix], env=self.env)
         base = self.unix(r"C:\Program Files (x86)\Common Files\Autodesk Shared\AdskLicensing")
         vers = sorted((d for d in os.listdir(base)
                        if d[:1].isdigit() and os.path.isdir(os.path.join(base, d))),
@@ -300,8 +332,10 @@ class Installer:
                     os.remove(p)
                 elif os.path.isdir(p):
                     os.rmdir(p)   # empty placeholder; never delete real content
-            os.symlink(target, os.path.join(base, name))
-        self.log("        version.ini (%s), Current, CurrentSDK written" % ver)
+            # Recent licensing payloads omit the old standalone SDK directory.
+            if os.path.isdir(os.path.join(base, target)):
+                os.symlink(target, os.path.join(base, name))
+        self.log("        version.ini (%s) and available Current links written" % ver)
         return True
 
     def target_dir(self, s):
@@ -321,7 +355,7 @@ class Installer:
 
     def do_7z(self, s, logname, path):
         dest = self.target_dir(s)
-        sevenzip = shutil.which("7z") or shutil.which("7za")
+        sevenzip = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
         if not sevenzip:
             raise RuntimeError("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
         return self.run([sevenzip, "x", "-y", "-o" + dest, path], logname) == 0
@@ -433,6 +467,16 @@ class Installer:
         return ok
 
     # --- driver -------------------------------------------------------------
+    def use_preinstalled_webview2(self, step):
+        if not self.a.preinstalled_webview2 or step["name"].lower() != "webview2":
+            return False
+        runtime = os.path.join(self.c, "Program Files (x86)", "Microsoft", "EdgeWebView",
+                               "Application", "*", "msedgewebview2.exe")
+        if not any(os.path.isfile(path) for path in glob.glob(runtime)):
+            raise RuntimeError("--preinstalled-webview2 requires msedgewebview2.exe in the prefix")
+        self.log("      using the preinstalled WebView2 runtime")
+        return True
+
     def install_step(self, s, tag, img, media=None):
         self.log("  -> %s %s %s" % (s["type"], s["display"], s["version"]))
         path = img.find(s["file"])
@@ -440,6 +484,8 @@ class Installer:
             self.log("     ERROR %s not in image" % s["file"]); return False
         logname = tag + ".log"
         try:
+            if self.use_preinstalled_webview2(s):
+                return True
             return self._install(s, logname, path, media)
         except Exception as e:  # noqa: BLE001 - report and stop cleanly
             self.log("     ERROR %s: %s" % (type(e).__name__, e))
@@ -598,7 +644,7 @@ def unpack_exe(exe, dry_run=False):
     marker = os.path.join(dest, ".unpacked")
     if os.path.isfile(marker):
         return dest
-    sevenzip = shutil.which("7z") or shutil.which("7za")
+    sevenzip = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
     if not sevenzip:
         sys.exit("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
     print("unpacking %s -> %s" % (exe, dest), flush=True)
@@ -621,6 +667,10 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("image")
     ap.add_argument("--prefix", default="~/.wine-invtest")
+    ap.add_argument("--prepared-prefix", action="store_true",
+                    help="allow installation into a prepared Wine base prefix (for declarative builds)")
+    ap.add_argument("--preinstalled-webview2", action="store_true",
+                    help="reuse an existing WebView2 runtime after verifying its executable")
     ap.add_argument("--lang", default="en-US")
     ap.add_argument("--from", dest="start", type=int, default=1)
     ap.add_argument("--only")
@@ -640,7 +690,7 @@ def main():
     if odis.image_kind(a.image) is None:
         sys.exit("%s is neither an install image (manifest/app.*.xml) nor an update (Bundle setup.xml)" % a.image)
     prefix = os.path.expanduser(a.prefix)
-    if (os.path.isdir(os.path.join(prefix, "drive_c")) and not a.dry_run and
+    if (os.path.isdir(os.path.join(prefix, "drive_c")) and not a.dry_run and not a.prepared_prefix and
             not os.path.isfile(os.path.join(prefix, ".odis-install-state.json"))):
         sys.exit("refusing to install into %s: it exists and was not made by this installer "
                  "(e.g. a prefix copied from Windows) - move it away or choose another --prefix" % prefix)

@@ -1,0 +1,7 @@
+# Reviews for pull requests. GitHub only accepts accounts with write access
+# here, so the NixOS part lists the maintainer; its author is @krokosik -
+# mention him on pull requests that touch flake.nix, flake.lock or nix/.
+*            @Harvi654
+/flake.nix   @Harvi654
+/flake.lock  @Harvi654
+/nix/        @Harvi654

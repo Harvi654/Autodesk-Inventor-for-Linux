@@ -267,6 +267,13 @@ system's Wine by v0.1, by reinstalling Arch's `wine` package) and, after
 asking, the Wine prefix. Your Inventor files in
 `~/Inventor` are kept.
 
+## NixOS
+
+On x86_64 NixOS, a flake and module provide a declarative setup using your own
+Autodesk installation media and license. See [the NixOS setup guide](docs/nixos.md)
+for installation, system integration, and known limitations. The module uses
+system graphics drivers and keeps sign-in and settings in persistent user state.
+
 ## FAQ
 
 **Which license do I need?** Your own Inventor 2026 license - a paid
@@ -401,6 +408,11 @@ of AI (Claude, by Anthropic) and tested by people on real machines.
 
 ## License
 
-[MIT](LICENSE), like the original project. The files in `patches/` change
-Wine's source code; when they are sent to Wine they are offered under Wine's
-license (LGPL 2.1 or later).
+[MIT](LICENSE), like the original project. The top-level Wine patches in
+`patches/` are offered under Wine's license (LGPL 2.1 or later) when sent
+upstream. See [the patch layout](patches/README.md) for patches targeting other
+components and optional runtimes.
+
+Autodesk Inventor and Microsoft WebView2 remain proprietary. The Nix packages
+and installer sources are marked unfree; this repository's license does not
+cover those applications.

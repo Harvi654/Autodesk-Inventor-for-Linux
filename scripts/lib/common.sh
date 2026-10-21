@@ -188,7 +188,11 @@ INV_WEBVIEW2_ARGS="${INV_WEBVIEW2_ARGS:---no-sandbox --enable-unsafe-swiftshader
 INV_WEBVIEW2_ARGS_INVENTOR="${INV_WEBVIEW2_ARGS_INVENTOR:-$INV_WEBVIEW2_ARGS --disable-gpu}"
 
 export WINEPREFIX="$INV_PREFIX"
-export WINEARCH=win64
+# win64 by default; the NixOS flake builds wow64 prefixes. Anything else
+# (e.g. a WINEARCH=win32 left in the environment by other tools) would make
+# a prefix Inventor can't run in, so it is ignored.
+case "${WINEARCH:-}" in win64|wow64) ;; *) WINEARCH=win64 ;; esac
+export WINEARCH
 # No Wine menu entries and file associations: Autodesk's installers create
 # Start-menu shortcuts and register .ipt/.iam/.dwg/... - Wine's winemenubuilder
 # would copy them to ~/.local/share/applications as entries that start the

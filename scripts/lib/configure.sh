@@ -115,6 +115,7 @@ cfg_current_link() {
         elif [ -d "$junk" ]; then rmdir -- "$junk" 2>/dev/null || { warn "$junk is not empty - left alone"; return 0; }
         fi
     done
+    [ -d "$base/$ver${sub:+/$sub}" ] || return 0
     ln -s "$ver${sub:+/$sub}" "$base/$name"
     ok "$(basename "$base")/$name -> $ver${sub:+/$sub}"
 }
