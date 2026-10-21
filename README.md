@@ -93,7 +93,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ❌ | study, constraints and loads work; Simulate crashes the solver (`rkernel.exe`) in Wine's compound-file code (ole32) - being looked into; off by default |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
-| Open dialog: browsing folders with DWG files | ⚠️ | can crash Inventor while the preview of a file loads (.NET fails while handling an exception in a background thread) - being looked into |
+| Open dialog: clicking quickly through folders | ⚠️ | 2026 and 2027: switching folders fast while the previews still load can crash Inventor (.NET fails while handling an exception in a background thread) - any folder, not only DWG; click calmly - being looked into. 2027: no previews, folder names missing in the path bar |
 | GPU ray tracing | ❓ | needs a GPU with ray tracing hardware (not RX 580); vkd3d-proton has DirectX 12 ray tracing - untested |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
