@@ -34,10 +34,11 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 _ORIG_ARGS=("$@")
 PREFIX="$INV_PREFIX"
+PREFIX_GIVEN=0
 NO_CONTENT=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --prefix) PREFIX="$2"; shift ;;
+        --prefix) PREFIX="$2"; PREFIX_GIVEN=1; shift ;;
         --no-content) NO_CONTENT=(--no-content) ;;
         --skip-packages) SKIP_PKG=1 ;;
         --skip-wine) SKIP_WINE=1 ;;
@@ -70,6 +71,30 @@ if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "${_INV_YEAR_DETECTED:-}" ] && [ ${#ARGS[
             fi ;;
         *) die "downloads of several $APP_TITLE releases ($(echo $years)) - install one at a time" ;;
     esac
+fi
+# One program and release per prefix - whatever was given or detected. A prefix
+# from config.env that holds something else is never used for a different
+# program or release: then the default ~/.wine-<product><year>; a --prefix
+# that holds something else stops the installation.
+programs_in_prefix() {   # PREFIX -> "Inventor 2026", "AutoCAD 2027" ... (one per line)
+    local d
+    for d in "$1/drive_c/Program Files/Autodesk/Inventor 20"[0-9][0-9]; do
+        [ -f "$d/Bin/Inventor.exe" ] && echo "${d##*/}"
+    done
+    for d in "$1/drive_c/Program Files/Autodesk/AutoCAD 20"[0-9][0-9]; do
+        [ -f "$d/acad.exe" ] && echo "${d##*/}"
+    done
+    return 0
+}
+others_in_prefix() { programs_in_prefix "$1" | grep -vxF "$APP_TITLE $INV_YEAR" || true; }
+if [ -n "$(others_in_prefix "$PREFIX")" ]; then
+    if [ "$PREFIX_GIVEN" -eq 1 ]; then
+        die "$PREFIX already holds $(others_in_prefix "$PREFIX" | paste -sd, -) - choose another --prefix for $APP_TITLE $INV_YEAR"
+    fi
+    info "$PREFIX holds $(others_in_prefix "$PREFIX" | paste -sd, -) - $APP_TITLE $INV_YEAR goes into $HOME/.wine-$INV_PRODUCT$INV_YEAR"
+    PREFIX="$HOME/.wine-$INV_PRODUCT$INV_YEAR"
+    [ -z "$(others_in_prefix "$PREFIX")" ] \
+        || die "$PREFIX already holds $(others_in_prefix "$PREFIX" | paste -sd, -) - use --prefix with an empty folder"
 fi
 PREFIX="$(realpath -m "$PREFIX")"
 export INV_PREFIX="$PREFIX" WINEPREFIX="$PREFIX"
