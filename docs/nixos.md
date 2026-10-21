@@ -57,15 +57,25 @@ When developing with new files that have not yet been added to Git, use
 ## Declarative integration
 
 Requires x86_64 NixOS with flakes enabled and Vulkan-capable system graphics
-drivers. Add this repository as an input to your system flake and import its
-module (pin a committed revision when deploying):
+drivers. Keep your existing Nixpkgs input, hardware configuration, and GPU driver
+settings. Add the following sections to your system configuration.
+
+### 1. Add the flake input
+
+Inside your system `flake.nix`, add this alongside your existing inputs:
 
 ```nix
 inputs.inventor.url = "github:Harvi654/Autodesk-Inventor-for-Linux";
 ```
 
-Include the input in your outputs and host modules, keeping your existing
-configuration and GPU driver settings:
+Commit the resulting `flake.lock` so the repository revision is pinned. Leave
+Inventor's own Nixpkgs input pinned as supplied by this project.
+
+### 2. Wire the module into your host
+
+In the same `flake.nix`, include `inputs` in the outputs arguments and add both
+the project's module and a local `inventor.nix` module to your existing host's
+`modules` list. Replace `your-host` with your existing configuration name:
 
 ```nix
 outputs = inputs@{ nixpkgs, ... }: {
@@ -74,17 +84,51 @@ outputs = inputs@{ nixpkgs, ... }: {
     modules = [
       ./configuration.nix
       inputs.inventor.nixosModules.default
-      { programs.autodesk-inventor.enable = true; }
+      ./inventor.nix
     ];
   };
 };
+```
+
+Create `inventor.nix` beside your system flake:
+
+```nix
+{ lib, ... }:
+{
+  programs.autodesk-inventor.enable = true;
+
+  # Optional narrow system policy; the default package also works without it.
+  nixpkgs.config.allowUnfreePredicate = pkg:
+    builtins.elem (lib.getName pkg) [
+      "inventor"
+      "inventor-overlay"
+    ];
+}
+```
+
+`inventor` names the installed application layer; `inventor-overlay` names the
+launcher package. The flake already enables its proprietary Autodesk media,
+update, and Microsoft WebView2 dependencies in its own private Nixpkgs instance,
+so you do not need to list those sources in your system's predicate or set
+`nixpkgs.config.allowUnfree = true` globally. The predicate above is optional;
+if you already maintain an allowlist, add these two names to it instead of
+replacing it. If you already enable all unfree packages, omit the predicate.
+For the minimal setup, `inventor.nix` can contain just:
+
+```nix
+{
+  programs.autodesk-inventor.enable = true;
+}
 ```
 
 For a local checkout, use `path:/absolute/path/to/Autodesk-Inventor-for-Linux`
 as the input URL instead. The initial build compiles patched Wine and can take
 substantial time and disk space.
 
-Rebuild your system and launch Inventor:
+### 3. Rebuild and launch
+
+After importing the installation media above, rebuild your system and launch
+Inventor (replace the path and `your-host`):
 
 ```sh
 sudo nixos-rebuild switch --flake /path/to/system-flake#your-host
