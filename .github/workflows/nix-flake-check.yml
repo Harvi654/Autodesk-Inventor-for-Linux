@@ -1,0 +1,46 @@
+# Evaluates the NixOS flake (flake.nix, nix/) on every change that can
+# break it: the flake itself, the scripts it runs and the Wine patches it
+# applies. Nothing is built - that needs Autodesk's download - but Nix
+# errors (wrong attributes, missing files, a module that no longer
+# evaluates) show up here instead of on a NixOS user's machine.
+name: Nix flake check
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'scripts/**'
+      - 'patches/**'
+      - 'wine/**'
+      - '.github/workflows/nix-flake-check.yml'
+  push:
+    paths:
+      - 'flake.nix'
+      - 'flake.lock'
+      - 'nix/**'
+      - 'scripts/**'
+      - 'patches/**'
+      - 'wine/**'
+      - '.github/workflows/nix-flake-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-flake-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@2126ae7fc54c9df00dd18f7f18754393182c73cd # v31.9.1
+      - name: Evaluate the flake (no build)
+        run: nix flake check --no-build --show-trace
