@@ -34,10 +34,11 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 _ORIG_ARGS=("$@")
 PREFIX="$INV_PREFIX"
+PREFIX_GIVEN=0
 NO_CONTENT=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --prefix) PREFIX="$2"; shift ;;
+        --prefix) PREFIX="$2"; PREFIX_GIVEN=1; shift ;;
         --no-content) NO_CONTENT=(--no-content) ;;
         --skip-packages) SKIP_PKG=1 ;;
         --skip-wine) SKIP_WINE=1 ;;
@@ -70,6 +71,26 @@ if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "${_INV_YEAR_DETECTED:-}" ] && [ ${#ARGS[
             fi ;;
         *) die "downloads of several Inventor releases ($(echo $years)) - install one at a time" ;;
     esac
+fi
+# One release per prefix - whatever was given or detected. A prefix from
+# config.env that holds another release is never used for a different one
+# (then the default ~/.wine-inventor<year>); a --prefix that holds another
+# release stops the installation.
+others_in_prefix() {   # PREFIX -> releases in it other than INV_YEAR
+    local d
+    for d in "$1/drive_c/Program Files/Autodesk/Inventor 20"[0-9][0-9]; do
+        [ -f "$d/Bin/Inventor.exe" ] && [ "${d##* }" != "$INV_YEAR" ] && echo "${d##*/}"
+    done
+    return 0
+}
+if [ -n "$(others_in_prefix "$PREFIX")" ]; then
+    if [ "$PREFIX_GIVEN" -eq 1 ]; then
+        die "$PREFIX already holds $(others_in_prefix "$PREFIX" | paste -sd, -) - choose another --prefix for Inventor $INV_YEAR"
+    fi
+    info "$PREFIX holds $(others_in_prefix "$PREFIX" | paste -sd, -) - Inventor $INV_YEAR goes into $HOME/.wine-inventor$INV_YEAR"
+    PREFIX="$HOME/.wine-inventor$INV_YEAR"
+    [ -z "$(others_in_prefix "$PREFIX")" ] \
+        || die "$PREFIX already holds $(others_in_prefix "$PREFIX" | paste -sd, -) - use --prefix with an empty folder"
 fi
 PREFIX="$(realpath -m "$PREFIX")"
 export INV_PREFIX="$PREFIX" WINEPREFIX="$PREFIX"
