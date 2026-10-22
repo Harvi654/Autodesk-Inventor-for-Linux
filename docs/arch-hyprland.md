@@ -787,6 +787,16 @@ To run them:
 bash scripts/build-wine-dll.sh ole32 --test
 ```
 
+### Inventor 2027
+
+Confirmed 2026-10-22: Simulate and results work in Inventor 2027 too (its own
+`Robot Structural Analysis Engine 2027`), with the same Wine build. Open: on
+switching to the Frame Analysis environment, the assembly's "Model" browser
+stays as a second pane at the far left of the window, next to the Frame
+Analysis browser, and cannot be moved or closed. Not seen in 2026. Not
+investigated yet (a docked pane that Wine moves or redraws wrongly, most
+likely).
+
 ### Still open (found by the fuzzer, not needed by Inventor)
 
 - `Commit` on a transacted substorage whose parent was reverted dereferences
@@ -935,3 +945,8 @@ stream and enumerator methods fixed it. Tested: Frame Analysis with loads and
 constraints on a frame of ISO 10799-2 40x40x3 tubes, Simulate finishes,
 displacement results shown. Wine build `wine-11.20-6`; Frame Analysis is now
 on by default. Details: section "Frame Analysis: Simulate crashes the solver".
+
+**2026-10-22 - Frame Analysis in Inventor 2027:** Simulate and results work
+with `wine-11.20-6` (Shear Stress Ty shown on the same test frame). New issue:
+the assembly browser stays as a second, fixed pane on the left in the Frame
+Analysis environment (2027 only).
