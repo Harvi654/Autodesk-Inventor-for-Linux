@@ -1,0 +1,150 @@
+--- a/dlls/ole32/storage32.c
++++ b/dlls/ole32/storage32.c
+@@ -6385,6 +6385,10 @@ static HRESULT TransactedSnapshotImpl_StreamSetSize(StorageBaseImpl *base,
+ 
+       This->entries[index].transactedParentEntry = This->entries[index].newTransactedParentEntry = DIRENTRY_NULL;
+     }
++
++    /* The entry no longer refers to any data in the parent, so the parent
++     * needs a new copy of it on commit. */
++    This->entries[index].dirty = TRUE;
+   }
+   else
+   {
+--- a/dlls/ole32/tests/storage32.c
++++ b/dlls/ole32/tests/storage32.c
+@@ -4050,6 +4050,128 @@ static void test_MoveElementTo(void)
+     DeleteFileW(dst_name);
+ }
+ 
++static void check_truncated_tree(BOOL nested, BOOL write_again)
++{
++    IStorage *stg, *stg2;
++    IEnumSTATSTG *enumstg;
++    STATSTG stat;
++    int count = 0, seen_a = 0, seen_b = 0;
++    HRESULT hr;
++
++    hr = StgOpenStorage(filename, NULL, STGM_READ | STGM_SHARE_EXCLUSIVE, NULL, 0, &stg);
++    ok(hr == S_OK, "%d/%d: StgOpenStorage failed, hr %#lx\n", nested, write_again, hr);
++    if (FAILED(hr)) return;
++
++    stg2 = stg;
++    if (nested)
++    {
++        hr = IStorage_OpenStorage(stg, L"SUB", NULL, STGM_READ | STGM_SHARE_EXCLUSIVE, NULL, 0, &stg2);
++        ok(hr == S_OK, "%d/%d: OpenStorage failed, hr %#lx\n", nested, write_again, hr);
++        if (FAILED(hr))
++        {
++            IStorage_Release(stg);
++            return;
++        }
++    }
++
++    hr = IStorage_EnumElements(stg2, 0, NULL, 0, &enumstg);
++    ok(hr == S_OK, "%d/%d: EnumElements failed, hr %#lx\n", nested, write_again, hr);
++    while (hr == S_OK && count < 10 && IEnumSTATSTG_Next(enumstg, 1, &stat, NULL) == S_OK)
++    {
++        count++;
++        if (!wcscmp(stat.pwcsName, L"A"))
++        {
++            seen_a++;
++            ok(stat.cbSize.QuadPart == 6000, "%d/%d: A has size %s\n", nested, write_again,
++               wine_dbgstr_longlong(stat.cbSize.QuadPart));
++        }
++        else if (!wcscmp(stat.pwcsName, L"B"))
++        {
++            seen_b++;
++            ok(!stat.cbSize.QuadPart, "%d/%d: B has size %s\n", nested, write_again,
++               wine_dbgstr_longlong(stat.cbSize.QuadPart));
++        }
++        else
++            ok(0, "%d/%d: unexpected element %s\n", nested, write_again, wine_dbgstr_w(stat.pwcsName));
++        CoTaskMemFree(stat.pwcsName);
++    }
++    if (hr == S_OK)
++        IEnumSTATSTG_Release(enumstg);
++    ok(count == 2 && seen_a == 1 && seen_b == 1, "%d/%d: got %d elements, A %d, B %d\n",
++       nested, write_again, count, seen_a, seen_b);
++
++    if (nested)
++        IStorage_Release(stg2);
++    IStorage_Release(stg);
++}
++
++static void test_transacted_truncate(void)
++{
++    static BYTE buffer[8192];
++    IStorage *stg, *stg2;
++    IStream *stm_a, *stm_b;
++    ULARGE_INTEGER size;
++    BOOL nested, write_again;
++    HRESULT hr;
++
++    for (nested = FALSE; nested <= TRUE; nested++)
++    for (write_again = FALSE; write_again <= TRUE; write_again++)
++    {
++        DeleteFileW(filename);
++
++        hr = StgCreateDocfile(filename, STGM_CREATE | STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_TRANSACTED, 0, &stg);
++        ok(hr == S_OK, "StgCreateDocfile failed, hr %#lx\n", hr);
++        stg2 = stg;
++        if (nested)
++        {
++            hr = IStorage_CreateStorage(stg, L"SUB", STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_TRANSACTED, 0, 0, &stg2);
++            ok(hr == S_OK, "CreateStorage failed, hr %#lx\n", hr);
++        }
++
++        hr = IStorage_CreateStream(stg2, L"A", STGM_READWRITE | STGM_SHARE_EXCLUSIVE, 0, 0, &stm_a);
++        ok(hr == S_OK, "CreateStream failed, hr %#lx\n", hr);
++        hr = IStream_Write(stm_a, buffer, 6000, NULL);
++        ok(hr == S_OK, "Write failed, hr %#lx\n", hr);
++        hr = IStorage_CreateStream(stg2, L"B", STGM_READWRITE | STGM_SHARE_EXCLUSIVE, 0, 0, &stm_b);
++        ok(hr == S_OK, "CreateStream failed, hr %#lx\n", hr);
++        hr = IStream_Write(stm_b, buffer, 7000, NULL);
++        ok(hr == S_OK, "Write failed, hr %#lx\n", hr);
++
++        hr = IStorage_Commit(stg2, 0);
++        ok(hr == S_OK, "Commit failed, hr %#lx\n", hr);
++
++        /* Truncate B to zero: its data is either still in the parent or, after
++         * another write, in the scratch file. Either way the committed tree
++         * must keep B (and A, which links to it) intact. */
++        if (write_again)
++        {
++            hr = IStream_Write(stm_b, buffer, 100, NULL);
++            ok(hr == S_OK, "Write failed, hr %#lx\n", hr);
++        }
++        size.QuadPart = 0;
++        hr = IStream_SetSize(stm_b, size);
++        ok(hr == S_OK, "SetSize failed, hr %#lx\n", hr);
++
++        hr = IStorage_Commit(stg2, 0);
++        ok(hr == S_OK, "Commit failed, hr %#lx\n", hr);
++        if (nested)
++        {
++            hr = IStorage_Commit(stg, 0);
++            ok(hr == S_OK, "Commit failed, hr %#lx\n", hr);
++        }
++
++        IStream_Release(stm_a);
++        IStream_Release(stm_b);
++        if (nested)
++            IStorage_Release(stg2);
++        IStorage_Release(stg);
++
++        check_truncated_tree(nested, write_again);
++    }
++
++    DeleteFileW(filename);
++}
++
+ START_TEST(storage32)
+ {
+     CHAR temp[MAX_PATH];
+@@ -4100,4 +4222,5 @@ START_TEST(storage32)
+     test_overwrite();
+     test_custom_lockbytes();
+     test_MoveElementTo();
++    test_transacted_truncate();
+ }

@@ -1,0 +1,785 @@
+--- a/dlls/ole32/storage32.h
++++ b/dlls/ole32/storage32.h
+@@ -360,6 +360,8 @@
+ void StorageBaseImpl_RemoveStream(StorageBaseImpl * stg, StgStreamImpl * strm);
+ 
+ /* Number of BlockChainStream objects to cache in a StorageImpl */
++extern CRITICAL_SECTION storage_cs;
++
+ #define BLOCKCHAIN_CACHE_SIZE 4
+ 
+ /****************************************************************************
+--- a/dlls/ole32/storage32.c
++++ b/dlls/ole32/storage32.c
+@@ -52,6 +52,18 @@
+ 
+ WINE_DEFAULT_DEBUG_CHANNEL(storage);
+ 
++/* One lock for all structured storage objects of the process. The objects of a
++ * file share caches and block chains, and applications (Robot Structural
++ * Analysis' rkernel.exe) use them from several threads, as native ole32 allows. */
++static CRITICAL_SECTION_DEBUG storage_cs_debug;
++CRITICAL_SECTION storage_cs = { &storage_cs_debug, -1, 0, 0, 0, 0 };
++static CRITICAL_SECTION_DEBUG storage_cs_debug =
++{
++    0, 0, &storage_cs,
++    { &storage_cs_debug.ProcessLocksList, &storage_cs_debug.ProcessLocksList },
++      0, 0, { (DWORD_PTR)(__FILE__ ": storage_cs") }
++};
++
+ 
+ /*
+  * These are signatures to detect the type of Document file.
+@@ -1171,15 +1183,78 @@
+ /*
+  * Virtual function table for the IEnumSTATSTGImpl class.
+  */
++static HRESULT WINAPI locked_IEnumSTATSTGImpl_QueryInterface(IEnumSTATSTG *iface, REFIID riid, void **obj)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_QueryInterface(iface, riid, obj);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static ULONG WINAPI locked_IEnumSTATSTGImpl_AddRef(IEnumSTATSTG *iface)
++{
++    ULONG ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_AddRef(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static ULONG WINAPI locked_IEnumSTATSTGImpl_Release(IEnumSTATSTG *iface)
++{
++    ULONG ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_Release(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_IEnumSTATSTGImpl_Next(IEnumSTATSTG *iface, ULONG count, STATSTG *stat, ULONG *fetched)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_Next(iface, count, stat, fetched);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_IEnumSTATSTGImpl_Skip(IEnumSTATSTG *iface, ULONG count)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_Skip(iface, count);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_IEnumSTATSTGImpl_Reset(IEnumSTATSTG *iface)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_Reset(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_IEnumSTATSTGImpl_Clone(IEnumSTATSTG *iface, IEnumSTATSTG **clone)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = IEnumSTATSTGImpl_Clone(iface, clone);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
+ static const IEnumSTATSTGVtbl IEnumSTATSTGImpl_Vtbl =
+ {
+-    IEnumSTATSTGImpl_QueryInterface,
+-    IEnumSTATSTGImpl_AddRef,
+-    IEnumSTATSTGImpl_Release,
+-    IEnumSTATSTGImpl_Next,
+-    IEnumSTATSTGImpl_Skip,
+-    IEnumSTATSTGImpl_Reset,
+-    IEnumSTATSTGImpl_Clone
++    locked_IEnumSTATSTGImpl_QueryInterface,
++    locked_IEnumSTATSTGImpl_AddRef,
++    locked_IEnumSTATSTGImpl_Release,
++    locked_IEnumSTATSTGImpl_Next,
++    locked_IEnumSTATSTGImpl_Skip,
++    locked_IEnumSTATSTGImpl_Reset,
++    locked_IEnumSTATSTGImpl_Clone
+ };
+ 
+ static IEnumSTATSTGImpl* IEnumSTATSTGImpl_Construct(
+@@ -5269,26 +5344,188 @@
+ /*
+  * Virtual function table for the IStorageBaseImpl class.
+  */
++static HRESULT WINAPI locked_StorageBaseImpl_QueryInterface(IStorage *iface, REFIID riid, void **obj)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_QueryInterface(iface, riid, obj);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static ULONG WINAPI locked_StorageBaseImpl_AddRef(IStorage *iface)
++{
++    ULONG ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_AddRef(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static ULONG WINAPI locked_StorageBaseImpl_Release(IStorage *iface)
++{
++    ULONG ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_Release(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_CreateStream(IStorage *iface, const OLECHAR *name, DWORD mode, DWORD reserved1, DWORD reserved2, IStream **stream)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_CreateStream(iface, name, mode, reserved1, reserved2, stream);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_OpenStream(IStorage *iface, const OLECHAR *name, void *reserved1, DWORD mode, DWORD reserved2, IStream **stream)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_OpenStream(iface, name, reserved1, mode, reserved2, stream);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_CreateStorage(IStorage *iface, const OLECHAR *name, DWORD mode, DWORD format, DWORD reserved, IStorage **storage)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_CreateStorage(iface, name, mode, format, reserved, storage);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_OpenStorage(IStorage *iface, const OLECHAR *name, IStorage *priority, DWORD mode, SNB exclude, DWORD reserved, IStorage **storage)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_OpenStorage(iface, name, priority, mode, exclude, reserved, storage);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_CopyTo(IStorage *iface, DWORD count, const IID *exclude_iids, SNB exclude, IStorage *dest)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_CopyTo(iface, count, exclude_iids, exclude, dest);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_MoveElementTo(IStorage *iface, const OLECHAR *name, IStorage *dest, const OLECHAR *new_name, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_MoveElementTo(iface, name, dest, new_name, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_Commit(IStorage *iface, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_Commit(iface, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_Revert(IStorage *iface)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_Revert(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_EnumElements(IStorage *iface, DWORD reserved1, void *reserved2, DWORD reserved3, IEnumSTATSTG **enumstg)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_EnumElements(iface, reserved1, reserved2, reserved3, enumstg);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_DestroyElement(IStorage *iface, const OLECHAR *name)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_DestroyElement(iface, name);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_RenameElement(IStorage *iface, const OLECHAR *old_name, const OLECHAR *new_name)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_RenameElement(iface, old_name, new_name);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_SetElementTimes(IStorage *iface, const OLECHAR *name, const FILETIME *ctime, const FILETIME *atime, const FILETIME *mtime)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_SetElementTimes(iface, name, ctime, atime, mtime);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_SetClass(IStorage *iface, REFCLSID clsid)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_SetClass(iface, clsid);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_SetStateBits(IStorage *iface, DWORD bits, DWORD mask)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_SetStateBits(iface, bits, mask);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageBaseImpl_Stat(IStorage *iface, STATSTG *stat, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageBaseImpl_Stat(iface, stat, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
+ static const IStorageVtbl StorageImpl_Vtbl =
+ {
+-    StorageBaseImpl_QueryInterface,
+-    StorageBaseImpl_AddRef,
+-    StorageBaseImpl_Release,
+-    StorageBaseImpl_CreateStream,
+-    StorageBaseImpl_OpenStream,
+-    StorageBaseImpl_CreateStorage,
+-    StorageBaseImpl_OpenStorage,
+-    StorageBaseImpl_CopyTo,
+-    StorageBaseImpl_MoveElementTo,
+-    StorageBaseImpl_Commit,
+-    StorageBaseImpl_Revert,
+-    StorageBaseImpl_EnumElements,
+-    StorageBaseImpl_DestroyElement,
+-    StorageBaseImpl_RenameElement,
+-    StorageBaseImpl_SetElementTimes,
+-    StorageBaseImpl_SetClass,
+-    StorageBaseImpl_SetStateBits,
+-    StorageBaseImpl_Stat
++    locked_StorageBaseImpl_QueryInterface,
++    locked_StorageBaseImpl_AddRef,
++    locked_StorageBaseImpl_Release,
++    locked_StorageBaseImpl_CreateStream,
++    locked_StorageBaseImpl_OpenStream,
++    locked_StorageBaseImpl_CreateStorage,
++    locked_StorageBaseImpl_OpenStorage,
++    locked_StorageBaseImpl_CopyTo,
++    locked_StorageBaseImpl_MoveElementTo,
++    locked_StorageBaseImpl_Commit,
++    locked_StorageBaseImpl_Revert,
++    locked_StorageBaseImpl_EnumElements,
++    locked_StorageBaseImpl_DestroyElement,
++    locked_StorageBaseImpl_RenameElement,
++    locked_StorageBaseImpl_SetElementTimes,
++    locked_StorageBaseImpl_SetClass,
++    locked_StorageBaseImpl_SetStateBits,
++    locked_StorageBaseImpl_Stat
+ };
+ 
+ static HRESULT StorageImpl_Construct(
+@@ -5547,26 +5784,44 @@
+ /*
+  * Virtual function table for the StorageInternalImpl class.
+  */
++static HRESULT WINAPI locked_StorageInternalImpl_Commit(IStorage *iface, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageInternalImpl_Commit(iface, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StorageInternalImpl_Revert(IStorage *iface)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StorageInternalImpl_Revert(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
+ static const IStorageVtbl StorageInternalImpl_Vtbl =
+ {
+-    StorageBaseImpl_QueryInterface,
+-    StorageBaseImpl_AddRef,
+-    StorageBaseImpl_Release,
+-    StorageBaseImpl_CreateStream,
+-    StorageBaseImpl_OpenStream,
+-    StorageBaseImpl_CreateStorage,
+-    StorageBaseImpl_OpenStorage,
+-    StorageBaseImpl_CopyTo,
+-    StorageBaseImpl_MoveElementTo,
+-    StorageInternalImpl_Commit,
+-    StorageInternalImpl_Revert,
+-    StorageBaseImpl_EnumElements,
+-    StorageBaseImpl_DestroyElement,
+-    StorageBaseImpl_RenameElement,
+-    StorageBaseImpl_SetElementTimes,
+-    StorageBaseImpl_SetClass,
+-    StorageBaseImpl_SetStateBits,
+-    StorageBaseImpl_Stat
++    locked_StorageBaseImpl_QueryInterface,
++    locked_StorageBaseImpl_AddRef,
++    locked_StorageBaseImpl_Release,
++    locked_StorageBaseImpl_CreateStream,
++    locked_StorageBaseImpl_OpenStream,
++    locked_StorageBaseImpl_CreateStorage,
++    locked_StorageBaseImpl_OpenStorage,
++    locked_StorageBaseImpl_CopyTo,
++    locked_StorageBaseImpl_MoveElementTo,
++    locked_StorageInternalImpl_Commit,
++    locked_StorageInternalImpl_Revert,
++    locked_StorageBaseImpl_EnumElements,
++    locked_StorageBaseImpl_DestroyElement,
++    locked_StorageBaseImpl_RenameElement,
++    locked_StorageBaseImpl_SetElementTimes,
++    locked_StorageBaseImpl_SetClass,
++    locked_StorageBaseImpl_SetStateBits,
++    locked_StorageBaseImpl_Stat
+ };
+ 
+ static const StorageBaseImplVtbl StorageInternalImpl_BaseVtbl =
+@@ -6457,26 +6712,44 @@
+   return E_NOTIMPL;
+ }
+ 
++static HRESULT WINAPI locked_TransactedSnapshotImpl_Commit(IStorage *iface, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = TransactedSnapshotImpl_Commit(iface, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_TransactedSnapshotImpl_Revert(IStorage *iface)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = TransactedSnapshotImpl_Revert(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
+ static const IStorageVtbl TransactedSnapshotImpl_Vtbl =
+ {
+-    StorageBaseImpl_QueryInterface,
+-    StorageBaseImpl_AddRef,
+-    StorageBaseImpl_Release,
+-    StorageBaseImpl_CreateStream,
+-    StorageBaseImpl_OpenStream,
+-    StorageBaseImpl_CreateStorage,
+-    StorageBaseImpl_OpenStorage,
+-    StorageBaseImpl_CopyTo,
+-    StorageBaseImpl_MoveElementTo,
+-    TransactedSnapshotImpl_Commit,
+-    TransactedSnapshotImpl_Revert,
+-    StorageBaseImpl_EnumElements,
+-    StorageBaseImpl_DestroyElement,
+-    StorageBaseImpl_RenameElement,
+-    StorageBaseImpl_SetElementTimes,
+-    StorageBaseImpl_SetClass,
+-    StorageBaseImpl_SetStateBits,
+-    StorageBaseImpl_Stat
++    locked_StorageBaseImpl_QueryInterface,
++    locked_StorageBaseImpl_AddRef,
++    locked_StorageBaseImpl_Release,
++    locked_StorageBaseImpl_CreateStream,
++    locked_StorageBaseImpl_OpenStream,
++    locked_StorageBaseImpl_CreateStorage,
++    locked_StorageBaseImpl_OpenStorage,
++    locked_StorageBaseImpl_CopyTo,
++    locked_StorageBaseImpl_MoveElementTo,
++    locked_TransactedSnapshotImpl_Commit,
++    locked_TransactedSnapshotImpl_Revert,
++    locked_StorageBaseImpl_EnumElements,
++    locked_StorageBaseImpl_DestroyElement,
++    locked_StorageBaseImpl_RenameElement,
++    locked_StorageBaseImpl_SetElementTimes,
++    locked_StorageBaseImpl_SetClass,
++    locked_StorageBaseImpl_SetStateBits,
++    locked_StorageBaseImpl_Stat
+ };
+ 
+ static const StorageBaseImplVtbl TransactedSnapshotImpl_BaseVtbl =
+@@ -6793,26 +7066,44 @@
+   return IStorage_Revert(&This->scratch->base.IStorage_iface);
+ }
+ 
++static HRESULT WINAPI locked_TransactedSharedImpl_Commit(IStorage *iface, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = TransactedSharedImpl_Commit(iface, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_TransactedSharedImpl_Revert(IStorage *iface)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = TransactedSharedImpl_Revert(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
+ static const IStorageVtbl TransactedSharedImpl_Vtbl =
+ {
+-    StorageBaseImpl_QueryInterface,
+-    StorageBaseImpl_AddRef,
+-    StorageBaseImpl_Release,
+-    StorageBaseImpl_CreateStream,
+-    StorageBaseImpl_OpenStream,
+-    StorageBaseImpl_CreateStorage,
+-    StorageBaseImpl_OpenStorage,
+-    StorageBaseImpl_CopyTo,
+-    StorageBaseImpl_MoveElementTo,
+-    TransactedSharedImpl_Commit,
+-    TransactedSharedImpl_Revert,
+-    StorageBaseImpl_EnumElements,
+-    StorageBaseImpl_DestroyElement,
+-    StorageBaseImpl_RenameElement,
+-    StorageBaseImpl_SetElementTimes,
+-    StorageBaseImpl_SetClass,
+-    StorageBaseImpl_SetStateBits,
+-    StorageBaseImpl_Stat
++    locked_StorageBaseImpl_QueryInterface,
++    locked_StorageBaseImpl_AddRef,
++    locked_StorageBaseImpl_Release,
++    locked_StorageBaseImpl_CreateStream,
++    locked_StorageBaseImpl_OpenStream,
++    locked_StorageBaseImpl_CreateStorage,
++    locked_StorageBaseImpl_OpenStorage,
++    locked_StorageBaseImpl_CopyTo,
++    locked_StorageBaseImpl_MoveElementTo,
++    locked_TransactedSharedImpl_Commit,
++    locked_TransactedSharedImpl_Revert,
++    locked_StorageBaseImpl_EnumElements,
++    locked_StorageBaseImpl_DestroyElement,
++    locked_StorageBaseImpl_RenameElement,
++    locked_StorageBaseImpl_SetElementTimes,
++    locked_StorageBaseImpl_SetClass,
++    locked_StorageBaseImpl_SetStateBits,
++    locked_StorageBaseImpl_Stat
+ };
+ 
+ static const StorageBaseImplVtbl TransactedSharedImpl_BaseVtbl =
+--- a/dlls/ole32/stg_stream.c
++++ b/dlls/ole32/stg_stream.c
+@@ -632,22 +632,148 @@
+ /*
+  * Virtual function table for the StgStreamImpl class.
+  */
++static HRESULT WINAPI locked_StgStreamImpl_QueryInterface(IStream *iface, REFIID riid, void **obj)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_QueryInterface(iface, riid, obj);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static ULONG WINAPI locked_StgStreamImpl_AddRef(IStream *iface)
++{
++    ULONG ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_AddRef(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static ULONG WINAPI locked_StgStreamImpl_Release(IStream *iface)
++{
++    ULONG ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Release(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Read(IStream *iface, void *buffer, ULONG size, ULONG *read)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Read(iface, buffer, size, read);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Write(IStream *iface, const void *buffer, ULONG size, ULONG *written)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Write(iface, buffer, size, written);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Seek(IStream *iface, LARGE_INTEGER move, DWORD origin, ULARGE_INTEGER *pos)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Seek(iface, move, origin, pos);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_SetSize(IStream *iface, ULARGE_INTEGER size)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_SetSize(iface, size);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_CopyTo(IStream *iface, IStream *dest, ULARGE_INTEGER size, ULARGE_INTEGER *read, ULARGE_INTEGER *written)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_CopyTo(iface, dest, size, read, written);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Commit(IStream *iface, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Commit(iface, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Revert(IStream *iface)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Revert(iface);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_LockRegion(IStream *iface, ULARGE_INTEGER offset, ULARGE_INTEGER size, DWORD type)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_LockRegion(iface, offset, size, type);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_UnlockRegion(IStream *iface, ULARGE_INTEGER offset, ULARGE_INTEGER size, DWORD type)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_UnlockRegion(iface, offset, size, type);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Stat(IStream *iface, STATSTG *stat, DWORD flags)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Stat(iface, stat, flags);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
++static HRESULT WINAPI locked_StgStreamImpl_Clone(IStream *iface, IStream **clone)
++{
++    HRESULT ret;
++    EnterCriticalSection(&storage_cs);
++    ret = StgStreamImpl_Clone(iface, clone);
++    LeaveCriticalSection(&storage_cs);
++    return ret;
++}
++
+ static const IStreamVtbl StgStreamVtbl =
+ {
+-    StgStreamImpl_QueryInterface,
+-    StgStreamImpl_AddRef,
+-    StgStreamImpl_Release,
+-    StgStreamImpl_Read,
+-    StgStreamImpl_Write,
+-    StgStreamImpl_Seek,
+-    StgStreamImpl_SetSize,
+-    StgStreamImpl_CopyTo,
+-    StgStreamImpl_Commit,
+-    StgStreamImpl_Revert,
+-    StgStreamImpl_LockRegion,
+-    StgStreamImpl_UnlockRegion,
+-    StgStreamImpl_Stat,
+-    StgStreamImpl_Clone
++    locked_StgStreamImpl_QueryInterface,
++    locked_StgStreamImpl_AddRef,
++    locked_StgStreamImpl_Release,
++    locked_StgStreamImpl_Read,
++    locked_StgStreamImpl_Write,
++    locked_StgStreamImpl_Seek,
++    locked_StgStreamImpl_SetSize,
++    locked_StgStreamImpl_CopyTo,
++    locked_StgStreamImpl_Commit,
++    locked_StgStreamImpl_Revert,
++    locked_StgStreamImpl_LockRegion,
++    locked_StgStreamImpl_UnlockRegion,
++    locked_StgStreamImpl_Stat,
++    locked_StgStreamImpl_Clone
+ };
+ 
+ /******************************************************************************
+--- a/dlls/ole32/tests/storage32.c
++++ b/dlls/ole32/tests/storage32.c
+@@ -3829,6 +3829,95 @@
+     DeleteFileA(filenameA);
+ }
+ 
++struct thread_storage_param
++{
++    IStorage *root;
++    int id;
++    LONG failures;
++};
++
++static DWORD WINAPI thread_storage_proc(void *arg)
++{
++    struct thread_storage_param *param = arg;
++    BYTE buffer[9000], check[9000];
++    LARGE_INTEGER zero = {{0}};
++    IStorage *stg;
++    IStream *stm;
++    ULONG len, i, read;
++    WCHAR name[16];
++    HRESULT hr;
++    int round;
++
++    for (round = 0; round < 20; round++)
++    {
++        swprintf(name, ARRAY_SIZE(name), L"T%d_%d", param->id, round % 4);
++        hr = IStorage_CreateStorage(param->root, name, STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_TRANSACTED | STGM_CREATE,
++                0, 0, &stg);
++        if (FAILED(hr))
++        {
++            param->failures++;
++            continue;
++        }
++        hr = IStorage_CreateStream(stg, L"DATA", STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_CREATE, 0, 0, &stm);
++        if (FAILED(hr))
++        {
++            param->failures++;
++            IStorage_Release(stg);
++            continue;
++        }
++
++        len = 100 + (round * 997 + param->id * 331) % 8500;
++        for (i = 0; i < len; i++)
++            buffer[i] = i * 7 + param->id + round;
++        /* small writes, so that the stream moves from small to big blocks */
++        for (i = 0; i < len; i += 300)
++            IStream_Write(stm, buffer + i, min(300, len - i), NULL);
++        IStream_Seek(stm, zero, STREAM_SEEK_SET, NULL);
++        hr = IStream_Read(stm, check, len, &read);
++        if (FAILED(hr) || read != len || memcmp(buffer, check, len))
++            param->failures++;
++
++        IStream_Release(stm);
++        if (FAILED(IStorage_Commit(stg, 0)))
++            param->failures++;
++        IStorage_Release(stg);
++    }
++    return 0;
++}
++
++static void test_threads(void)
++{
++    struct thread_storage_param params[4];
++    HANDLE threads[4];
++    IStorage *stg;
++    HRESULT hr;
++    int i;
++
++    DeleteFileW(filename);
++    hr = StgCreateDocfile(filename, STGM_CREATE | STGM_READWRITE | STGM_SHARE_EXCLUSIVE | STGM_TRANSACTED, 0, &stg);
++    ok(hr == S_OK, "StgCreateDocfile failed, hr %#lx\n", hr);
++
++    for (i = 0; i < ARRAY_SIZE(threads); i++)
++    {
++        params[i].root = stg;
++        params[i].id = i;
++        params[i].failures = 0;
++        threads[i] = CreateThread(NULL, 0, thread_storage_proc, &params[i], 0, NULL);
++        ok(threads[i] != NULL, "CreateThread failed\n");
++    }
++    WaitForMultipleObjects(ARRAY_SIZE(threads), threads, TRUE, INFINITE);
++    for (i = 0; i < ARRAY_SIZE(threads); i++)
++    {
++        CloseHandle(threads[i]);
++        ok(!params[i].failures, "thread %d: %ld failures\n", i, params[i].failures);
++    }
++
++    hr = IStorage_Commit(stg, 0);
++    ok(hr == S_OK, "Commit failed, hr %#lx\n", hr);
++    IStorage_Release(stg);
++    DeleteFileW(filename);
++}
++
+ static void test_custom_lockbytes(void)
+ {
+     static const WCHAR stmname[] = { 'C','O','N','T','E','N','T','S',0 };
+@@ -4072,6 +4161,7 @@
+     test_storage_refcount();
+     test_streamenum();
+     test_transact();
++    test_threads();
+     test_substorage_share();
+     test_revert();
+     test_parent_free();
