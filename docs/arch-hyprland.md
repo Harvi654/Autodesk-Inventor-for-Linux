@@ -658,6 +658,152 @@ exception handler. Fix: return NULL for a feature that is not enabled before
 the XSAVE area is touched (`patches/ntdll-locate-xstate-feature-enabled.patch`,
 with a test).
 
+## Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)
+
+Frame Analysis (Environments → Frame Analysis on a frame from Frame
+Generator) worked up to Simulate: study, constraints, loads were fine, then
+the progress window stopped at "Getting Results..." and Wine showed
+
+```
+Assertion failed!
+Program: ...\Autodesk Robot Structural Analysis Engine 2026\Exe\rkernel.EXE
+File: ../dlls/ole32/storage32.c   Line: 4157
+Expression: "blockIndex != nextBlock"
+```
+
+`rkernel.exe` is the Robot Structural Analysis solver that Inventor starts as a
+separate process. It keeps its model and results in OLE compound files
+(`IStorage`/`IStream`, transacted mode, a root storage `RV6STR` with
+substorages and streams such as `SCRDT`/`SCRIP`). Inventor itself keeps running;
+only the solver dies. The add-in was off by default until this was fixed.
+
+Two Wine bugs, both in `dlls/ole32/storage32.c`:
+
+1. **No locking** (`patches/ole32-storage-thread-lock.patch`) - the cause of the
+   crash. `rkernel.exe` writes into **one** compound file from **four threads at
+   the same time** (seen in the `+storage` trace: four thread ids interleaved,
+   all reading the same small-block depot chain). Wine's storage objects share
+   per-file state - the big-block depot cache (`blockDepotCached`,
+   `indexBlockDepotCached`), the next-free-block hint (`prevFreeBlock`), the
+   block chain cache (`blockChainCache`) with each chain's index cache and
+   tail, the small-block root chain - and nothing in ole32 serialised access to
+   it. Two threads extending chains at once got the same "free" block, or read
+   a depot cache half overwritten by the other thread. The symptom changes from
+   run to run: `blockIndex != nextBlock` (a block chained to itself),
+   `depotBlockCount < This->bigBlockDepotCount` (a block number far past the end
+   of the file), `SmallBlocksToBigBlocks conversion failed: resRead =
+   0x8003001e` (STG_E_READFAULT) in several threads, or a page fault in
+   `BlockChainStream_GetSectorOfOffset`. On Windows the same `rkernel.exe` runs
+   fine, so native ole32 copes with it. Fix: one process-wide recursive lock
+   (`storage_cs`, a `CRITICAL_SECTION`) taken in a small wrapper around every
+   method of the four `IStorage` vtables (`StorageImpl`, `StorageInternalImpl`,
+   `TransactedSnapshotImpl`, `TransactedSharedImpl`), of `IStream`
+   (`StgStreamImpl`) and of `IEnumSTATSTG`. Recursive, because storage methods
+   call each other (Commit → CopyTree → stream copies, Release → Revert, ...).
+   One lock for all files is simple and certainly correct; a per-file lock
+   would let two files be used in parallel, but every object would need to
+   find its root `StorageImpl`. The internal functions are unchanged.
+2. **Truncated stream lost on commit**
+   (`patches/ole32-transacted-truncate-dirty.patch`), found on the way.
+   `TransactedSnapshotImpl_StreamSetSize` with size 0 drops the entry's link to
+   its data in the parent (`transactedParentEntry = DIRENTRY_NULL`) but did not
+   set `dirty`. `TransactedSnapshotImpl_CopyTree` decides from `dirty` /
+   `stream_dirty` / "a child was copied" whether an entry needs a new copy in
+   the parent; the truncated stream needed none by those rules, so it and its
+   siblings kept their old parent entries - one of which the commit then
+   destroyed as orphaned. The committed tree pointed at a deleted (later
+   reused) directory entry: the file name appeared as an element of a
+   substorage, later commits crashed in `TransactedSnapshotImpl_StreamLink`
+   (`EnsureReadEntry` on garbage) or looped forever over a cycle in the tree.
+   Fix: set `dirty = TRUE` in that branch. Upstream Wine (master of
+   2026-09-01) has the same code.
+
+### How it was found
+
+Useful for any crash inside ole32's storage code:
+
+1. **A trace of the solver only.** `WINEDEBUG="+pid,err+all,fixme-all,+storage"
+   bash scripts/launch-inventor.sh`, run Simulate, then count lines per
+   process to find `rkernel.exe` (Inventor itself also uses storage):
+   ```bash
+   LOG=$(ls -t logs/inventor-*.log | head -1)
+   grep -a -o '^[0-9a-f]*:[0-9a-f]*:trace:storage' "$LOG" | cut -d: -f1 | uniq -c | tail -5
+   grep -a "^<pid>:" "$LOG" | tail -1500 > ~/fa-diag.txt
+   ```
+   The first trace (2026-10-21) led to the stale-cache theory; the one with
+   all four thread ids showed what really happens. Count threads early: `cut
+   -d: -f2 file | sort | uniq -c`.
+2. **An ole32.dll with debug info.** Built from the vanilla 11.20 source with
+   [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) (about 1 minute for
+   `make dlls/ole32/all` after the tools), copied over
+   `lib/wine/x86_64-windows/ole32.dll` of the bundled Wine (keep the original
+   as `ole32.dll.orig`). The assertion dialog then names the source path of the
+   build, which proves the DLL is loaded, and a backtrace has function names
+   and lines.
+3. **A backtrace while the assertion dialog is open** (do not press OK or
+   Cancel - Cancel's built-in debugger output did not contain the trace):
+   ```bash
+   export WINEPREFIX=~/.wine-invclean
+   W=~/.local/share/inventor-on-linux/wine-inventor-11.20-5-x86_64/bin
+   pid=$("$W/wine" winedbg --command "info proc" 2>/dev/null | grep -i rkernel | awk '{print $1}')
+   "$W/wine" winedbg --command "bt all" "0x$pid" > ~/rkernel-bt.txt 2>&1
+   grep -n "ole32" ~/rkernel-bt.txt
+   ```
+   Result: `StorageImpl_SetNextBlockInChain` ← `BlockChainStream_Enlarge` ←
+   `BlockChainStream_SetSize` - a free block equal to the chain's own tail.
+4. **Reproducing without Inventor.** The programs in
+   [`docs/wine-repro/ole32-storage/`](wine-repro/ole32-storage/) (see its
+   README for building and running):
+   - `fuzz.c` does random single-threaded operations on nested transacted
+     storages and can record and replay a run; `ddmin.py` shrinks a recorded
+     run. This found bug 2 (seed 26, shrunk from 1306 to 8 steps: create
+     substorage, two streams over 4 KB, commit, truncate one to 0, commit,
+     commit root, revert root → the substorage lists the file name). Fixed: 0
+     of 300 seeds fail; unfixed: 35 of 300 crash, hang or break the tree. But
+     the Frame Analysis assertion stayed - single-threaded fuzzing could not
+     reproduce it.
+   - `mt.c` does what the trace showed: four threads, one file, substorages
+     and streams growing past the 4 KB small-block limit, commits. Unfixed
+     Wine 11.20: `Assertion failed: blockIndex != nextBlock, storage32.c line
+     4157` - the Frame Analysis assertion - in 6 of 6 runs. With the lock: 0
+     of 6.
+5. **A diagnostic build** (not kept): the self-link case was logged with the
+   chain kind, depot state and callers. It never fired - the next run hit the
+   other assertion instead, which is what made the "several threads" trace
+   worth a look.
+
+### Wine tests
+
+Both patches add tests to `dlls/ole32/tests/storage32.c`:
+`test_transacted_truncate` (4 variants: root or nested transacted storage,
+truncated stream in the parent or in the scratch file) fails 8 times without
+fix 2; `test_threads` (4 threads × 20 rounds) dies on the assertion without
+fix 1. The whole `storage32` test (19102 checks), `stg_prop`, `ole2`,
+`hglobalstream`, `moniker`, `propvariant` pass with both. `marshal` hangs in
+a headless prefix with and without the patches (no display), unrelated.
+To run them:
+
+```bash
+bash scripts/build-wine-dll.sh ole32 --test
+```
+
+### Still open (found by the fuzzer, not needed by Inventor)
+
+- `Commit` on a transacted substorage whose parent was reverted dereferences
+  NULL (`TransactedSnapshotImpl` uses the invalidated parent). Native ole32
+  presumably returns `STG_E_REVERTED` - not checked on Windows yet.
+- The fuzzer runs keep the substorages closed around a root `Revert` because
+  of that.
+
+### For upstream Wine
+
+The two patches are independent and apply in either order. The lock patch is
+large only because of the wrappers (generated, one per vtable method); the
+logic is "enter `storage_cs` / call the original method / leave". Before
+sending it, consider a per-file lock and check with a Windows test whether
+native ole32 really serialises (the `test_threads` test should pass on
+Windows - `rkernel.exe` suggests it does).
+
 ## GPU ray tracing (Inventor 2027, not working yet)
 
 Tested 2026-10-21 on an RX 6400 (RDNA 2, on the Linux host via `INV_GPU=6400`,
@@ -775,3 +921,17 @@ Confirmed fixed with `--disable-gpu`; with the GPU process (ANGLE/SwiftShader)
 the page still lags behind - another presentation path. Inventor.exe's
 WebView2 now gets `--disable-gpu` by default (`INV_WEBVIEW2_ARGS_INVENTOR`);
 the licensing agent and Identity Manager keep the previous switches.
+
+**2026-10-22 - Frame Analysis works (ole32, compound files and threads):**
+Simulate in Frame Analysis ended `rkernel.exe` (the Robot solver) on
+`Assertion failed: blockIndex != nextBlock` in `storage32.c`. First a
+single-threaded fuzzer found a real ole32 bug (a stream truncated to zero in
+a transacted storage was left out of Commit) - fixed, but the solver still
+crashed, next time on `depotBlockCount < bigBlockDepotCount`. A `+storage`
+trace of the solver alone showed four threads using one compound file at once;
+a four-thread test program reproduced the original assertion every time.
+Wine's storage code has no locking; one recursive lock around all storage,
+stream and enumerator methods fixed it. Tested: Frame Analysis with loads and
+constraints on a frame of ISO 10799-2 40x40x3 tubes, Simulate finishes,
+displacement results shown. Wine build `wine-11.20-6`; Frame Analysis is now
+on by default. Details: section "Frame Analysis: Simulate crashes the solver".

@@ -52,6 +52,16 @@ explain why things are the way they are.
   then add its SHA-256 to `wine/SHA256SUMS` (`[skip ci]`).
 - Patches are meant for upstream Wine eventually - keep them clean and minimal.
 
+## Documentation
+- Every fix or finding gets written up in `docs/arch-hyprland.md`, in the
+  same style as the sections there: a section for the problem (symptom as the
+  user saw it, cause down to the Wine function, the fix, how it was found -
+  with the commands, so others and Wine developers can repeat it - what is
+  still open, notes for upstream) and a dated entry in its "Result log".
+  Reproducers and test programs go to `docs/wine-repro/<dll>-<topic>/` with a
+  README. Also update `README.md` (status table) and `notes/` where they
+  mention the topic.
+
 ## Testing
 - `bash -n scripts/*.sh scripts/lib/*.sh`, `python3 -m py_compile`,
   `python3 -m unittest discover -s tests`.
