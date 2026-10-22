@@ -793,9 +793,12 @@ Confirmed 2026-10-22: Simulate and results work in Inventor 2027 too (its own
 `Robot Structural Analysis Engine 2027`), with the same Wine build. Open: on
 switching to the Frame Analysis environment, the assembly's "Model" browser
 stays as a second pane at the far left of the window, next to the Frame
-Analysis browser, and cannot be moved or closed. Not seen in 2026. Not
-investigated yet (a docked pane that Wine moves or redraws wrongly, most
-likely).
+Analysis browser, and cannot be moved or closed. Not seen in 2026.
+Workaround: View → User Interface → untick and tick *iLogic* (that is what
+cleared it), or *Reset UI Layout* in the same Windows panel; after that only
+one browser is shown. Cause not investigated: it may be a layout Inventor
+2027 saved while a docked pane was in a bad state, not Wine at all - worth
+checking whether it comes back on a fresh layout.
 
 ### Still open (found by the fuzzer, not needed by Inventor)
 
@@ -949,4 +952,5 @@ on by default. Details: section "Frame Analysis: Simulate crashes the solver".
 **2026-10-22 - Frame Analysis in Inventor 2027:** Simulate and results work
 with `wine-11.20-6` (Shear Stress Ty shown on the same test frame). New issue:
 the assembly browser stays as a second, fixed pane on the left in the Frame
-Analysis environment (2027 only).
+Analysis environment (2027 only). Toggling View → User Interface → iLogic
+cleared it.
