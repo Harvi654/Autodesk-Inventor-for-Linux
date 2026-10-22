@@ -92,7 +92,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Sheet metal (face, flange, flat pattern, DXF export) | ✅ | |
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
-| Frame Analysis | ❌ | study, constraints and loads work; Simulate crashes the solver (`rkernel.exe`) in Wine's compound-file code (ole32) - being looked into; off by default |
+| Frame Analysis | ✅ | study, constraints, loads, Simulate and results (since Wine build `wine-11.20-6`) |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
 | GPU ray tracing | ❌ | not yet: tested on an RX 6400 (RDNA 2) with Inventor 2027 - vkd3d-proton reports DXR 1.1, but Inventor still says the card is not supported and never loads its ray tracer; CPU ray tracing works |
@@ -350,7 +350,7 @@ Planned, roughly in this order:
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
 - [ ] send the Wine fixes to Wine upstream
-- [ ] Frame Analysis, 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
+- [ ] 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
 - [x] Inventor 2027 (2027.1 - first test on Arch)
 - [ ] Inventor 2025
 

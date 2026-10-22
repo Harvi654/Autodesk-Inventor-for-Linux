@@ -20,12 +20,21 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
 | `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | 3D PDF: the dialog opens, but Publish crashes Anark's `corewrapper.exe` (a .NET Framework program, so it runs on wine-mono): it calls into oleaut32's proxy tables as if they were code - most likely a COM interop gap in wine-mono. Inventor itself keeps running. Not fixed yet |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `autodesk.frameanalysis.inventor.addin` | the study, constraints and loads work; Simulate crashes the Robot solver `rkernel.exe` inside Wine's ole32 structured storage: StgStreamImpl_Write -> TransactedSnapshotImpl_StreamWriteAt -> stream resize (small -> big blocks) -> SmallBlockChainStream_ReadAt -> BlockChainStream_ReadAt -> BlockChainStream_GetSectorOfOffset reads past its index cache (stale block-chain cache in a transacted storage, most likely). Not fixed yet |
 
 Untested means: please try it with `addins.sh enable` and report what happens.
 
 iLogic was off by default until 2026-10-18; it works now (rules, parameters
 driving the model) and is on. An existing prefix: `bash scripts/addins.sh enable ilogic`.
+
+Frame Analysis was off until 2026-10-22; with Wine build `wine-11.20-6` it
+works (study, constraints, loads, Simulate, results). The Robot solver
+`rkernel.exe` writes its results into one compound file from four threads at
+once; Wine's ole32 storage code had no locking and corrupted its block chains
+(assertions `blockIndex != nextBlock` / `depotBlockCount < bigBlockDepotCount`
+in storage32.c). Fixed by `patches/ole32-storage-thread-lock.patch` and
+`patches/ole32-transacted-truncate-dirty.patch` (a stream truncated to zero in
+a transacted storage was left out of the commit). An existing prefix:
+`bash scripts/addins.sh enable frameanalysis`.
 
 Stress Analysis was off until 2026-10-18; with the ntdll, rpcrt4 and combase
 Wine fixes it works (mesh, simulate, results) and is on. An existing prefix:
