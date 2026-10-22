@@ -349,7 +349,6 @@ Planned, roughly in this order:
 - [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
-- [ ] send the Wine fixes to Wine upstream
 - [ ] 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
 - [x] Inventor 2027 (2027.1 - first test on Arch)
 - [ ] Inventor 2025
