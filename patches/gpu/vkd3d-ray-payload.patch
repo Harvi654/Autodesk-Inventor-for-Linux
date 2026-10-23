@@ -1,0 +1,193 @@
+--- a/subprojects/dxil-spirv/dxil_converter.cpp
++++ b/subprojects/dxil-spirv/dxil_converter.cpp
+@@ -3602,6 +3602,9 @@
+ 	case llvm::Type::TypeID::VectorTyID:
+ 	{
+ 		auto *vec_type = llvm::cast<llvm::VectorType>(type);
++		if (vec_type->getVectorNumElements() > 4)
++			return builder.makeArrayType(get_type_id(vec_type->getElementType()),
++			                             builder.makeUintConstant(vec_type->getVectorNumElements()), 0);
+ 		return builder.makeVectorType(get_type_id(vec_type->getElementType()), vec_type->getVectorNumElements());
+ 	}
+ 
+--- a/subprojects/dxil-spirv/opcodes/opcodes_llvm_builtins.cpp
++++ b/subprojects/dxil-spirv/opcodes/opcodes_llvm_builtins.cpp
+@@ -1166,7 +1166,10 @@
+ 	if (DXIL::AddressSpace(instruction->getOperand(0)->getType()->getPointerAddressSpace()) == DXIL::AddressSpace::PhysicalNodeIO)
+ 		storage = spv::StorageClassPhysicalStorageBuffer;
+ 	else
+-		storage = impl.get_effective_storage_class(instruction->getOperand(0), builder.getStorageClass(ptr_id));
++	{
++		auto itr = impl.handle_to_storage_class.find(instruction->getOperand(0));
++		storage = itr != impl.handle_to_storage_class.end() ? itr->second : builder.getStorageClass(ptr_id);
++	}
+ 
+ 	type_id = builder.makePointer(storage, type_id);
+ 
+@@ -1207,6 +1210,111 @@
+ 	impl.handle_to_storage_class[instruction] = storage;
+ 	impl.add(op);
+ 	return true;
++}
++
++static bool is_reshape_composite(spv::Builder &builder, spv::Id type)
++{
++	auto op = builder.getTypeClass(type);
++	return op == spv::OpTypeStruct || op == spv::OpTypeArray || op == spv::OpTypeMatrix || op == spv::OpTypeVector;
++}
++
++static bool get_reshape_shape(spv::Builder &builder, spv::Id type, unsigned &width, unsigned &count)
++{
++	if (is_reshape_composite(builder, type))
++	{
++		for (int i = 0; i < builder.getNumTypeComponents(type); i++)
++			if (!get_reshape_shape(builder, builder.getContainedTypeId(type, i), width, count))
++				return false;
++		return true;
++	}
++	auto op = builder.getTypeClass(type);
++	if (op != spv::OpTypeFloat && op != spv::OpTypeInt)
++		return false;
++	unsigned leaf_width = builder.getScalarTypeWidth(type);
++	if (width && width != leaf_width)
++		return false;
++	width = leaf_width;
++	count++;
++	return true;
++}
++
++struct ReshapeLeaf { spv::Id id; spv::Id type; };
++
++static void flatten_reshape_value(Converter::Impl &impl, spv::Id value, spv::Id type, Vector<ReshapeLeaf> &leaves)
++{
++	auto &builder = impl.builder();
++	if (!is_reshape_composite(builder, type))
++	{
++		leaves.push_back({value, type});
++		return;
++	}
++	for (int i = 0; i < builder.getNumTypeComponents(type); i++)
++	{
++		auto child_type = builder.getContainedTypeId(type, i);
++		auto *extract = impl.allocate(spv::OpCompositeExtract, child_type);
++		extract->add_id(value);
++		extract->add_literal(i);
++		impl.add(extract);
++		flatten_reshape_value(impl, extract->id, child_type, leaves);
++	}
++}
++
++static spv::Id construct_reshape_value(Converter::Impl &impl, spv::Id type,
++                                     const Vector<ReshapeLeaf> &leaves, unsigned &index)
++{
++	auto &builder = impl.builder();
++	if (!is_reshape_composite(builder, type))
++	{
++		auto leaf = leaves[index++];
++		if (leaf.type == type)
++			return leaf.id;
++		auto *cast = impl.allocate(spv::OpBitcast, type);
++		cast->add_id(leaf.id);
++		impl.add(cast);
++		return cast->id;
++	}
++	Vector<spv::Id> constituents;
++	for (int i = 0; i < builder.getNumTypeComponents(type); i++)
++		constituents.push_back(construct_reshape_value(impl, builder.getContainedTypeId(type, i), leaves, index));
++	// Operation has a bounded operand array. Build long arrays with individual
++	// inserts rather than raising that limit for a single composite operation.
++	if (constituents.size() > Operation::MaxArguments)
++	{
++		auto id = builder.createUndefinedConstant(type);
++		for (unsigned i = 0; i < constituents.size(); i++)
++		{
++			auto *insert = impl.allocate(spv::OpCompositeInsert, type);
++			insert->add_id(constituents[i]);
++			insert->add_id(id);
++			insert->add_literal(i);
++			impl.add(insert);
++			id = insert->id;
++		}
++		return id;
++	}
++	auto *construct = impl.allocate(spv::OpCompositeConstruct, type);
++	for (auto id : constituents)
++		construct->add_id(id);
++	impl.add(construct);
++	return construct->id;
++}
++
++static spv::Id reshape_aggregate_value(Converter::Impl &impl, spv::Id value,
++                                      spv::Id source_type, spv::Id target_type)
++{
++	auto &builder = impl.builder();
++	unsigned source_width = 0, target_width = 0, source_count = 0, target_count = 0;
++	if (!get_reshape_shape(builder, source_type, source_width, source_count) ||
++	    !get_reshape_shape(builder, target_type, target_width, target_count) ||
++	    source_width != target_width || source_count != target_count)
++	{
++		LOGE("Cannot reshape aggregate with incompatible scalar component layout.\n");
++		return 0;
++	}
++	Vector<ReshapeLeaf> leaves;
++	flatten_reshape_value(impl, value, source_type, leaves);
++	unsigned index = 0;
++	return construct_reshape_value(impl, target_type, leaves, index);
+ }
+ 
+ bool emit_load_instruction(Converter::Impl &impl, const llvm::LoadInst *instruction)
+@@ -1229,9 +1337,22 @@
+ 		load_op->add_id(value_id);
+ 		impl.add(load_op);
+ 
+-		Operation *cast_op = impl.allocate(spv::OpBitcast, instruction);
+-		cast_op->add_id(load_op->id);
+-		impl.add(cast_op);
++		auto target_type = impl.get_type_id(instruction->getType());
++		// This is a logical long-vector payload transfer, not a general
++		// physical-layout or structure-padding bitcast implementation.
++		if (instruction->getType()->getTypeID() == llvm::Type::TypeID::VectorTyID &&
++		    instruction->getType()->getVectorNumElements() > 4)
++		{
++			auto id = reshape_aggregate_value(impl, load_op->id, remapped_type_id, target_type);
++			if (!id) return false;
++			impl.rewrite_value(instruction, id);
++		}
++		else
++		{
++			Operation *cast_op = impl.allocate(spv::OpBitcast, instruction);
++			cast_op->add_id(load_op->id);
++			impl.add(cast_op);
++		}
+ 	}
+ 	else
+ 	{
+@@ -1283,10 +1404,24 @@
+ 
+ 	if (remapped_type_id != 0)
+ 	{
+-		Operation *cast_op = impl.allocate(spv::OpBitcast, remapped_type_id);
+-		cast_op->add_id(impl.get_id_for_value(instruction->getOperand(0)));
+-		impl.add(cast_op);
+-		op->add_id(cast_op->id);
++		auto source_type = impl.get_type_id(instruction->getOperand(0)->getType());
++		// Restrict reshaping to the long-vector copy idiom. Other pointer
++		// reinterpretations retain the existing lowering path.
++		if (instruction->getOperand(0)->getType()->getTypeID() == llvm::Type::TypeID::VectorTyID &&
++		    instruction->getOperand(0)->getType()->getVectorNumElements() > 4)
++		{
++			auto id = reshape_aggregate_value(impl, impl.get_id_for_value(instruction->getOperand(0)),
++			                                  source_type, remapped_type_id);
++			if (!id) return false;
++			op->add_id(id);
++		}
++		else
++		{
++			Operation *cast_op = impl.allocate(spv::OpBitcast, remapped_type_id);
++			cast_op->add_id(impl.get_id_for_value(instruction->getOperand(0)));
++			impl.add(cast_op);
++			op->add_id(cast_op->id);
++		}
+ 	}
+ 	else
+ 		op->add_id(impl.get_id_for_value(instruction->getOperand(0)));
