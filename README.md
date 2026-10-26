@@ -326,7 +326,9 @@ Inventor itself is not modified. The work is in three places:
   and built into this project's Wine by a public GitHub workflow
   (`scripts/build-wine.sh`); the result is installed in your home folder, next
   to - not over - the system's Wine.
-  They are meant to go to Wine upstream.
+  They were written with AI help, so they are not sent to Wine itself (Wine
+  does not accept AI-generated code); Wine gets bug reports with test cases
+  instead. New patches come with a test that is checked on real Windows.
 - **Installation** (`scripts/install-from-image.py`, `scripts/lib/odis.py`):
   reads Autodesk's install image and runs its packages in the right order
   under Wine, in place of Autodesk's Windows installer front end.
@@ -411,10 +413,10 @@ of AI (Claude, by Anthropic) and tested by people on real machines.
 
 ## License
 
-[MIT](LICENSE), like the original project. The top-level Wine patches in
-`patches/` are offered under Wine's license (LGPL 2.1 or later) when sent
-upstream. See [the patch layout](patches/README.md) for patches targeting other
-components and optional runtimes.
+[MIT](LICENSE), like the original project - except the Wine patches in
+`patches/`: they change Wine's code and are therefore under Wine's license,
+the LGPL 2.1 or later. The Wine this project builds and publishes is LGPL 2.1
+or later too. See [the patch layout](patches/README.md).
 
 Autodesk Inventor and Microsoft WebView2 remain proprietary. The Nix packages
 and installer sources are marked unfree; this repository's license does not

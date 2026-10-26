@@ -410,7 +410,7 @@ selection, and Wine's `IFolderView2::GetSelection`/`GetSelectedItem`/
 `SVGIO_SELECTION`. `patches/shell32-folderview-selection.patch` implements them;
 `build-wine-dll.sh shell32 --install` applies it together with the GetImage
 patch. Confirmed: click fills the name, double-click opens files and folders.
-(Upstream still needs tests for it.)
+(Still needs a Wine test checked on Windows - level L1 in `AGENTS.md`.)
 
 ### Open: big icons in the New dialog
 
@@ -555,8 +555,8 @@ a visible window moved. `patches/server-mousemove-on-show-hide.patch`
 (wineserver, `build-wine-dll.sh server --install`, close all Wine programs
 first) sends one 100 ms after a window is shown/hidden, one per burst
 (`WINE_SHOWHIDE_MOUSEMOVE_MS`, 0 = off). Sent at once it came too early.
-Confirmed working. The delay is empirical - before proposing it upstream,
-measure when Windows delivers that mouse move.
+Confirmed working. The delay is empirical - for level L1 (and a Wine bug
+report), measure when Windows delivers that mouse move.
 
 ## Sketch: black rectangles around the sketch input boxes (fixed)
 
@@ -815,14 +815,16 @@ again, note the exact steps and take a `+win,+msg` trace.
 - The fuzzer runs keep the substorages closed around a root `Revert` because
   of that.
 
-### For upstream Wine
+### For a Wine bug report
 
-The two patches are independent and apply in either order. The lock patch is
-large only because of the wrappers (generated, one per vtable method); the
-logic is "enter `storage_cs` / call the original method / leave". Before
-sending it, consider a per-file lock and check with a Windows test whether
-native ole32 really serialises (the `test_threads` test should pass on
-Windows - `rkernel.exe` suggests it does).
+The patches are not sent to Wine (AI-generated, see `patches/README.md`); the
+bugs are reported in words with the public tests. The two patches are
+independent and apply in either order. The lock patch is large only because of
+the wrappers (generated, one per vtable method); the logic is "enter
+`storage_cs` / call the original method / leave". Still to check (level L1 in
+`AGENTS.md`): whether native ole32 really serialises - the `test_threads` test
+should pass on Windows 10 (`rkernel.exe` suggests it does) - and whether a
+per-file lock would be closer to Windows.
 
 ## GPU ray tracing (Inventor 2027, not working yet)
 

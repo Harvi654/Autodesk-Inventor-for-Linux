@@ -17,7 +17,7 @@ It did **not** make GPU ray tracing available (see the README and
 docs/arch-hyprland.md) - so it is a cosmetic/diagnostic fix.
 
 State: applies to Wine 11.20 and current upstream; not built or tested as a
-Wine build yet. For upstream it needs a test (dlls/win32u or the
-display-device tests) and a check what real Windows drivers write for each
+Wine build yet. Before it can move to `patches/` it needs a test (dlls/win32u
+or the display-device tests) and a check what real Windows drivers write for each
 vendor (the names above come from AMD/NVIDIA/Intel driver INF files and a
 Windows install).

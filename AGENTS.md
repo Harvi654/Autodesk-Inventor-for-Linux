@@ -50,14 +50,70 @@ explain why things are the way they are.
   `wine/version.env`, with a test in Wine's test suite where possible.
 - Raise `WINE_BUILD` when patches change; the workflow publishes the release;
   then add its SHA-256 to `wine/SHA256SUMS` (`[skip ci]`).
-- Patches are meant for upstream Wine eventually - keep them clean and minimal.
+- Patches are written with AI help and are **not** sent to Wine: Wine does not
+  accept LLM-generated code and requires the author's real name. Never submit
+  them or hide their origin. What goes to Wine is a bug report on
+  bugs.winehq.org in words: what the application calls, what Wine returns,
+  what Windows returns, the steps and a public synthetic test.
+- Write them as Wine would anyway: one DLL, small, in the style of the
+  surrounding code, with the `/*** name (DLL.@) */` headers kept, and a test in
+  `dlls/<dll>/tests/` that uses `ok()` / `todo_wine` (fails on unpatched Wine,
+  passes with the patch). The test describes Windows, so it has to pass on
+  Windows (below).
+- Patches modify LGPL code, so they are LGPL 2.1 or later (see
+  `patches/README.md`), whatever the license of the rest of the repository.
+
+### Validation levels
+A patch is recorded with the level it reached:
+- **L0** builds from the official Wine source with the full patch set, both
+  architectures, no fuzz.
+- **L1** its Wine test passes on real Windows 10 (x86_64 and i686 executables
+  built with MinGW, run in the maintainer's Windows VM, which has no network;
+  only text results come back, never DLLs). Expected values come from what
+  Windows returned, not from documentation or guesses; where a value is
+  unknown, add a trace and measure it first. If a test fails on Windows, the
+  test is wrong - fix the test, then the patch.
+- **L2** the existing tests of the touched DLL show no new failures (for
+  server, user32, win32u, winex11 also run the neighbouring suites).
+- **L3** reproducers or fuzzing for complex cases (`docs/wine-repro/`).
+- **L4** the maintainer's smoke test in Inventor (and SOLIDWORKS when the DLL
+  is shared): the feature itself plus start, part, assembly, save/reopen,
+  restart.
+- **L5** a week of normal use.
+Diagnostic or trace patches stay in `patches/debug/` and never go into a
+normal build. A patch that passes its tests but does not fix the user's
+problem is not added.
+
+### Clean room
+- Allowed: observing behaviour from outside - Wine debug channels (`+relay`,
+  `+seh`, `+ole`, ...), also with native Microsoft components (.NET 4.8,
+  WebView2), and stack addresses at a crash. When a native Microsoft component
+  was traced, say so in the docs.
+- Not allowed: disassembly, debug symbols or source of Microsoft code, copying
+  Microsoft files out of Windows or the VM, and looking inside Autodesk (or
+  other vendors') binaries beyond crash addresses.
+- Bug reports for Wine contain only the application's side and our own tests,
+  never internals of Microsoft DLLs.
+- AI may have seen other projects' code (Mesa, ReactOS, ...): ask for original
+  code and say so in the patch; for a larger patch ask a second model whether
+  it resembles a known project.
+
+### Working with AI
+- Test first, then the fix; one task at a time.
+- Three rounds: if three fix attempts do not bring the result closer, stop,
+  write down the state and the best hypothesis, and move to something else.
+- Cross review: a patch written by one assistant is read in full by another
+  before it goes into a normal build.
+- Every patch gets a short plain-language explanation in the docs that the
+  maintainer can follow without reading the code.
 
 ## Documentation
 - Every fix or finding gets written up in `docs/arch-hyprland.md`, in the
   same style as the sections there: a section for the problem (symptom as the
   user saw it, cause down to the Wine function, the fix, how it was found -
   with the commands, so others and Wine developers can repeat it - what is
-  still open, notes for upstream) and a dated entry in its "Result log".
+  still open, notes for a Wine bug report, the validation level reached) and
+  a dated entry in its "Result log".
   Reproducers and test programs go to `docs/wine-repro/<dll>-<topic>/` with a
   README. Also update `README.md` (status table) and `notes/` where they
   mention the topic.
