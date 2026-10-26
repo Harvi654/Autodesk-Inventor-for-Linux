@@ -24,6 +24,42 @@ the extraction launcher EXE is unnecessary, but the update EXE is required.
 Add new source files to Git before building, or use `path:$PWD` as the flake
 reference to include untracked files.
 
+## All builds and tests run through Nix
+
+Every build and test for Nix/NixOS work must be defined in this repository's
+Nix pipeline and executed through its named flake outputs. This includes early
+diagnostics, experimental patches, synthetic reproducers, regression tests,
+syntax checks, unit tests and GUI validation, not just final acceptance tests.
+
+- Add or extend a named flake package, check or app before running the work.
+  Build with `nix build .#<package>`, run automated checks with
+  `nix flake check` or `nix build .#checks.<system>.<check>`, and run interactive
+  tests through `nix run .#<app>`. Use the pinned inputs for all dependencies.
+- Do not compile with host tools, invoke test scripts directly, use ad hoc
+  `nix build --expr` overrides, or build/test from temporary source or patch
+  copies. `nix develop` is for development tooling, not an exception allowing
+  untracked build or test commands. Nix derivations may use their own temporary
+  build directories normally.
+- Package diagnostic programs and their runners in Nix too. GUI automation may
+  use the isolated agent workspace and its screenshot/input tools, but it must
+  launch a Nix-defined test app or runner using the intended packaged runtime.
+  Do not edit generated launchers or replace their runtime paths by hand.
+- Define experimental package/app outputs and connect their runtime from the
+  outset. Keep unfinished patches out of the default runtime. For an Inventor
+  fix, exercise the composed Inventor package and launcher, not only Wine or a
+  standalone reproducer. Verify which runtime the launcher actually selects.
+- Build, test and hand over the same named outputs. Finalize patch contents,
+  headers, source paths and runtime wiring before an expensive build; changes
+  to these can invalidate reuse even when executable code is unchanged.
+  Reuse cached outputs and installation layers through Nix where supported.
+  Do not reinstall Autodesk manually or copy authenticated prefixes.
+- Record exact flake targets and tested store paths. Distinguish evaluation,
+  compilation and GUI validation; passing `nix flake check` or building Wine
+  alone does not establish that the composed Inventor package was tested.
+  If the pipeline lacks a required test, add it before running that test. If
+  blocked, report the missing Nix integration rather than bypassing it.
+- once the experimental outputs have been verified, merge them into existing ones.
+
 ## Overlay filesystem
 
 We use the pinned `nix-overlayfs` library to compose Wine dependency layers and
