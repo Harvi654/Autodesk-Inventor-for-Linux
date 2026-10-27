@@ -12,9 +12,9 @@ packaged fonts, and valid licensing and Identity Manager links. Fresh-state
 GUI validation passed browser sign-in and basic part creation, save, and reopen.
 Broader application compatibility has not been validated.
 
-The default target is Inventor Professional 2026 English with the 2026.4 update
-and Content Center, on x86_64 Linux. Inventor 2027 English with update 2027.1
-is also available as a separate package. The runtime builds Wine 11.20 with every
+The default flake target is Inventor Professional 2027 English with the 2027.1
+update and Content Center, on x86_64 Linux. Inventor 2026 English with update
+2026.4 is also available as a separate package. The runtime builds Wine 11.20 with every
 top-level patch in `patches/`. Nixpkgs and the nix-overlayfs fork are pinned in
 `flake.lock`; no local checkout is required by the committed input definitions.
 The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
@@ -56,8 +56,8 @@ private Nixpkgs instance; it does not change your system-wide Nixpkgs policy.
 
 ```sh
 nix flake check
-nix build .#inventor
-nix run .#inventor
+nix build .#inventor-2026
+nix run .#inventor-2026
 ```
 
 When developing with new files that have not yet been added to Git, use
@@ -173,7 +173,7 @@ programs.autodesk-inventor = {
 Use `versions = [ "2027" ];` for 2027 only. Each release has its own desktop
 entry, Wine prefix, licensing database, lock, settings, and logs. The commands
 are `inventor` for 2026 and `inventor-2027` for 2027. From the checkout, use
-`nix run .#inventor-2026` or `nix run .#inventor-2027`; `.#inventor` remains 2026.
+`nix run .#inventor-2026` or `nix run .#inventor-2027`; `nix run` defaults to 2027.
 
 The module's browser callback default selects the newest installed release.
 If Home Manager manages MIME defaults and you install 2027, use
@@ -226,7 +226,7 @@ Validated on 2026-10-20 with the library pinned to
 `8bf7c5cfa2541cf1478b87b519dcdc4c75831407`:
 
 - `nix flake check`: passed, including seven installer boundary/regression tests.
-- `nix build .#inventor --no-link --keep-failed -L`: passed.
+- `nix build .#inventor-2026 --no-link --keep-failed -L`: passed.
 - Application layer: `/nix/store/38y9yn20sg5nxi06fr6pfgh78v0a8g7l-inventor-2026.4`.
 - Launcher: `/nix/store/kbrqwdmy6g8qmzd82s82x2fs137w6pgv-inventor-overlay-2026.4/bin/inventor`.
 - `Inventor.exe`: PE signature and x86-64 machine type verified; 1,587,032 bytes.

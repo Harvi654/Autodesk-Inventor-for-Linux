@@ -16,7 +16,7 @@ let
       "$out/share/icons/hicolor/scalable/apps/inventor-on-linux.svg"
   '';
   defaultPackages = {
-    "2026" = self.packages.x86_64-linux.inventor;
+    "2026" = self.packages.x86_64-linux.inventor-2026;
     "2027" = self.packages.x86_64-linux.inventor-2027;
   };
   packageFor =
@@ -35,19 +35,6 @@ let
         "Engineering"
       ];
       mimeTypes = [ "x-scheme-handler/adskidmgr" ];
-    };
-  waylandDesktopFor =
-    year:
-    pkgs.makeDesktopItem {
-      name = "${desktopNameFor year}-wayland";
-      desktopName = "Autodesk Inventor ${year} (Wayland)";
-      icon = "inventor-on-linux";
-      exec = "${pkgs.coreutils}/bin/env INVENTOR_WINE_DRIVER=wayland ${lib.getExe (packageFor year)} %U";
-      terminal = false;
-      categories = [
-        "Graphics"
-        "Engineering"
-      ];
     };
   newestYear =
     if cfg.versions == [ ] then "2026" else lib.last (lib.sort builtins.lessThan cfg.versions);
@@ -94,7 +81,6 @@ in
     ++ lib.concatMap (year: [
       (packageFor year)
       (desktopFor year)
-      (waylandDesktopFor year)
     ]) cfg.versions;
     hardware.graphics.enable = true;
     programs.fuse.enable = true;

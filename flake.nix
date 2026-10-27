@@ -34,7 +34,10 @@
         inherit wine;
         windowsArch = "wow64";
       };
-      mediaSources = import ./nix/media.nix { inherit pkgs; };
+      mediaSources2026 = import ./nix/media.nix {
+        inherit pkgs;
+        year = "2026";
+      };
       mediaSources2027 = import ./nix/media.nix {
         inherit pkgs;
         year = "2027";
@@ -45,31 +48,32 @@
         updates = [ mediaSources2027.update ];
         version = "2027.1";
       };
-      inventor = self.lib.mkInventor {
-        inherit (mediaSources) media;
-        updates = [ mediaSources.update ];
+      inventor2026 = self.lib.mkInventor {
+        year = "2026";
+        inherit (mediaSources2026) media;
+        updates = [ mediaSources2026.update ];
         version = "2026.4";
       };
     in
     {
       packages.${system} = {
-        inherit wine inventor;
-        inventor-2026 = inventor;
+        inherit wine;
+        inventor-2026 = inventor2026;
         inventor-2027 = inventor2027;
-        inventor-media = mediaSources.media;
-        default = inventor;
+        inventor-2026-media = mediaSources2026.media;
+        inventor-2027-media = mediaSources2027.media;
+        default = inventor2027;
       };
       apps.${system} = {
-        default = self.apps.${system}.inventor;
-        inventor-2026 = self.apps.${system}.inventor;
+        default = self.apps.${system}.inventor-2027;
         inventor-2027 = {
           type = "app";
           program = "${inventor2027}/bin/inventor-2027";
           meta.description = "Autodesk Inventor Professional 2027.1";
         };
-        inventor = {
+        inventor-2026 = {
           type = "app";
-          program = "${inventor}/bin/inventor";
+          program = "${inventor2026}/bin/inventor";
           meta.description = "Autodesk Inventor Professional 2026.4";
         };
       };

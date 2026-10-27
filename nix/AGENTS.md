@@ -11,11 +11,11 @@ Run from the repository root:
 
 - `nix develop`: shell with the matching patched Wine and packaging tools.
 - `nix flake check`: evaluate the flake and run installer/runtime-state checks.
-- `nix build .#inventor --no-link -L`: build 2026 (also `.#inventor-2026`).
+- `nix build .#inventor-2026 --no-link -L`: build 2026.
 - `nix build .#inventor-2027 --no-link -L`: build 2027.
-- `nix run .#inventor` / `nix run .#inventor-2027`: launch the chosen release.
+- `nix run .#inventor-2026` / `nix run .#inventor-2027`: launch the chosen release.
 - `nix build .#wine`: build the patched Wine runtime independently.
-- `nix build .#inventor-media`: extract the default 2026 installation image.
+- `nix build .#inventor-2026-media` / `.#inventor-2027-media`: extract the selected installation image.
 - `nix fmt -- flake.nix nix/*.nix`: format Nix expressions.
 - `nix log /nix/store/<name>.drv`: inspect a failed build.
 
