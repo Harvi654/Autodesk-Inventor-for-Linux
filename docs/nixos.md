@@ -174,7 +174,6 @@ Use `versions = [ "2027" ];` for 2027 only. Each release has its own desktop
 entry, Wine prefix, licensing database, lock, settings, and logs. The commands
 are `inventor` for 2026 and `inventor-2027` for 2027. From the checkout, use
 `nix run .#inventor-2026` or `nix run .#inventor-2027`; `.#inventor` remains 2026.
-Native Wayland remains experimental for both releases.
 
 The module's browser callback default selects the newest installed release.
 If Home Manager manages MIME defaults and you install 2027, use
@@ -261,16 +260,3 @@ The hidden Xvfb desktop still stops at “Loading…” when creating a standard
 with either graphics setup. Its cause remains undetermined; the successful
 normal-desktop test establishes the supported smoke-test result. The isolated
 desktop was stopped, and the authenticated test state was preserved.
-
-## Native Wayland limitation
-
-Use the regular **Autodesk Inventor 2026** desktop entry on Wayland desktops;
-it runs through XWayland and is the validated configuration. Native fractional
-scaling is currently unavailable with this setup.
-
-**Autodesk Inventor 2026 (Wayland)** remains an experimental entry and is not
-working yet. It explicitly selects Wine’s `wayland` driver. On 2026-10-20 the
-user confirmed that a window appears, but remains unresponsive after resolving
-a separate sign-in/licensing issue. Native Wayland is therefore not a usable
-alternative to the regular launcher at present. Close Inventor before changing
-launchers because they share persistent state and the running Wine session.

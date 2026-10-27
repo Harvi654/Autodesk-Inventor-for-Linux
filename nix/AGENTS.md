@@ -58,7 +58,8 @@ syntax checks, unit tests and GUI validation, not just final acceptance tests.
   alone does not establish that the composed Inventor package was tested.
   If the pipeline lacks a required test, add it before running that test. If
   blocked, report the missing Nix integration rather than bypassing it.
-- once the experimental outputs have been verified, merge them into existing ones.
+- once the experimental outputs have been verified, merge them into existing ones
+- while modules like `wine.nix` have automatic loading, additional draft patches should be supplied there explicitly during testing.
 
 ## Overlay filesystem
 
