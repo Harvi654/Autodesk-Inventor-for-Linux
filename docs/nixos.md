@@ -274,3 +274,80 @@ user confirmed that a window appears, but remains unresponsive after resolving
 a separate sign-in/licensing issue. Native Wayland is therefore not a usable
 alternative to the regular launcher at present. Close Inventor before changing
 launchers because they share persistent state and the running Wine session.
+
+## Experimental GPU ray tracing
+
+GPU ray tracing rendered the sample `madeinlinux.ipt` successfully in Inventor
+2026.4 on an NVIDIA RTX 3060 with the system Vulkan driver. The isolated X11 desktop showed a
+ray-traced viewport and the **GPU** progress panel completed its Low-quality
+render in about two seconds; High quality completed in about twelve seconds.
+This verifies the complete shader and shared-texture
+path, beyond the standalone DXR capability checks. Other GPUs and large assemblies
+have not been validated.
+
+The experimental package adds patched Nixpkgs vkd3d-proton 2.14.1 Windows DLLs
+and DXVK to the application layer. This overrides the normal installer's pinned
+vkd3d-proton 3.0.1 for the experimental launcher only. It uses system Vulkan
+drivers and reuses the application layer without rerunning the Autodesk installer. Try it from this checkout:
+
+```sh
+nix run .#inventor-rt
+```
+
+Close Inventor before switching launchers. This uses the normal authenticated
+user state and sets Inventor 2026's `Driver\EnableHydra` preference to `1` before
+startup. Scoped Wine, DXVK, and vkd3d-proton compatibility patches fix Autodesk's
+OpenGL context setup, ray-payload matrix shader translation, and D3D12-to-D3D11
+shared textures. The ordinary launcher does not set the Hydra preference;
+Inventor may change it after its capability checks. To restore the prior value,
+see [the runtime helper notes](../runtime/README.md).
+
+The RT launcher selects Wine’s GLX backend for Inventor on X11. On the tested
+NVIDIA/Xwayland stack, EGL fails the alpha-capable pixel-format check and can
+cause Application Options to disable GPU ray tracing. GLX passes that check.
+The user confirmed startup on the normal desktop after this change and repair
+of a separate stale X11 socket. The launcher does not alter desktop sockets.
+
+In Inventor, enable **Tools → Application Options → Hardware → Viewport GPU
+Ray Tracing**, open a solid part, choose **View → Visual Style → Realistic**,
+and enable **Ray Tracing**. The progress panel should say **GPU**.
+
+For opt-in NixOS integration:
+
+```nix
+programs.autodesk-inventor = {
+  enable = true;
+  gpuRayTracing = true;
+};
+```
+
+This selects the GPU-enabled package for each release in `versions`: `inventor-rt`
+for 2026 and `inventor-2027-rt` for 2027. Registry preferences, shader caches, and
+renderer logs remain separate by release. The 2027 GPU target is experimental
+and has not yet passed the viewport test. After the upstream rebase on
+2026-10-21, 2026.4 again completed a GPU render in two seconds, and opening and
+closing Application Options preserved GPU mode with its Hardware checkbox
+enabled and checked. Interactive verification on the normal desktop is pending.
+If you override `package` or `packages`, also pass `gpuRayTracing = true` to
+`lib.mkInventor`.
+The native Wayland limitation above still applies.
+
+Try 2027 with `nix run .#inventor-2027-rt` after closing any running 2027
+session. Its launcher builds and starts using its separate sign-in state, but
+the hidden X11 test remains at “Loading…” with repeated D3D12 swapchain errors
+(`E_INVALIDARG`, invalid format). The ordinary 2027 launcher also failed to
+complete sample loading on the same hidden display; this comparison does not
+establish the cause. GPU rendering in 2027 is not yet verified.
+
+`nix run .#dxr-check` checks DXR support in an ephemeral prefix.
+`nix run .#shared-texture-check` checks the D3D12-to-D3D11 texture handoff. For Autodesk
+plugin diagnostics, build `.#dxr-check-inventor` and follow the
+[runtime helper notes](../runtime/README.md). Shader caching is under
+`$XDG_CACHE_HOME/autodesk-inventor-2026/vkd3d`, and renderer logs are under
+`$XDG_STATE_HOME/autodesk-inventor-2026/vkd3d.log`, with the usual `~/.cache`
+and `~/.local/state` defaults. Substitute `2027` for the 2027 launcher.
+A missing renderer log can mean Inventor has
+not attempted D3D12 initialization.
+
+The reusable installation, runtime configuration, and diagnostic sources live
+in `runtime/`; the Nix expressions provide packages and launcher wiring.

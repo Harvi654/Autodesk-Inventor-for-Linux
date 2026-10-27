@@ -1,0 +1,16 @@
+--- a/src/util/util_misc.h
++++ b/src/util/util_misc.h
+@@ -21,6 +21,13 @@
+    */
+   inline auto computeRefreshPeriod(uint64_t numerator, uint64_t denominator) {
+     using unit = std::chrono::nanoseconds;
++
++    // Virtual displays may not report a refresh rate. The callers use this
++    // period to estimate vblank timing, so use 60 Hz when it is unknown rather
++    // than dividing by zero. Do not change the mode reported to applications.
++    if (!numerator || !denominator)
++      return unit(unit::period::den / 60);
++
+     unit::rep ns = unit::rep(unit::period::den * denominator)
+                  / unit::rep(unit::period::num * numerator);
+     return unit(ns);
