@@ -62,6 +62,10 @@ explain why things are the way they are.
   Windows (below).
 - Patches modify LGPL code, so they are LGPL 2.1 or later (see
   `patches/README.md`), whatever the license of the rest of the repository.
+- Every Wine release has its source next to the binary
+  (`wine-inventor-<v>-<b>-source.tar.xz`, `scripts/make-wine-source.sh`); the
+  workflow adds it. A published binary is never replaced; a release without
+  the source gets it with "Run workflow" and `tag` = that release.
 
 ### Validation levels
 A patch is recorded with the level it reached:

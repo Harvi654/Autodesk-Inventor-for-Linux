@@ -963,3 +963,15 @@ with `wine-11.20-6` (Shear Stress Ty shown on the same test frame). New issue:
 the iLogic pane sometimes stays on the left with an old picture (not
 repainted), even on the Home page; toggling View → User Interface → iLogic
 clears it. Intermittent, no reliable steps yet (2027 only).
+
+**2026-10-27 - Source of the Wine releases (LGPL):** every `wine-*` release
+gets `wine-inventor-<v>-<b>-source.tar.xz` next to the binary - vanilla Wine
+with the patches applied as built, `PATCHES.txt` and a "Modified by" comment
+at the end of each changed file, plus the build files of that tag
+(`scripts/make-wine-source.sh --ref <tag>`; same ref and Wine tarball give
+the same bytes, checked twice for `wine-11.20-6`). `build-wine.sh` now applies
+the patches through the same `scripts/lib/wine-patches.sh`, copies
+`PATCHES.txt` into the binary and lists the wine-mono/wine-gecko versions and
+their source URLs in `BUILDINFO`. The releases `wine-11.19-1` … `wine-11.20-6`
+were published before this; their source is added by running the "Build Wine"
+workflow with `tag` set (no binary is rebuilt or replaced).

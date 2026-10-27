@@ -1,20 +1,32 @@
 # Builds this project's Wine (vanilla Wine + patches/) in public, so anyone can
 # see what the downloadable Wine is made of. On main it publishes the result as
-# a release "wine-<version>-<build>" (once per version/build, never "Latest").
+# a release "wine-<version>-<build>" (once per version/build, never "Latest"),
+# together with its complete source (LGPL 2.1): wine-inventor-<v>-<b>-source.tar.xz.
+#
+# Run by hand with "tag" (e.g. wine-11.20-6) it only adds the source archive to
+# that existing release, made from the tag - for releases published before the
+# source was attached. Nothing that is already published is replaced.
 name: Build Wine
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing release to add the source archive to (e.g. wine-11.20-6); empty = normal build'
+        required: false
+        default: ''
   push:
     branches: [main]
     paths:
       - 'patches/*.patch'
       - 'wine/version.env'
       - 'scripts/build-wine.sh'
+      - 'scripts/make-wine-source.sh'
+      - 'scripts/lib/wine-patches.sh'
       - '.github/workflows/build-wine.yml'
 
-# Nothing by default; each job gets only what it needs (the build: read the
-# repository; the release: write the release and its provenance attestation).
+# Nothing by default; each job gets only what it needs (build and source: read
+# the repository; release: write the release and its provenance attestation).
 permissions: {}
 
 concurrency:
@@ -22,14 +34,62 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # What to do: the release name, whether it exists, which source ref belongs to it.
+  plan:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      name: ${{ steps.plan.outputs.name }}
+      ref: ${{ steps.plan.outputs.ref }}
+      build: ${{ steps.plan.outputs.build }}
+      source: ${{ steps.plan.outputs.source }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_INPUT: ${{ inputs.tag }}
+        run: |
+          if [ -n "$TAG_INPUT" ]; then
+            case "$TAG_INPUT" in wine-[0-9]*-[0-9]*) ;; *) echo "not a Wine release tag: $TAG_INPUT"; exit 1 ;; esac
+            git rev-parse --verify -q "refs/tags/$TAG_INPUT^{commit}" >/dev/null || { echo "no tag $TAG_INPUT"; exit 1; }
+            name="$TAG_INPUT"
+          else
+            . wine/version.env
+            name="wine-$WINE_VERSION-$WINE_BUILD"
+          fi
+          exists=0 assets=""
+          if gh release view "$name" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exists=1
+            assets="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$name" --jq '.assets[].name')"
+          fi
+          if [ -n "$TAG_INPUT" ] || [ "$exists" = 1 ]; then
+            [ "$exists" = 1 ] || { echo "release $name does not exist"; exit 1; }
+            # the source must be the one the published binary was built from: its tag
+            git rev-parse --verify -q "refs/tags/$name^{commit}" >/dev/null || { echo "release $name has no tag here"; exit 1; }
+            ref="$name"
+            echo "release $name exists - not rebuilding or replacing it (raise WINE_BUILD in wine/version.env for a new one)"
+          else
+            ref="$GITHUB_SHA"
+          fi
+          # without a tag: always build (it checks the patches still apply and compile)
+          build=1; [ -n "$TAG_INPUT" ] && build=0
+          source=1; grep -qx "wine-inventor-${name#wine-}-source.tar.xz" <<<"$assets" && source=0
+          { echo "name=$name"; echo "ref=$ref"; echo "build=$build"; echo "source=$source"; } >> "$GITHUB_OUTPUT"
+          echo "name=$name ref=$ref build=$build source=$source"
+
   build:
+    needs: plan
+    if: needs.plan.outputs.build == '1'
     runs-on: ubuntu-24.04
     container: archlinux:base-devel
     permissions:
       contents: read
     timeout-minutes: 300
-    outputs:
-      name: ${{ steps.ver.outputs.name }}
     steps:
       - name: Build dependencies (official Arch repositories)
         run: |
@@ -41,14 +101,10 @@ jobs:
             gst-plugins-base-libs sdl2 libcups libgphoto2 sane libpcap v4l-utils pcsclite unixodbc ocl-icd opencl-headers \
             giflib wine-mono wine-gecko
 
+      # full history: the date of each patch (PATCHES.txt, change notices) comes from git
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      - name: Version
-        id: ver
-        run: |
-          . wine/version.env
-          echo "name=wine-$WINE_VERSION-$WINE_BUILD" >> "$GITHUB_OUTPUT"
-          echo "Wine $WINE_VERSION, build $WINE_BUILD"
+        with:
+          fetch-depth: 0
 
       - name: Build
         run: |
@@ -61,45 +117,92 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: ${{ steps.ver.outputs.name }}
+          name: ${{ needs.plan.outputs.name }}-binary
+          path: dist/*
+          retention-days: 30
+
+  # Complete corresponding source: vanilla Wine + patches as built + build files.
+  source:
+    needs: plan
+    if: needs.plan.outputs.source == '1'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Source archive
+        env:
+          REF: ${{ needs.plan.outputs.ref }}
+        run: bash scripts/make-wine-source.sh --ref "$REF" dist
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ needs.plan.outputs.name }}-source
           path: dist/*
           retention-days: 30
 
   release:
-    needs: build
-    if: github.ref == 'refs/heads/main'
+    needs: [plan, build, source]
+    if: >-
+      always() && github.ref == 'refs/heads/main' &&
+      needs.plan.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped') &&
+      (needs.source.result == 'success' || needs.source.result == 'skipped') &&
+      (needs.build.result == 'success' || needs.source.result == 'success')
     runs-on: ubuntu-24.04
     permissions:
-      contents: write       # create the release
+      contents: write       # create the release / add the source to it
       id-token: write       # sign the attestation (Sigstore)
       attestations: write   # store it
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: ${{ needs.build.outputs.name }}
+          pattern: ${{ needs.plan.outputs.name }}-*
+          merge-multiple: true
           path: dist
-      - name: Release already there?
-        id: exists
+      - name: What gets published
+        id: pick
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.build.outputs.name }}
+          TAG: ${{ needs.plan.outputs.name }}
         run: |
+          mkdir -p dist up
           if gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "release $TAG exists - not replacing it (raise WINE_BUILD in wine/version.env for a new one)"
-            echo "skip=1" >> "$GITHUB_OUTPUT"
+            have="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG" --jq '.assets[].name')"
+            # an existing release only gets what it is missing, and never a new binary
+            for f in dist/*-source.tar.xz dist/*-source.tar.xz.sha256; do
+              if [ -f "$f" ] && ! grep -qx "$(basename "$f")" <<<"$have"; then mv "$f" up/; fi
+            done
+            mode=upload
+          else
+            # a new release needs both, binary and source
+            ls dist/*-x86_64.tar.xz dist/*-source.tar.xz >/dev/null || { echo "binary or source missing"; exit 1; }
+            mv dist/* up/
+            mode=create
           fi
+          ls -la up
+          if [ -z "$(ls up)" ]; then echo "nothing to publish"; mode=none; fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
       # Signed build provenance for exactly the files that are published:
       # gh attestation verify FILE -R Harvi654/Autodesk-Inventor-for-Linux
       - uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
-        if: steps.exists.outputs.skip != '1'
+        if: steps.pick.outputs.mode != 'none'
         with:
-          subject-path: dist/*.tar.xz
+          subject-path: up/*.tar.xz
       - name: Publish release (once per version/build)
-        if: steps.exists.outputs.skip != '1'
+        if: steps.pick.outputs.mode == 'create'
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.build.outputs.name }}
+          TAG: ${{ needs.plan.outputs.name }}
         run: |
-          gh release create "$TAG" dist/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$TAG" up/* -R "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "Wine for Inventor: $TAG" --latest=false \
-            --notes "Vanilla Wine with this project's patches (patches/ at $GITHUB_SHA), built by the \"Build Wine\" workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID - the install scripts download it and check its SHA-256. You do not need to download it yourself. Wine is LGPL 2.1+; BUILDINFO inside lists the source and patches."
+            --notes "Vanilla Wine with this project's patches (patches/ at $GITHUB_SHA), built by the \"Build Wine\" workflow: https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID - the install scripts download it and check its SHA-256. You do not need to download it yourself. Wine is LGPL 2.1+; the complete source of this build is the -source.tar.xz next to it (vanilla Wine with the patches applied, PATCHES.txt, build files). BUILDINFO inside the binary lists versions, add-ons and patches."
+      - name: Add the source to the existing release
+        if: steps.pick.outputs.mode == 'upload'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.plan.outputs.name }}
+        run: gh release upload "$TAG" up/* -R "$GITHUB_REPOSITORY"

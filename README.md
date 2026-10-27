@@ -418,6 +418,15 @@ of AI (Claude, by Anthropic) and tested by people on real machines.
 the LGPL 2.1 or later. The Wine this project builds and publishes is LGPL 2.1
 or later too. See [the patch layout](patches/README.md).
 
+Every Wine release carries its complete source next to the binary:
+`wine-inventor-<version>-<build>-source.tar.xz` is vanilla Wine with the
+patches applied exactly as built, `PATCHES.txt` (each patch, its date and the
+files it changes; the changed files also say so in a comment at their end) and
+the build files (`scripts/make-wine-source.sh` makes it, reproducibly). The
+binary's `BUILDINFO` lists the versions of the bundled wine-mono and
+wine-gecko - unchanged builds from the Wine project, whose sources are at
+`dl.winehq.org/wine/wine-mono/` and `dl.winehq.org/wine/wine-gecko/`.
+
 Autodesk Inventor and Microsoft WebView2 remain proprietary. The Nix packages
 and installer sources are marked unfree; this repository's license does not
 cover those applications.

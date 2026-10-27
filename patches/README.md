@@ -17,6 +17,14 @@ the Wine patches under the GNU Lesser General Public License 2.1 or later
 LGPL 2.1 or later). The MIT license of the rest of this repository does not
 apply to them.
 
+Each published Wine release has its source archive next to the binary
+(`wine-inventor-<version>-<build>-source.tar.xz`, made by
+`scripts/make-wine-source.sh` from the release's tag): the patched tree with
+`PATCHES.txt` and a short "Modified by" comment at the end of every changed
+file (`scripts/lib/wine-patches.sh`, used by `build-wine.sh` too, so the
+binary is built from exactly that tree). The comment goes at the end so line
+numbers in messages stay the same as in the patch.
+
 ## Origin
 
 The patches were written with AI help (Claude by Anthropic) and tested by

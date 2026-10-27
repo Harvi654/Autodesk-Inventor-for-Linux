@@ -38,20 +38,19 @@ SRC="$WORK/wine-$WINE_VERSION"
 say "Wine $WINE_VERSION source"
 rm -rf "$SRC"
 case "$WINE_VERSION" in *.0|*.0.*) SUB="${WINE_VERSION%%.*}.0" ;; *) SUB="${WINE_VERSION%%.*}.x" ;; esac
-TARBALL="$WORK/wine-$WINE_VERSION.tar.xz"
+TARBALL="${WINE_SOURCE_TARBALL:-$WORK/wine-$WINE_VERSION.tar.xz}"
 [ -s "$TARBALL" ] || curl -fL --retry 3 -o "$TARBALL" "https://dl.winehq.org/wine/source/$SUB/wine-$WINE_VERSION.tar.xz"
 tar -xf "$TARBALL" -C "$WORK"
 [ -f "$SRC/configure" ] || die "unexpected source layout in $TARBALL"
 SRC_SHA="$(sha256sum "$TARBALL" | cut -d' ' -f1)"
 
 say "Applying patches/"
+# also writes PATCHES.txt and the LGPL change notices (end of each changed file);
+# scripts/make-wine-source.sh publishes exactly this tree as the release's source
+# shellcheck disable=SC1091
+source "$HERE/scripts/lib/wine-patches.sh"
+wine_apply_patches "$SRC" "$HERE/patches" "$HERE" HEAD || die "patches do not apply to Wine $WINE_VERSION"
 cd "$SRC"
-PATCH_LIST=""
-for P in "$HERE"/patches/*.patch; do
-    patch -p1 -s -N < "$P" || die "$(basename "$P") does not apply to Wine $WINE_VERSION"
-    echo "    $(basename "$P")"
-    PATCH_LIST+="$(sha256sum "$P" | cut -c1-16)  $(basename "$P")"$'\n'
-done
 
 say "Configuring"
 mkdir -p build && cd build
@@ -89,13 +88,23 @@ find "$ROOT/lib/wine/i386-windows" -type f -exec i686-w64-mingw32-strip --strip-
 # otherwise ask to download them into every new prefix. Taken from the build
 # system's packages when present (Arch: wine-mono, wine-gecko), like the
 # system's Wine would use them.
+# Both are free software published by the Wine project, unchanged here; their
+# sources are listed in BUILDINFO (LGPL/MPL: say where the source is).
 ADDONS=""
 for c in mono gecko; do
     if [ -d "/usr/share/wine/$c" ]; then
         cp -a "/usr/share/wine/$c" "$ROOT/share/wine/$c"
-        ADDONS+="$c: $(ls "/usr/share/wine/$c" | tr '\n' ' ')"$'\n'
+        for f in "/usr/share/wine/$c"/*; do
+            v="$(basename "$f" | sed -nE 's/^wine-(mono|gecko)-([0-9][0-9.]*[0-9]).*/\2/p')"
+            ADDONS+="  $c: $(basename "$f")"$'\n'
+            [ -n "$v" ] && ADDONS+="        source https://dl.winehq.org/wine/wine-$c/$v/"$'\n'
+        done
+        if command -v pacman >/dev/null && pacman -Q "wine-$c" >/dev/null 2>&1; then
+            ADDONS+="        from the Arch package $(pacman -Q "wine-$c")"$'\n'
+        fi
     fi
 done
+[ -n "$ADDONS" ] && ADDONS+="  licenses: wine-mono - those of Mono and its parts (mostly MIT), wine-gecko - MPL 2.0"$'\n'
 
 cat > "$ROOT/BUILDINFO" <<INFO
 Wine for Autodesk Inventor on Linux
@@ -107,15 +116,18 @@ build:       $WINE_BUILD
 project:     $(git -C "$HERE" rev-parse --short HEAD 2>/dev/null || echo unknown)
 built:       $(date -u +%Y-%m-%dT%H:%M:%SZ) on $(. /etc/os-release && echo "$PRETTY_NAME")
 configure:   --enable-archs=x86_64,i386 (WoW64)
-add-ons (share/wine):
-$ADDONS
-patches (sha256 prefix, file):
+add-ons (share/wine, unchanged):
+${ADDONS:-  none}
+patches (sha256 prefix, file; details in PATCHES.txt):
 $PATCH_LIST
-Wine is licensed under the LGPL 2.1 or later; its source is at
-https://dl.winehq.org/wine/source/ and the patches are in patches/ of the
-project above.
+Wine is licensed under the LGPL 2.1 or later (COPYING.LIB). The complete
+source of this build - vanilla Wine with the patches applied, PATCHES.txt and
+the build files - is published next to this archive in the same GitHub
+release, as wine-inventor-$WINE_VERSION-$WINE_BUILD-source.tar.xz
+(made by scripts/make-wine-source.sh). Vanilla Wine: https://dl.winehq.org/wine/source/
 INFO
 cp "$SRC/COPYING.LIB" "$ROOT/COPYING.LIB"
+cp "$SRC/PATCHES.txt" "$ROOT/PATCHES.txt"
 # the exact build environment (compilers, libraries), for anyone rebuilding it
 if command -v pacman >/dev/null; then pacman -Q > "$ROOT/BUILDENV"
 elif command -v dpkg-query >/dev/null; then dpkg-query -W > "$ROOT/BUILDENV"
