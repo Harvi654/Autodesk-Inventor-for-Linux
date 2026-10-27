@@ -29,8 +29,11 @@ on:
 # the repository; release: write the release and its provenance attestation).
 permissions: {}
 
+# One queue per release: GitHub keeps only one waiting run per group and
+# cancels the others, so "Run workflow" for several old tags at once needs a
+# group per tag (those runs only add a source file to different releases).
 concurrency:
-  group: build-wine
+  group: build-wine-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
