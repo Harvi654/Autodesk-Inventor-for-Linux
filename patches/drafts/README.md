@@ -6,7 +6,7 @@ build (`scripts/build-wine.sh`, `nix/wine.nix`) only takes `patches/*.patch`.
 ## win32u-foreign-process-gdi.patch
 
 **Outcome (2026-10-26): not usable.** The patch helped render Inventor's
-WebView2 Home page, but the maintainer reported terribly slow and glitchy
+WebView2 Home page, but the Nix maintainer reported terribly slow and glitchy
 interaction. Screenshot success did not establish usability. Further work is
 deferred in favour of upstream support; see the
 [Wayland summary](../../docs/arch-hyprland.md#native-wayland-summary-not-ready-for-inventor-2026-10-26)

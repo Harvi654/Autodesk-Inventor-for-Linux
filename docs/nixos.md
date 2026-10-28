@@ -61,7 +61,7 @@ nix run .#inventor-2026
 ```
 
 When developing with new files that have not yet been added to Git, use
-`path:$PWD` as the flake reference, for example `nix build "path:$PWD#inventor"`.
+`path:$PWD` as the flake reference, for example `nix build "path:$PWD#inventor-2026"`.
 
 ## Declarative integration
 
@@ -161,7 +161,8 @@ xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-invent
 
 ## Install both releases side by side
 
-The NixOS module keeps the existing 2026-only default. To install both releases:
+The flake defaults to 2027, while the NixOS module intentionally keeps
+`versions = [ "2026" ]` to preserve existing installations. To install both releases:
 
 ```nix
 programs.autodesk-inventor = {
@@ -226,7 +227,7 @@ Validated on 2026-10-20 with the library pinned to
 `8bf7c5cfa2541cf1478b87b519dcdc4c75831407`:
 
 - `nix flake check`: passed, including seven installer boundary/regression tests.
-- `nix build .#inventor-2026 --no-link --keep-failed -L`: passed.
+- `nix build .#inventor --no-link --keep-failed -L` (now `.#inventor-2026`): passed.
 - Application layer: `/nix/store/38y9yn20sg5nxi06fr6pfgh78v0a8g7l-inventor-2026.4`.
 - Launcher: `/nix/store/kbrqwdmy6g8qmzd82s82x2fs137w6pgv-inventor-overlay-2026.4/bin/inventor`.
 - `Inventor.exe`: PE signature and x86-64 machine type verified; 1,587,032 bytes.

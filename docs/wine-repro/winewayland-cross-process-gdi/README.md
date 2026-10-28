@@ -74,7 +74,7 @@ With `patches/drafts/win32u-foreign-process-gdi.patch` and
 pixels and 47,619 blue pixels. `check-screenshot.py` passes, and the test exits
 normally. The full flake-derived Wine build passed for its WoW64 configuration;
 the independent review read the draft in full. The explicit flake output is
-`wine-wayland-gdi-experimental`; the maintainer later included the draft
+`wine-wayland-gdi-experimental`; the Nix maintainer later included the draft
 in `nix/wine.nix` for follow-up testing.
 
 The Inventor experiment restores initial Home visibility and opens New;
@@ -172,7 +172,7 @@ through XWayland on a Wayland desktop. This conclusion concerns the tested
 Inventor workflow, not every application using Wine's Wayland driver.
 
 The draft cross-process GDI bridge below helped render the WebView2 Home
-content, but the maintainer's follow-up test found it **terribly slow and
+content, but the Nix maintainer's follow-up test found it **terribly slow and
 glitchy**. Rendering the controls did not make the application usable. Focus
 artifacts and a detached control were also observed in the isolated test.
 Text remained blurry at fractional scaling; the bridge does not fix DPI or
@@ -226,7 +226,7 @@ nix build .#wine-wayland-gdi-experimental
 
 The flag `WINE_WAYLAND_GDI_BRIDGE=1` is required to enable forwarding. At the
 time of the isolated test, regular outputs did not include the draft; the
-maintainer subsequently added it to `nix/wine.nix` for the follow-up test.
+Nix maintainer subsequently added it to `nix/wine.nix` for the follow-up test.
 That local inclusion does not make it a validated fix. The initial experiment
 used temporary copies of the installed declarative launcher's shell scripts,
 replacing their Wine runtime paths with the diagnostic build, while retaining
@@ -263,7 +263,7 @@ a report about [Wine 35456](https://bugs.winehq.org/show_bug.cgi?id=35456).
 
 ## Investigation result log
 
-**2026-10-26 - Native Wayland remains unusable:** the maintainer confirmed
+**2026-10-26 - Native Wayland remains unusable:** the Nix maintainer confirmed
 that the draft bridge renders WebView2 content, but it is terribly slow and
 glitchy; fractional-scale text remains blurry. Keep X11/XWayland as the usable
 path and defer native Wayland until upstream support improves. Track Wine
