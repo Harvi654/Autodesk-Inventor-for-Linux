@@ -36,8 +36,7 @@ let
       ];
       mimeTypes = [ "x-scheme-handler/adskidmgr" ];
     };
-  newestYear =
-    if cfg.versions == [ ] then "2026" else lib.last (lib.sort builtins.lessThan cfg.versions);
+  newestYear = lib.last (lib.sort builtins.lessThan cfg.versions);
 
 in
 {
@@ -50,8 +49,8 @@ in
           "2027"
         ]
       );
-      default = [ "2026" ];
-      description = "Inventor releases to install, each with separate persistent state.";
+      default = [ ];
+      description = "Inventor releases to install explicitly, each with separate persistent state. An empty list installs nothing.";
     };
     packages = lib.mkOption {
       type = lib.types.attrsOf lib.types.package;
@@ -64,11 +63,11 @@ in
       description = "Inventor 2026 package; retained for compatibility with existing configurations.";
     };
   };
-  config = lib.mkIf cfg.enable {
+  config = lib.mkIf (cfg.enable && cfg.versions != [ ]) {
     assertions = [
       {
-        assertion = cfg.versions != [ ] && lib.unique cfg.versions == cfg.versions;
-        message = "programs.autodesk-inventor.versions must contain at least one release, without duplicates.";
+        assertion = lib.unique cfg.versions == cfg.versions;
+        message = "programs.autodesk-inventor.versions must not contain duplicate releases.";
       }
       {
         assertion = pkgs.stdenv.hostPlatform.system == "x86_64-linux";

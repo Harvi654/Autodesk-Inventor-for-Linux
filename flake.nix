@@ -78,6 +78,25 @@
         };
       };
       checks.${system} = {
+        module-empty-versions =
+          let
+            configuration = nixpkgs.lib.nixosSystem {
+              inherit system;
+              modules = [
+                self.nixosModules.default
+                { programs.autodesk-inventor.enable = true; }
+              ];
+            };
+            cfg = configuration.config;
+          in
+          assert cfg.programs.autodesk-inventor.versions == [ ];
+          assert !(cfg.xdg.mime.defaultApplications ? "x-scheme-handler/adskidmgr");
+          assert builtins.all (
+            package: !(nixpkgs.lib.hasPrefix "inventor" (package.pname or package.name))
+          ) cfg.environment.systemPackages;
+          pkgs.runCommand "inventor-module-empty-versions" { } ''
+            touch "$out"
+          '';
         runtime-state =
           pkgs.runCommand "inventor-runtime-state-tests"
             {

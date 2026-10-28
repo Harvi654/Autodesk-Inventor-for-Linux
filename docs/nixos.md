@@ -105,6 +105,8 @@ Create `inventor.nix` beside your system flake:
 { lib, ... }:
 {
   programs.autodesk-inventor.enable = true;
+  # Select a version explicitly; the default [] installs nothing.
+  programs.autodesk-inventor.versions = [ "2027" ];
 
   # Optional narrow system policy; the default package also works without it.
   nixpkgs.config.allowUnfreePredicate = pkg:
@@ -127,6 +129,7 @@ For the minimal setup, `inventor.nix` can contain just:
 ```nix
 {
   programs.autodesk-inventor.enable = true;
+  programs.autodesk-inventor.versions = [ "2027" ];
 }
 ```
 
@@ -161,8 +164,9 @@ xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-invent
 
 ## Install both releases side by side
 
-The flake defaults to 2027, while the NixOS module intentionally keeps
-`versions = [ "2026" ]` to preserve existing installations. To install both releases:
+The flake defaults to 2027. The NixOS module defaults to `versions = [ ]`;
+select releases explicitly. Enabling it with an empty list installs nothing
+and does not register a browser callback. To install both releases:
 
 ```nix
 programs.autodesk-inventor = {

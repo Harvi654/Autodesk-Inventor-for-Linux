@@ -82,7 +82,7 @@ the composition because it needs memory-mapped access outside the FUSE overlay.
 ## Runtime and integration
 
 - `nixosModules.default` provides `programs.autodesk-inventor`; `versions`
-  selects releases (default `[ "2026" ]`). `lib.mkInventor` accepts custom media.
+  selects releases explicitly (default `[ ]`, installs nothing). `lib.mkInventor` accepts custom media.
 - Each release has persistent writable state in
   `$XDG_DATA_HOME/autodesk-inventor-<year>` (default `~/.local/share`), with
   logs in `$XDG_STATE_HOME/autodesk-inventor-<year>` (default `~/.local/state`).
