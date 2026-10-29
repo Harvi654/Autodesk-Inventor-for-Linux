@@ -80,16 +80,37 @@
       checks.${system} = {
         module-empty-versions =
           let
-            configuration = nixpkgs.lib.nixosSystem {
-              inherit system;
-              modules = [
-                self.nixosModules.default
-                { programs.autodesk-inventor.enable = true; }
-              ];
-            };
-            cfg = configuration.config;
+            moduleConfig =
+              settings:
+              (nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.default
+                  {
+                    system.stateVersion = "26.05";
+                    programs.autodesk-inventor = settings;
+                  }
+                ];
+              }).config;
+            cfg = moduleConfig { enable = true; };
+            selectionWarnings =
+              config:
+              builtins.filter (nixpkgs.lib.hasPrefix "programs.autodesk-inventor.versions is empty;") config.warnings;
           in
           assert cfg.programs.autodesk-inventor.versions == [ ];
+          assert
+            selectionWarnings cfg == [
+              ''programs.autodesk-inventor.versions is empty; select [ "2026" ] and/or [ "2027" ] to install Inventor.''
+            ];
+          assert
+            selectionWarnings (moduleConfig {
+              enable = false;
+            }) == [ ];
+          assert
+            selectionWarnings (moduleConfig {
+              enable = true;
+              versions = [ "2027" ];
+            }) == [ ];
           assert !(cfg.xdg.mime.defaultApplications ? "x-scheme-handler/adskidmgr");
           assert builtins.all (
             package: !(nixpkgs.lib.hasPrefix "inventor" (package.pname or package.name))

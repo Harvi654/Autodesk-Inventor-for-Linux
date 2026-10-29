@@ -63,27 +63,34 @@ in
       description = "Inventor 2026 package; retained for compatibility with existing configurations.";
     };
   };
-  config = lib.mkIf (cfg.enable && cfg.versions != [ ]) {
-    assertions = [
-      {
-        assertion = lib.unique cfg.versions == cfg.versions;
-        message = "programs.autodesk-inventor.versions must not contain duplicate releases.";
-      }
-      {
-        assertion = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
-        message = "Autodesk Inventor currently supports x86_64-linux only.";
-      }
-    ];
-    environment.systemPackages = [
-      icons
-    ]
-    ++ lib.concatMap (year: [
-      (packageFor year)
-      (desktopFor year)
-    ]) cfg.versions;
-    hardware.graphics.enable = true;
-    programs.fuse.enable = true;
-    xdg.mime.enable = true;
-    xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "${desktopNameFor newestYear}.desktop";
-  };
+  config = lib.mkMerge [
+    {
+      warnings =
+        lib.optional (cfg.enable && cfg.versions == [ ])
+          "programs.autodesk-inventor.versions is empty; select [ \"2026\" ] and/or [ \"2027\" ] to install Inventor.";
+    }
+    (lib.mkIf (cfg.enable && cfg.versions != [ ]) {
+      assertions = [
+        {
+          assertion = lib.unique cfg.versions == cfg.versions;
+          message = "programs.autodesk-inventor.versions must not contain duplicate releases.";
+        }
+        {
+          assertion = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+          message = "Autodesk Inventor currently supports x86_64-linux only.";
+        }
+      ];
+      environment.systemPackages = [
+        icons
+      ]
+      ++ lib.concatMap (year: [
+        (packageFor year)
+        (desktopFor year)
+      ]) cfg.versions;
+      hardware.graphics.enable = true;
+      programs.fuse.enable = true;
+      xdg.mime.enable = true;
+      xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "${desktopNameFor newestYear}.desktop";
+    })
+  ];
 }
