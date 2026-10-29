@@ -157,6 +157,15 @@ With monitor scale > 1, XWayland apps are upscaled and look blurry. Two options:
 Inventor's own UI scaling under Wine DPI changes is untested - please report
 what works.
 
+### Native Wayland summary: not ready for Inventor (2026-10-26)
+
+Native Wayland does not work yet for Inventor, especially its embedded
+WebView2 screens. The draft bridge helped render Home, but was terribly slow
+and glitchy; fractional-scale text remained blurry. Use X11/XWayland while
+waiting for upstream support. See the [reproducer and investigation](wine-repro/winewayland-cross-process-gdi/README.md)
+for screenshots, diagnosis, patch limitations, validation and tracked issues,
+including [Wine #58921](https://bugs.winehq.org/show_bug.cgi?id=58921).
+
 ### Window rules
 
 Ready-made rules: `config/hyprland-inventor.lua` (Hyprland 0.55+, Lua config)
@@ -852,6 +861,11 @@ with an NVIDIA RTX card would show whether this is AMD-specific.
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-10-26 - Native Wayland remains unusable:** the draft bridge rendered
+WebView2 Home content, but was terribly slow and glitchy. Keep X11/XWayland.
+The [reproducer README](wine-repro/winewayland-cross-process-gdi/README.md)
+contains the investigation, experiment results and upstream issue links.
 
 **2026-10-15 - Inventor 2026 build 30.40.43500 (.NET 10), Wine 11.19, Arch + Hyprland, RX 580 (RADV):**
 UI starts, Autodesk sign-in works, Part created, sketch + Extrude rendered in the

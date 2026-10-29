@@ -16,7 +16,7 @@ let
       "$out/share/icons/hicolor/scalable/apps/inventor-on-linux.svg"
   '';
   defaultPackages = {
-    "2026" = self.packages.x86_64-linux.inventor;
+    "2026" = self.packages.x86_64-linux.inventor-2026;
     "2027" = self.packages.x86_64-linux.inventor-2027;
   };
   packageFor =
@@ -36,21 +36,7 @@ let
       ];
       mimeTypes = [ "x-scheme-handler/adskidmgr" ];
     };
-  waylandDesktopFor =
-    year:
-    pkgs.makeDesktopItem {
-      name = "${desktopNameFor year}-wayland";
-      desktopName = "Autodesk Inventor ${year} (Wayland)";
-      icon = "inventor-on-linux";
-      exec = "${pkgs.coreutils}/bin/env INVENTOR_WINE_DRIVER=wayland ${lib.getExe (packageFor year)} %U";
-      terminal = false;
-      categories = [
-        "Graphics"
-        "Engineering"
-      ];
-    };
-  newestYear =
-    if cfg.versions == [ ] then "2026" else lib.last (lib.sort builtins.lessThan cfg.versions);
+  newestYear = lib.last (lib.sort builtins.lessThan cfg.versions);
 
 in
 {
@@ -63,8 +49,8 @@ in
           "2027"
         ]
       );
-      default = [ "2026" ];
-      description = "Inventor releases to install, each with separate persistent state.";
+      default = [ ];
+      description = "Inventor releases to install explicitly, each with separate persistent state. An empty list installs nothing.";
     };
     packages = lib.mkOption {
       type = lib.types.attrsOf lib.types.package;
@@ -77,28 +63,34 @@ in
       description = "Inventor 2026 package; retained for compatibility with existing configurations.";
     };
   };
-  config = lib.mkIf cfg.enable {
-    assertions = [
-      {
-        assertion = cfg.versions != [ ] && lib.unique cfg.versions == cfg.versions;
-        message = "programs.autodesk-inventor.versions must contain at least one release, without duplicates.";
-      }
-      {
-        assertion = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
-        message = "Autodesk Inventor currently supports x86_64-linux only.";
-      }
-    ];
-    environment.systemPackages = [
-      icons
-    ]
-    ++ lib.concatMap (year: [
-      (packageFor year)
-      (desktopFor year)
-      (waylandDesktopFor year)
-    ]) cfg.versions;
-    hardware.graphics.enable = true;
-    programs.fuse.enable = true;
-    xdg.mime.enable = true;
-    xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "${desktopNameFor newestYear}.desktop";
-  };
+  config = lib.mkMerge [
+    {
+      warnings =
+        lib.optional (cfg.enable && cfg.versions == [ ])
+          "programs.autodesk-inventor.versions is empty; select [ \"2026\" ] and/or [ \"2027\" ] to install Inventor.";
+    }
+    (lib.mkIf (cfg.enable && cfg.versions != [ ]) {
+      assertions = [
+        {
+          assertion = lib.unique cfg.versions == cfg.versions;
+          message = "programs.autodesk-inventor.versions must not contain duplicate releases.";
+        }
+        {
+          assertion = pkgs.stdenv.hostPlatform.system == "x86_64-linux";
+          message = "Autodesk Inventor currently supports x86_64-linux only.";
+        }
+      ];
+      environment.systemPackages = [
+        icons
+      ]
+      ++ lib.concatMap (year: [
+        (packageFor year)
+        (desktopFor year)
+      ]) cfg.versions;
+      hardware.graphics.enable = true;
+      programs.fuse.enable = true;
+      xdg.mime.enable = true;
+      xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "${desktopNameFor newestYear}.desktop";
+    })
+  ];
 }
