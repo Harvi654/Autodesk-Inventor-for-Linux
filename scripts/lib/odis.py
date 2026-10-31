@@ -70,6 +70,123 @@ def image_kind(root):
     return None
 
 
+def find_image(path, product_depth=4, update_depth=3):
+    """The install image or update in PATH or a few folders below it (the same
+    search scripts/install.sh does), or None."""
+    path = os.path.abspath(path)
+    if image_kind(path):
+        return path
+    if not os.path.isdir(path):
+        return None
+    base = path.rstrip(os.sep).count(os.sep)
+    found_product, found_update = [], []
+    for d, dirs, files in os.walk(path):
+        depth = d.rstrip(os.sep).count(os.sep) - base
+        if depth >= product_depth:
+            dirs[:] = []
+        dirs.sort()
+        if os.path.basename(d) == "manifest" and "app.inventor.xml" in files:
+            found_product.append(os.path.dirname(d))
+        if depth < update_depth and ("setup.xml" in files or "bundleManifest.xml" in files):
+            found_update.append(d)
+    for d in found_product + found_update:
+        if image_kind(d):
+            return d
+    return None
+
+
+# Release year from download names: Inventor_Professional_2027_..., Inventor_2027.1_Update.exe
+YEAR_NAME = re.compile(r"^Inventor(?:_Professional)?_(20\d\d)", re.I)
+# ... and from manifest display names: "Inventor Core 2027", "Inventor 2027.1 Update"
+YEAR_TEXT = re.compile(r"^(?:Autodesk\s+)?Inventor\b.*?\b(20\d\d)\b", re.I)
+
+
+def _identity(path):
+    """(DisplayName, BuildNumber) of a manifest file; ("", "") if unreadable."""
+    try:
+        r = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return "", ""
+    return _text(r, "m:Identity/m:DisplayName"), _text(r, "m:Identity/m:BuildNumber")
+
+
+def _year_from_build(build):
+    """2027 for Inventor's build number 31.x (release = major + 1996, as INV_REGMAJOR)."""
+    m = re.match(r"^(\d+)\.", build or "")
+    if m and 25 <= int(m.group(1)) <= 60:
+        return str(int(m.group(1)) + 1996)
+    return None
+
+
+def image_release(root):
+    """Inventor release ('2027') of an install image or update, from its
+    manifests; None when it cannot be told or the manifests disagree."""
+    kind = image_kind(root)
+    years = set()
+    if kind == "update":
+        name, _ = _identity(os.path.join(root, bundle_manifest(root)))
+        m = YEAR_TEXT.match(name)
+        return m.group(1) if m else None
+    if kind != "product":
+        return None
+    img = Image(root)
+    mdir = os.path.join(img.root, "manifest")
+    apps = ["app.inventor.xml"] if os.path.isfile(os.path.join(mdir, "app.inventor.xml")) else \
+        sorted(f for f in os.listdir(mdir) if f.startswith("app.") and f.endswith(".xml"))
+    pending, seen = [], set()
+    for app in apps:
+        name, _ = _identity(os.path.join(mdir, app))
+        m = YEAR_TEXT.match(name)
+        if m:
+            years.add(m.group(1))
+        try:
+            pending += [p.get("path") for p in ET.parse(os.path.join(mdir, app)).getroot()
+                        .iter("{%s}Package" % NS["m"]) if p.get("path")]
+        except (ET.ParseError, OSError):
+            pass
+    # Inventor's own packages (Inventor Core 2027, Inventor Pro 2027, ...) and
+    # what they depend on; other products (RealDWG, VC++) are left out by name.
+    while pending:
+        rel = pending.pop()
+        if rel.lower() in seen:
+            continue
+        seen.add(rel.lower())
+        p = img.find(rel)
+        if not p:
+            continue
+        name, build = _identity(p)
+        if re.match(r"^(?:Autodesk\s+)?Inventor\b", name, re.I):
+            m = YEAR_TEXT.match(name)
+            y = m.group(1) if m else _year_from_build(build)
+            if y:
+                years.add(y)
+        try:
+            pending += [d.get("path") for d in ET.parse(p).getroot()
+                        .findall("m:Dependencies/m:Package", NS) if d.get("path")]
+        except (ET.ParseError, OSError):
+            pass
+    return years.pop() if len(years) == 1 else None
+
+
+def release_of(path):
+    """Inventor release of a download, an unpacked image or update, or a folder
+    holding one of them; None when unknown or ambiguous."""
+    m = YEAR_NAME.match(os.path.basename(os.path.abspath(path)))
+    if m:
+        return m.group(1)
+    if not os.path.isdir(path):
+        return None
+    img = find_image(path)
+    if img:
+        return image_release(img)
+    years = set()
+    for f in os.listdir(path):
+        m = YEAR_NAME.match(f)
+        if m and f.lower().endswith((".exe", ".7z")):
+            years.add(m.group(1))
+    return years.pop() if len(years) == 1 else None
+
+
 def bundle_id(root):
     """UPI2 + display name of an image's Bundle manifest (or None, None)."""
     name = bundle_manifest(root)
@@ -220,7 +337,12 @@ def main():
     ap.add_argument("--with", dest="extra", action="append", default=[],
                     help="also install this optional package (name as listed under skipped)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--release", action="store_true",
+                    help="only print the Inventor release of IMAGE (a download, image or folder)")
     a = ap.parse_args()
+    if a.release:
+        print(release_of(a.image) or "")
+        return
     steps, skipped, missing = plan(Image(a.image), a.app or ["inventor"], a.lang, a.all, a.extra)
     if a.json:
         json.dump({"steps": steps, "skipped": skipped, "missing": missing}, sys.stdout, indent=1)

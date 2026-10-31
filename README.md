@@ -144,9 +144,11 @@ The folder then looks like this (its name does not matter):
   does it (into `~/.cache/inventor-on-linux/media`, ~15 GB).
 - An already unpacked install image (a folder with `setup.xml` /
   `manifest/`) works too.
-- The installer reads the version from the file names: 2026 goes to
-  `~/.wine-inventor2026`, 2027 to `~/.wine-inventor2027`. Both can be
-  installed side by side; one download folder per version.
+- The installer reads the version from the file names, or for an unpacked
+  image from its manifests: 2026 goes to `~/.wine-inventor2026`, 2027 to
+  `~/.wine-inventor2027`. Both can be installed side by side; one download
+  folder per version. If the version cannot be told, set it:
+  `INV_YEAR=2027 bash scripts/install.sh ~/Downloads/Inventor`.
 - You do **not** need the "Install" web installer or the
   `Create_Installer_*.exe` tools - they are for Windows. If they are in the
   folder, they are skipped.

@@ -27,7 +27,11 @@ done
 _STEPS=13
 
 step "Checking the installation in $WINEPREFIX..."
-[ -f "$P_INV/Bin/Inventor.exe" ] || die "no Inventor in $P_INV - run install-from-image.py first"
+if [ ! -f "$P_INV/Bin/Inventor.exe" ]; then
+    _other="$(inventor_year_in_prefix "$WINEPREFIX")"
+    [ -z "$_other" ] || die "$WINEPREFIX holds Inventor $_other, not Inventor $INV_YEAR - run again with INV_YEAR=$_other"
+    die "no Inventor in $P_INV - run install-from-image.py first"
+fi
 [ "$(readlink -f "$WINEPREFIX")" != "$(readlink -f "$HOME/.wine-inventor$INV_YEAR")" ] \
     || [ "${INV_FINISH_MAIN:-0}" = 1 ] \
     || die "this is your working prefix - set INV_FINISH_MAIN=1 if you really mean it"

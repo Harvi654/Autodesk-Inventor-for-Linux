@@ -61,6 +61,12 @@ def win_split(cmdline):
     return args
 
 HERE = os.path.dirname(os.path.realpath(__file__))
+# Run from the project (scripts/), not as a copy: odis.py and regf.py are in
+# scripts/lib next to it - and a folder named "odis" in an Autodesk image must
+# not be imported instead.
+if not all(os.path.isfile(os.path.join(HERE, "lib", m)) for m in ("odis.py", "regf.py")):
+    sys.exit("install-from-image.py needs the scripts/lib folder of this project next to it - run it "
+             "from the project (bash scripts/install.sh DOWNLOAD does), not as a copy")
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import odis  # noqa: E402
 import regf  # noqa: E402
@@ -573,6 +579,12 @@ class Installer:
         self.stop_licensing_service()
         self.log("\nAll steps finished.")
 
+    def installed_release(self):
+        """Newest Inventor release installed in the prefix ('2027'), or None."""
+        found = sorted(glob.glob(os.path.join(self.c, "Program Files", "Autodesk", "Inventor 20[0-9][0-9]",
+                                              "Bin", "Inventor.exe")))
+        return found[-1].split(os.sep)[-3][-4:] if found else None
+
     def restore_originals(self):
         """Put back what finish-install.sh moved aside (disabled add-ins,
         InteractiveTutorial, the CER reporter). An update patches the files
@@ -581,7 +593,8 @@ class Installer:
         unregistered. Run finish-install.sh again after the update."""
         if self.a.dry_run:
             return
-        inv = os.path.join(self.c, "Program Files", "Autodesk", "Inventor " + os.environ.get("INV_YEAR", "2026"))
+        year = os.environ.get("INV_YEAR") or self.installed_release() or "2026"
+        inv = os.path.join(self.c, "Program Files", "Autodesk", "Inventor " + year)
         off = os.path.join(inv, "Addins.disabled")
         moved = []
         if os.path.isdir(off):

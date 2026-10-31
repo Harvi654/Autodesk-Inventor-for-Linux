@@ -54,11 +54,20 @@ done
 # scripts run for that year (restart with INV_YEAR set). Without --prefix a
 # release other than the one in the configured prefix gets its own prefix
 # (~/.wine-inventor<year>) - never two releases in one prefix.
+# An already unpacked image has no year in its file names: its manifests tell.
+release_of() {   # download, image or folder -> 2027 / "" (scripts/lib/odis.py)
+    python3 -I -c 'import sys; sys.path.insert(0, sys.argv[1]); import odis; print(odis.release_of(sys.argv[2]) or "")' \
+        "$COMMON_DIR" "$1" 2>/dev/null || true
+}
 if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "${_INV_YEAR_DETECTED:-}" ] && [ ${#ARGS[@]} -gt 0 ]; then
-    years="$(for a in "${ARGS[@]}"; do
-                 if [ -d "$a" ]; then find "$a" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.7z' \) -printf '%f\n'
-                 else basename "$a"; fi
-             done | grep -oiE '^Inventor(_Professional)?_20[0-9]{2}' | grep -oE '20[0-9]{2}' | sort -u)"
+    years="$( { for a in "${ARGS[@]}"; do
+                    if [ -d "$a" ]; then find "$a" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.7z' \) -printf '%f\n'
+                    else basename "$a"; fi
+                done | { grep -oiE '^Inventor(_Professional)?_20[0-9]{2}' || true; } | grep -oE '20[0-9]{2}' || true
+                for a in "${ARGS[@]}"; do
+                    if [ -d "$a" ]; then release_of "$a"; fi
+                done
+              } | sed '/^$/d' | sort -u)"
     case "$(printf '%s\n' "$years" | sed '/^$/d' | wc -l)" in
         0) ;;
         1)  if [ "$years" != "$INV_YEAR" ]; then
@@ -236,6 +245,22 @@ if [ -z "$PRODUCT" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
 fi
 [ -n "$PRODUCT" ] && ok "Inventor: $PRODUCT"
 for u in "${UPDATES[@]}"; do ok "update:   $u"; done
+# The image's own release must be the one this run installs (one release per
+# prefix). Found only now, e.g. for renamed downloads: start again for it while
+# nothing is installed yet; otherwise stop before anything goes into the prefix.
+if [ -n "$PRODUCT" ]; then
+    rel="$(release_of "$PRODUCT")"
+    if [ -n "$rel" ] && [ "$rel" != "$INV_YEAR" ]; then
+        if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "${_INV_YEAR_DETECTED:-}" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
+            if [ "$PREFIX_GIVEN" -eq 0 ] && [ "$PREFIX" = "$(realpath -m "$HOME/.wine-inventor$INV_YEAR")" ]; then
+                PREFIX="$HOME/.wine-inventor$rel"
+            fi
+            info "the download is Inventor $rel - installing Inventor $rel into $PREFIX"
+            exec env INV_YEAR="$rel" INV_PREFIX="$PREFIX" _INV_YEAR_DETECTED=1 bash "$0" "${_ORIG_ARGS[@]}"
+        fi
+        die "the download is Inventor $rel, but this run installs Inventor $INV_YEAR into $PREFIX - start again with INV_YEAR=$rel (it gets its own prefix, ~/.wine-inventor$rel)"
+    fi
+fi
 
 step "Installing Inventor (Autodesk's installers, under Wine - 15-40 minutes)..."
 if [ -n "$PRODUCT" ]; then
@@ -251,6 +276,10 @@ for u in "${UPDATES[@]}"; do
 done
 
 step "Setting up the prefix (DXVK, WebView2, fonts, isolation)..."
+installed="$(inventor_year_in_prefix "$PREFIX")"
+if [ -n "$installed" ] && [ "$installed" != "$INV_YEAR" ]; then
+    die "$PREFIX holds Inventor $installed, but this run is for Inventor $INV_YEAR - start again with INV_YEAR=$installed, or remove $PREFIX and install again"
+fi
 INV_FINISH_MAIN=1 bash "$SCRIPTS_DIR/finish-install.sh"
 
 step "App launcher and browser login..."

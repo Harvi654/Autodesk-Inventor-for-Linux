@@ -72,13 +72,23 @@ def project_settings():
     return vals
 
 
-YEAR = re.compile(r"^Inventor(?:_Professional)?_(20\d\d)", re.I)
+sys.path.insert(0, os.path.join(SCRIPTS, "lib"))
+import odis  # noqa: E402
+
+_RELEASES = {}
 
 
 def release_of(path):
-    """2027 for Inventor_Professional_2027_..., Inventor_2027.1_Update.exe or such a folder; None else."""
-    m = YEAR.match(os.path.basename(path.rstrip("/")))
-    return m.group(1) if m else None
+    """2027 for Inventor_Professional_2027_..., Inventor_2027.1_Update.exe, an unpacked
+    image of 2027 (from its manifests) or a folder holding one; None else. Cached until
+    the download list is filled again."""
+    key = os.path.realpath(path)
+    if key not in _RELEASES:
+        try:
+            _RELEASES[key] = odis.release_of(path)
+        except Exception:   # an unreadable folder or manifest: unknown, as before
+            _RELEASES[key] = None
+    return _RELEASES[key]
 
 
 def prefix_for(settings, year):
@@ -728,6 +738,7 @@ class Installer(Gtk.ApplicationWindow):
         return box
 
     def fill_downloads(self, extra=()):
+        _RELEASES.clear()
         old = {p: c.get_active() for p, _, c in self.dl_rows}
         paths = [(p, k) for p, k in find_downloads()]
         for p in cached_media():
