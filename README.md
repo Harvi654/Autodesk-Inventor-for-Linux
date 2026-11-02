@@ -1,4 +1,4 @@
-![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/banner.png)
+![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/bannerNew.png)
 
 # Autodesk Inventor 2026 and 2027 on Linux
 
