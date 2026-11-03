@@ -408,6 +408,17 @@ class Installer(Gtk.ApplicationWindow):
         self.next_btn.connect("clicked", self.on_next)
 
         self.pages = ["welcome", "downloads", "options", "summary", "progress", "done"]
+        self.inhibit_cookie = 0
+        self.build_pages()
+        self.connect("close-request", self.on_close_request)
+
+    def build_pages(self):
+        """All pages from the current state of the system (installed releases,
+        downloads, free space) - at the start and again after "Back to the start"."""
+        for name in self.pages + ["uninstall"]:
+            old = self.stack.get_child_by_name(name)
+            if old is not None:
+                self.stack.remove(old)
         self.stack.add_named(self.page_welcome(), "welcome")
         # every page scrolls, so the window fits small screens (and GTK does not complain)
         for name, page in (("downloads", self.page_downloads()), ("options", self.page_options()),
@@ -417,10 +428,15 @@ class Installer(Gtk.ApplicationWindow):
             scroll.set_child(page)
             self.stack.add_named(scroll, name)
         self.mode = "install"
-        self.inhibit_cookie = 0
         self.recent = []
         self.show_page("welcome")
-        self.connect("close-request", self.on_close_request)
+
+    def back_to_start(self):
+        self.settings = project_settings()   # what is installed now
+        self.cancelled = False
+        self.logfile = None
+        self.errors = []
+        GLib.idle_add(lambda: (self.build_pages(), False)[1])   # not from inside the button's own handler
 
     # ---------------------------------------------------------------- target
 
@@ -1289,6 +1305,8 @@ class Installer(Gtk.ApplicationWindow):
                 "bash <(curl -fsSL https://raw.githubusercontent.com/Harvi654/Autodesk-Inventor-for-Linux/main/get.sh)"
                 if gone_self else ""))
             button("Close", self.close, suggested=True)
+            if not gone_self:
+                button("Back to the start", self.back_to_start)
             self.show_page("done")
             self.focus_done(default)
             return
@@ -1330,6 +1348,7 @@ class Installer(Gtk.ApplicationWindow):
             button("Open an issue", lambda: self.open_web(
                 "https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/new"))
         button("Show details", lambda: self.show_page("progress"))
+        button("Back to the start", self.back_to_start)
         button("Close", self.close)
         self.show_page("done")
         self.focus_done(default)
