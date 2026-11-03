@@ -1021,7 +1021,7 @@ class Installer(Gtk.ApplicationWindow):
         # after the run: back to the result page ("Show details" leads here)
         self.result_btn = Gtk.Button(label="Back to the result", visible=False)
         self.result_btn.add_css_class("suggested-action")
-        self.result_btn.connect("clicked", lambda *_: self.show_page("done"))
+        self.result_btn.connect("clicked", lambda *_: (self.show_page("done"), self.focus_done()))
         row.append(self.result_btn)
         self.cancel_btn = Gtk.Button(label="Stop")
         self.cancel_btn.add_css_class("destructive-action")
@@ -1353,10 +1353,15 @@ class Installer(Gtk.ApplicationWindow):
         self.show_page("done")
         self.focus_done(default)
 
-    def focus_done(self, default):
-        """Focus the main button. Otherwise GTK focuses the selectable text first
-        and shows all of it selected (it can still be selected and copied)."""
-        (default[0] if default else self.done_buttons.get_first_child()).grab_focus()
+    def focus_done(self, default=None):
+        """Focus the main button - also when coming back from "Show details".
+        Otherwise GTK focuses the selectable text first and shows all of it
+        selected (it can still be selected and copied)."""
+        if default is not None:
+            self.done_default = default
+        main = (getattr(self, "done_default", None) or [None])[0] or self.done_buttons.get_first_child()
+        if main is not None:
+            main.grab_focus()
         self.done_text.select_region(0, 0)
 
     def make_report(self):
