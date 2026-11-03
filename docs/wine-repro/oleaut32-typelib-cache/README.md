@@ -37,7 +37,30 @@ Under Wine first (quick check that it works), then in the Windows 10 VM:
 program registers its type library for the current user and unregisters and
 deletes it at the end.
 
-## Results
+## Results (2026-11-03)
 
-(to be filled in: Windows 10 x64 / i686, Wine 11.20 with and without the
-diagnostic patch)
+Default arguments (3000 interfaces x 10 functions, 2.2 MB file, 20 rounds):
+
+| | Windows 10 x64 | Windows 10 i686 | Wine 11.20 x64 | Wine 11.20 + diag patch |
+|---|---|---|---|---|
+| A first load | 5.21 ms | 2.75 ms | 20.68 ms | 20.34 ms |
+| A load after Release to 0 | 2.51 ms (same pointer: yes) | 0.35 ms (no) | 20.16 ms (no) | 19.13 ms (no) |
+| A load, reference held | 0.00 ms | 0.00 ms | 0.10 ms | 0.10 ms |
+| B ITypeLib / ITypeInfo refs: before, proxy+stub alive, released | 2/1, 2/1, 2/1 | 2/1, 2/1, 2/1 | 2/1, 2/1, 2/1 | 2/1, 4/1, 4/1 (the leak) |
+| C per round, no reference held | 8.82 ms | 1.51 ms | 48.14 ms | 2.19 ms |
+| C per round, reference held | 0.55 ms | 0.71 ms | 2.33 ms | 2.23 ms |
+
+Windows 10 x64 with 300 interfaces: A 6.80 / 0.38 (no) / 0.00 ms, B unchanged,
+C 1.23 / 0.47 ms.
+
+What it says:
+- B: on Windows, too, typelib-marshaled proxies and stubs hold no reference to
+  the ITypeLib or ITypeInfo - so making Wine's proxies hold one would differ
+  from Windows.
+- A/C: on Windows, too, a type library is dropped after its last Release
+  (another pointer after reloading in two of three runs) and a round without a
+  reference costs more. The difference is the load itself: Windows loads this
+  library in 0.35-2.5 ms, Wine in ~20 ms, because Wine's LoadTypeLib parses
+  every type info, function and parameter up front. For Inventor's
+  RxInventor.tlb that is ~0.5 s per load, two loads (proxy and stub) per new
+  object.
