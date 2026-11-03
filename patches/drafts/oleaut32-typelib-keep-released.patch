@@ -3,7 +3,11 @@ oleaut32: Keep a released type library read from a file for a while.
 A type library read from a file stays in the typelib cache after its last
 Release (up to 8 of them, the least recently released goes first), and
 LoadTypeLib of the same, unchanged file (size and last write time) uses it
-again instead of parsing the file again. A changed file is read anew.
+again instead of parsing the file again. A changed or deleted file is read
+anew (or not found), also when GetRefTypeInfo looks for an imported library
+in the cache. A kept library holds no references: the libraries it imports
+are released and loaded again when needed, so their refcounts are the same
+as on Windows.
 
 Why: Inventor's 3D PDF export (Anark's corewrapper.exe) reads the part
 through Inventor's COM API from another process. Every new object gets a
@@ -126,7 +130,7 @@ index 535b97e..50527d9 100644
      test_LoadRegTypeLib();
      test_GetLibAttr();
 diff --git a/dlls/oleaut32/typelib.c b/dlls/oleaut32/typelib.c
-index b72a005..1966036 100644
+index b72a005..846a268 100644
 --- a/dlls/oleaut32/typelib.c
 +++ b/dlls/oleaut32/typelib.c
 @@ -1106,6 +1106,13 @@ typedef struct tagITypeLibImpl
@@ -201,7 +205,7 @@ index b72a005..1966036 100644
  
          /* FIXME: check if it has added already in the meantime */
          EnterCriticalSection(&cache_section);
-@@ -4818,84 +4862,115 @@ static ULONG WINAPI ITypeLib2_fnAddRef( ITypeLib2 *iface)
+@@ -4818,84 +4862,124 @@ static ULONG WINAPI ITypeLib2_fnAddRef( ITypeLib2 *iface)
  
      TRACE("%p, refcount %lu.\n", iface, ref);
  
@@ -365,8 +369,17 @@ index b72a005..1966036 100644
 +    {
 +        if (This->path && This->reusable)
 +        {
++            TLBImpLib *implib;
++
 +            /* keep it; the least recently released one goes */
 +            TRACE("keeping released %p\n", This);
++            /* it holds nothing: imported libraries are loaded again when used */
++            LIST_FOR_EACH_ENTRY(implib, &This->implib_list, TLBImpLib, entry)
++            {
++                if (!implib->pImpTypeLib) continue;
++                ITypeLib2_Release(&implib->pImpTypeLib->ITypeLib2_iface);
++                implib->pImpTypeLib = NULL;
++            }
 +            This->released = TRUE;
 +            list_add_head(&released_tlbs, &This->released_entry);
 +            if (++released_count > MAX_RELEASED_TLBS)
@@ -377,3 +390,12 @@ index b72a005..1966036 100644
      }
  
      LeaveCriticalSection(&cache_section);
+@@ -7954,6 +8038,8 @@ static HRESULT WINAPI ITypeInfo_fnGetRefTypeInfo(
+                 EnterCriticalSection(&cache_section);
+                 LIST_FOR_EACH_ENTRY(entry, &tlb_cache, ITypeLibImpl, entry)
+                 {
++                    if (entry->released && !released_tlb_valid(entry))
++                        continue;
+                     if (entry->guid
+                         && IsEqualIID(&entry->guid->guid, TLB_get_guid_null(ref_type->pImpTLInfo->guid))
+                         && entry->ver_major == ref_type->pImpTLInfo->wVersionMajor
