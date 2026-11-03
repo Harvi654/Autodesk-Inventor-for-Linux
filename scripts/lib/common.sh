@@ -183,6 +183,7 @@ INV_DEFAULT_DISABLED_ADDINS=(
     Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
     Autodesk.Publisher.Inventor.addin
     autodesk.translatorfusion.inventor.addin
+    Autodesk.AssistantAddin.Inventor.addin
 )
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
