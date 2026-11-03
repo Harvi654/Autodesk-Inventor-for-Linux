@@ -202,7 +202,8 @@ shopt -u nullglob
 # winex11 (never patched there), otherwise from Wine's git for this version.
 restore_pristine() {
     local F
-    for F in $(sed -n 's|^+++ b/||p' "${PATCHES[@]}" | sort -u); do
+    # the file name only: some patches have a tab and a date after it
+    for F in $(sed -n 's|^+++ b/\([^[:space:]]*\).*|\1|p' "${PATCHES[@]}" | sort -u); do
         if [ "$DLL" = winex11 ]; then
             cp -f "$TOOLS/$F" "$F"
         else
