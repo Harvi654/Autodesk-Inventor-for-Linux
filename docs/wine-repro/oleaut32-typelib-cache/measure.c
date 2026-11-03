@@ -38,6 +38,10 @@ static GUID iface_guid(unsigned int i)
     return g;
 }
 
+/* not declared by every MinGW header version: load them at run time */
+typedef HRESULT (WINAPI *register_for_user_fn)(ITypeLib *, OLECHAR *, OLECHAR *);
+typedef HRESULT (WINAPI *unregister_for_user_fn)(REFGUID, WORD, WORD, LCID, SYSKIND);
+
 static int n_ifaces = 3000, n_funcs = 10, n_rounds = 20;
 static WCHAR tlb_path[MAX_PATH];
 static GUID iid_measure;
@@ -240,6 +244,17 @@ int main(int argc, char **argv)
     HRESULT hr;
     int i;
 
+    HMODULE oleaut = GetModuleHandleA("oleaut32.dll");
+    register_for_user_fn pRegisterTypeLibForUser =
+        (register_for_user_fn)GetProcAddress(oleaut, "RegisterTypeLibForUser");
+    unregister_for_user_fn pUnRegisterTypeLibForUser =
+        (unregister_for_user_fn)GetProcAddress(oleaut, "UnRegisterTypeLibForUser");
+
+    if (!pRegisterTypeLibForUser || !pUnRegisterTypeLibForUser)
+    {
+        printf("RegisterTypeLibForUser / UnRegisterTypeLibForUser not found\n");
+        return 1;
+    }
     if (argc > 1) n_ifaces = atoi(argv[1]);
     if (argc > 2) n_funcs = atoi(argv[2]);
     if (argc > 3) n_rounds = atoi(argv[3]);
@@ -291,7 +306,7 @@ int main(int argc, char **argv)
     printf("A last Release -> %lu\n", rc);
 
     hr = LoadTypeLib(tlb_path, &tl);
-    hr = RegisterTypeLibForUser(tl, tlb_path, NULL);
+    hr = pRegisterTypeLibForUser(tl, tlb_path, NULL);
     ITypeLib_Release(tl);
     if (FAILED(hr)) { printf("RegisterTypeLibForUser failed %#lx\n", hr); return 1; }
 
@@ -336,9 +351,9 @@ int main(int argc, char **argv)
     CloseHandle(th);
 
 #ifdef _WIN64
-    hr = UnRegisterTypeLibForUser(&LIBID_Measure, 1, 0, LOCALE_NEUTRAL, SYS_WIN64);
+    hr = pUnRegisterTypeLibForUser(&LIBID_Measure, 1, 0, LOCALE_NEUTRAL, SYS_WIN64);
 #else
-    hr = UnRegisterTypeLibForUser(&LIBID_Measure, 1, 0, LOCALE_NEUTRAL, SYS_WIN32);
+    hr = pUnRegisterTypeLibForUser(&LIBID_Measure, 1, 0, LOCALE_NEUTRAL, SYS_WIN32);
 #endif
     printf("unregistered: %#lx\n", hr);
     CoUninitialize();
