@@ -64,3 +64,29 @@ What it says:
   every type info, function and parameter up front. For Inventor's
   RxInventor.tlb that is ~0.5 s per load, two loads (proxy and stub) per new
   object.
+
+## The fix (draft) and what it reached
+
+`patches/drafts/oleaut32-typelib-keep-released.patch`: a type library read
+from a file stays in the cache after its last Release (up to 8), holding no
+references (imported libraries are released and loaded again when used), and
+is used again if its file did not change (size, last write time); a changed or
+deleted file is read anew, also when `GetRefTypeInfo` looks for an import by
+GUID. Wine test `test_LoadTypeLib_released` in `dlls/oleaut32/tests/typelib.c`.
+
+```bash
+bash scripts/build-wine-dll.sh oleaut32 --draft --test   # builds, does not install
+```
+
+2026-11-03, Wine 11.20 (wine-11.20-6 + the draft, x86_64):
+- tests: `typelib` 7724 tests, 0 failures; `tmarshal` 754, 0 failures (the first
+  version of the draft failed 3 checks twice: a kept library still held its
+  imported stdole, and the GUID search found a kept library whose file was gone);
+- `measure64.exe`: A load after Release to 0 0.09 ms (was ~20 ms), C no
+  reference held 2.19 ms per round (was 48 ms);
+- Inventor 2027.2 3D PDF (Anark, native .NET 4.8): part 15 s (was ~7 min),
+  assembly 20 s; both PDFs have their PRC 3D model and view thumbnails.
+
+Still to do: L1 (the Wine test on Windows 10 x64 and i686), L0 in a full
+build, cross review; then out of `drafts/`.
+
