@@ -1271,10 +1271,13 @@ class Installer(Gtk.ApplicationWindow):
             self.done_buttons.remove(child)
             child = nxt
 
+        default = []
+
         def button(text, cb, suggested=False):
             b = Gtk.Button(label=text)
             if suggested:
                 b.add_css_class("suggested-action")
+                default.append(b)
             b.connect("clicked", lambda *_: cb())
             self.done_buttons.append(b)
 
@@ -1287,6 +1290,7 @@ class Installer(Gtk.ApplicationWindow):
                 if gone_self else ""))
             button("Close", self.close, suggested=True)
             self.show_page("done")
+            self.focus_done(default)
             return
         if success:
             self.done_title.set_text("Done")
@@ -1328,6 +1332,13 @@ class Installer(Gtk.ApplicationWindow):
         button("Show details", lambda: self.show_page("progress"))
         button("Close", self.close)
         self.show_page("done")
+        self.focus_done(default)
+
+    def focus_done(self, default):
+        """Focus the main button. Otherwise GTK focuses the selectable text first
+        and shows all of it selected (it can still be selected and copied)."""
+        (default[0] if default else self.done_buttons.get_first_child()).grab_focus()
+        self.done_text.select_region(0, 0)
 
     def make_report(self):
         out = os.path.join(os.path.expanduser("~"), "inventor-report.txt")
