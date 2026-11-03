@@ -1,0 +1,30 @@
+DIAGNOSTIC ONLY - never in a normal build (patches/debug).
+
+Test of a hypothesis: Anark's 3D PDF export (corewrapper.exe, .NET 4.8 as
+a black box) takes ~7 minutes because every typelib-marshaled proxy for an
+Inventor API interface makes oleaut32 load RxInventor.tlb again:
+get_typeinfo_for_iid() releases the type library right away, its last
+reference goes, ITypeLib2_fnRelease drops it from tlb_cache, and the next
+proxy parses the whole file again (~1 s each, 421 proxies in one export).
+This keeps the reference (leaks one per call). If the export then takes
+seconds, the hypothesis holds and a real fix plus a Wine test follow.
+
+Build without installing: bash scripts/build-wine-dll.sh oleaut32 --diag
+
+diff --git a/dlls/oleaut32/oleaut.c b/dlls/oleaut32/oleaut.c
+index 1ba6385..6997281 100644
+--- a/dlls/oleaut32/oleaut.c
++++ b/dlls/oleaut32/oleaut.c
+@@ -914,7 +914,11 @@ static HRESULT get_typeinfo_for_iid(REFIID iid, ITypeInfo **typeinfo)
+     }
+ 
+     hr = ITypeLib_GetTypeInfoOfGuid(typelib, iid, typeinfo);
+-    ITypeLib_Release(typelib);
++    /* DIAGNOSTIC ONLY (patches/debug): keep the type library loaded. Without
++     * a reference it leaves Wine's typelib cache when the proxy has been
++     * built, and the next proxy parses the whole file again. Leaks one
++     * reference per call - not for a normal build. */
++    WARN("keeping typelib %p for %s\n", typelib, debugstr_guid(iid));
+     if (hr != S_OK)
+         ERR("typelib does not contain info for %s\n", debugstr_guid(iid));
+ 
