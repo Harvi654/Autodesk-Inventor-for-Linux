@@ -2,7 +2,7 @@
 # Build one Wine DLL with this project's patch for the INSTALLED Wine version,
 # and optionally install it system-wide (original backed up).
 #
-# Usage: bash scripts/build-wine-dll.sh DLL [--install] [--hook] [--restore] [--test]
+# Usage: bash scripts/build-wine-dll.sh DLL [--install] [--hook] [--restore] [--test] [--diag] [--draft]
 #   DLL         wbemprox  - Win32_TimeZone class (patches/wbemprox-timezone.patch)
 #               shell32   - IShellItemImageFactory::GetImage: file icons and thumbnails
 #                           instead of an empty 1x1 bitmap (patches/shell32-getimage.patch);
@@ -103,13 +103,14 @@ case "$DLL" in
     rpcrt4)   CHECK='NdrStubCall3'; TEST=ndr_marshall ;;
     combase)  CHECK=''; TEST=marshal; TESTDLL=ole32 ;;
     ole32)    CHECK=''; TEST=storage32 ;;
-    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32|comctl32_v6|ntdll|rpcrt4|combase|ole32 [--install] [--hook] [--restore] [--diag] [--test]" ;;
+    *) die "usage: $0 wbemprox|shell32|oleaut32|kernelbase|riched20|msi|mspatcha|server|winex11|comctl32|comctl32_v6|ntdll|rpcrt4|combase|ole32 [--install] [--hook] [--restore] [--diag] [--draft] [--test]" ;;
 esac
 
-DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0
+DO_INSTALL=0; DO_HOOK=0; DO_RESTORE=0; DO_TEST=0; DO_DIAG=0; DO_DRAFT=0
 for a in "$@"; do
     case "$a" in
         --install) DO_INSTALL=1 ;; --hook) DO_HOOK=1 ;; --restore) DO_RESTORE=1 ;; --test) DO_TEST=1 ;; --diag) DO_DIAG=1 ;;
+        --draft) DO_DRAFT=1 ;;
         *) die "unknown option: $a" ;;
     esac
 done
@@ -182,10 +183,21 @@ if [ "$DO_DIAG" -eq 0 ]; then
         fi
     done
 fi
+# The same for draft patches (patches/drafts, not reviewed yet, never in a
+# normal build): only with --draft.
+if [ "$DO_DRAFT" -eq 0 ]; then
+    DRAFT=("$PROJECT_DIR/patches/drafts/$PDLL-"*.patch)
+    for ((k = ${#DRAFT[@]} - 1; k >= 0; k--)); do
+        if patch -p1 -R --dry-run -s -f < "${DRAFT[k]}" >/dev/null 2>&1; then
+            patch -p1 -R -s < "${DRAFT[k]}" && ok "removed draft $(basename "${DRAFT[k]}")"
+        fi
+    done
+fi
 PATCHES=("$PROJECT_DIR/patches/$PDLL-"*.patch)
+[ "$DO_DRAFT" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/drafts/$PDLL-"*.patch)
 [ "$DO_DIAG" -eq 1 ] && PATCHES+=("$PROJECT_DIR/patches/debug/$PDLL-"*.patch)
 shopt -u nullglob
-[ ${#PATCHES[@]} -gt 0 ] || die "no patches for $DLL (diagnostic ones need --diag)"
+[ ${#PATCHES[@]} -gt 0 ] || die "no patches for $DLL (diagnostic ones need --diag, drafts --draft)"
 # Untouched copies of the files the patches change: from the main tree for
 # winex11 (never patched there), otherwise from Wine's git for this version.
 restore_pristine() {
