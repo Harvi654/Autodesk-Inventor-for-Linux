@@ -20,7 +20,7 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
 | `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | 3D PDF: the dialog opens, but Publish crashes Anark's `corewrapper.exe` (a .NET Framework program, so it runs on wine-mono): it calls into oleaut32's proxy tables as if they were code - most likely a COM interop gap in wine-mono. Inventor itself keeps running. Not fixed yet |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `Autodesk.AssistantAddin.Inventor.addin` | new in Inventor 2027.2: the "Ask Autodesk Assistant" panel (an online AI assistant) - its panel is drawn wrongly under Wine and it is not needed. The 2027.2 Update also puts a copy into `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\<version>\` (the "Inventor MCP Server" package); turning off the one in `Bin\Addins` was enough, the panel did not come back |
+| `Autodesk.AssistantAddin.Inventor.addin` | Inventor 2027: the "Ask Autodesk Assistant" panel (an online AI assistant). The add-in was already in `Bin\Addins` before the 2027.2 Update, its panel shows up since 2027.2 - drawn wrongly under Wine, and it is not needed. The 2027.2 Update also puts a copy into `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\<version>\` (the "Inventor MCP Server" package); turning off the one in `Bin\Addins` was enough, the panel did not come back |
 
 Untested means: please try it with `addins.sh enable` and report what happens.
 
