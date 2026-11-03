@@ -138,6 +138,7 @@ class Installer:
             "programfiles": r"C:\Program Files",
             "programfiles(x86)": r"C:\Program Files (x86)",
             "programdata": r"C:\ProgramData",
+            "allusersprofile": r"C:\ProgramData",   # e.g. the 2027.2 Update's MCP Server
             "install_dest": r"C:\Program Files\Autodesk",
             "adsk_odis_metadata_base_location": r"C:\ProgramData\Autodesk\ODIS",
             "temp": r"C:\users\%s\AppData\Local\Temp" % USER,
