@@ -107,6 +107,89 @@ and Inventor's Default project picks them up - no configuration needed.
 Still open: fonts without a Windows partition,
 one-command/GUI installer, a bundled patched Wine.
 
+## Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)
+
+**Symptom (issue #6):** the reporter gave the installer an already unpacked
+Inventor 2027 image in a folder called `Inventor` (no year in any file name).
+The installer took it for 2026, Autodesk's packages put Inventor 2027 into
+`~/.wine-inventor2026`, and the prefix setup stopped at 84 % with
+`ERROR no Inventor in .../Inventor 2026 - run install-from-image.py first`.
+
+**Cause:** `install.sh` and the GTK installer read the release only from the
+download names (`Inventor_Professional_2027_..._db_002_002.7z`,
+`Inventor_2027.2_Update.exe`). An unpacked image has no such name, so the
+default 2026 was used. Nothing checked afterwards that the image and the
+prefix belong to the same release.
+
+**Fix (e171b0f):** `odis.release_of()` also reads the release from the image's
+own ODIS manifests (the Inventor package's display name, else its build
+number: 31.x = 2027). `install.sh` restarts itself for that release while
+nothing is installed yet, or - if `INV_YEAR` was given and does not match -
+stops before anything goes into the prefix and names the `INV_YEAR` to use.
+`finish-install.sh` names the release a prefix really holds instead of just
+"no Inventor". A copied `install-from-image.py` outside the project says so
+instead of `No module named 'regf'`. Tests: `tests/test_image_release.py`
+(synthetic manifests only).
+
+**How it was tested (2026-11-03):** a clean Ubuntu 26.04 VM (GNOME, Wayland,
+llvmpipe - no GPU), the README layout `~/Downloads/Inventor/` with the two
+`..._db_...` files and `Inventor_2027.2_Update.exe`:
+
+```bash
+# release of a download folder and of an unpacked image (no install)
+7z x -o"$HOME/Downloads/InvImage" ~/Downloads/Inventor/*_db_002_002.7z
+python3 -I -c 'import sys; sys.path.insert(0, "scripts/lib"); import odis; [print(a, "->", odis.release_of(a)) for a in sys.argv[1:]]' ~/Downloads/Inventor ~/Downloads/InvImage
+#   both -> 2027
+# a wrong release is refused before anything is installed
+export INV_YEAR=2026
+bash scripts/install.sh --prefix "$HOME/.wine-inv6-stoptest" --no-desktop ~/Downloads/InvImage
+unset INV_YEAR
+#   [4/8] ERROR the download is Inventor 2027, but this run installs Inventor 2026 into ... - start again with INV_YEAR=2027
+#   the test prefix has no Program Files/Autodesk
+# then the GUI with ~/Downloads/Inventor: Inventor 2027 into ~/.wine-inventor2027,
+# 28/28 packages, Update 19/19, prefix setup 13/13, launcher entry
+```
+
+Inventor 2027.2 then started, signed in, made a part (Extrude, Hole, Circular
+Pattern) and an assembly with Content Center parts. On the maintainer's Arch
+machine an existing 2027 prefix was updated to 2027.2 the same way (GUI, only
+the Update selected → "Repair"); About shows build 334, release 2027.2.
+
+**Found on the way and fixed:**
+
+| Problem | Cause | Fix |
+|---|---|---|
+| 2027.2 Update stops at step 5: `no usable installLocation ('%ALLUSERSPROFILE%\Autodesk\Inventor 2027\Addins\Assistant\31.20.33400') for InvMCP` | the new ZIP package "Inventor MCP Server 2027" installs below `%ALLUSERSPROFILE%`, a variable `install-from-image.py` did not know | `%ALLUSERSPROFILE%` = `C:\ProgramData` (Windows 10 and Wine) - fc71893, with a test |
+| `uninstall.sh --yes --desktop --prefix` kept `~/.wine-inventor2027` and its menu entry, without a word | with no `INV_YEAR` / `config.env` prefix, `common.sh` assumes 2026; with both releases installed it removed 2026 without asking | for `--prefix` and `--desktop` it takes the only installed release, asks when there are several, says when nothing is found - ba99c6a, checked with fake prefixes in a temporary `HOME` |
+| "Ask Autodesk Assistant" panel drawn wrongly | `Autodesk.AssistantAddin.Inventor.addin` (already in `Bin\Addins` before 2027.2) shows its panel since 2027.2 | off by default (`INV_DEFAULT_DISABLED_ADDINS`, `notes/disabled-addins.md`) - 2915840 |
+| GUI: the whole message on the Done page shown selected; no way back to the first page | the selectable text got the keyboard focus first | the main button gets the focus; "Back to the start" builds the pages anew (abdb64c and the two before it) |
+
+All other `%VARIABLES%` in the 2027.2 Update's `installLocation`s were already
+known or defined by their own manifest (checked with
+`grep -rohE 'installLocation="[^"]*%[^"]*"' <unpacked update> --include='*.xml'`).
+
+**Disk space, measured:** Inventor 2027.2 with Content Center: prefix
+18.2-20 GB (Content Center 7.4 GB of it), unpacked downloads in
+`~/.cache/inventor-on-linux` 10.4 GB (kept after the installation; the GUI's
+Uninstall page removes them). The installation needs about 30 GB; the checks
+in `install.sh` (warns below 40 GB) and the GUI (refuses below 40 GB) are
+stricter than needed and say different things - still to be aligned.
+
+**Still open:**
+- the 2027.2 Update also installs DWG TrueView 2027 (`Program Files\Autodesk\AutoCAD 2027`)
+  into the prefix; Inventor runs with it, not tested yet, kept for now;
+- `--skip-packages` on a fresh system stops only in step 3 at a missing `curl` -
+  step 1 should say so;
+- in the VM the New dialog showed generic icons without previews, on the
+  Arch machine it shows Inventor's icons and previews - not looked into yet;
+- Vault 2026 client/add-in: not tried by anyone yet.
+
+**Wine bug report:** none - these are installer bugs of this project, not Wine.
+
+**Level:** installer changes, not Wine patches: unit tests
+(`python3 -m unittest discover -s tests`, 21 OK), fake-prefix tests for
+`uninstall.sh`, a full installation in a clean Ubuntu VM and an update on Arch.
+
 ## Mounting Windows
 
 Mount **read-only**. The scripts only read from it, and if Windows Fast Startup
@@ -975,3 +1058,14 @@ the patches through the same `scripts/lib/wine-patches.sh`, copies
 their source URLs in `BUILDINFO`. The releases `wine-11.19-1` … `wine-11.20-6`
 were published before this; their source is added by running the "Build Wine"
 workflow with `tag` set (no binary is rebuilt or replaced).
+
+**2026-11-03 - Inventor 2027.2, unpacked image (issue #6):** in a clean
+Ubuntu 26.04 VM the release of an unpacked 2027 image is read from its
+manifests (e171b0f); a forced `INV_YEAR=2026` stops before anything is
+installed. A full installation by the README (GUI, the two downloads plus
+`Inventor_2027.2_Update.exe`) finished; Inventor 2027.2 signs in, parts,
+assemblies and Content Center work. Fixed on the way: the Update's new
+MCP Server package (`%ALLUSERSPROFILE%`), `uninstall.sh` always assuming
+2026, the Assistant panel (off by default), two GUI details. The Arch machine's
+2027 prefix was updated to 2027.2 (build 334). Details: section "Inventor
+2027: unpacked image without a year, the 2027.2 Update (issue #6)".

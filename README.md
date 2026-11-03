@@ -81,7 +81,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
-| Inventor 2027 (2027.1) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download |
+| Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
 | Drawings (views, sections) | ✅ | |
@@ -124,7 +124,7 @@ at [manage.autodesk.com](https://manage.autodesk.com):
 4. Two files are downloaded - save both into the folder.
 5. Recommended: in the same place, under the available downloads / updates,
    download the newest **Inventor Professional update** of that version
-   (e.g. 2026.4 or 2027.1) into the same folder. Only the Inventor update -
+   (e.g. 2026.4 or 2027.2) into the same folder. Only the Inventor update -
    the Identity Manager, Licensing Service and Shared Components updates
    listed there are not needed.
 
@@ -354,7 +354,7 @@ Planned, roughly in this order:
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
 - [ ] 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
-- [x] Inventor 2027 (2027.1 - first test on Arch)
+- [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
 - [ ] Inventor 2025
 
 ## Reporting problems
