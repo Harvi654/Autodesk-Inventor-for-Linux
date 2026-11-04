@@ -37,11 +37,11 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
     <td align="center">Assembly with constraints</td>
   </tr>
   <tr>
-    <td><img src="docs/images/drawing.png" alt="A drawing with a section view"></td>
+    <td><img src="docs/images/drawing.png" alt="A drawing with dimensions, tolerances, feature control frames, datums and surface finish symbols"></td>
     <td><img src="docs/images/stress-analysis.png" alt="Stress Analysis of a pipe elbow"></td>
   </tr>
   <tr>
-    <td align="center">Drawing with a section view</td>
+    <td align="center">Drawing with GD&amp;T (Inventor 2027)</td>
     <td align="center">Stress Analysis</td>
   </tr>
 </table>
