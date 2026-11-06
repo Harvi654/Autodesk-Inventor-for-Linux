@@ -1,0 +1,29 @@
+--- a/dlls/opengl32/wgl.c
++++ b/dlls/opengl32/wgl.c
+@@ -1456,6 +1456,9 @@
+     int i, count, best_format;
+     int bestDBuffer = -1, bestStereo = -1;
+     DWORD is_memdc;
++    char require_alpha_env[2];
++    BOOL require_alpha = GetEnvironmentVariableA( "WINE_OPENGL_REQUIRE_ALPHA", require_alpha_env,
++                                                 sizeof(require_alpha_env) ) == 1 && require_alpha_env[0] == '1';
+ 
+     TRACE( "%p %p: size %u version %u flags %lu type %u color %u %u,%u,%u,%u "
+            "accum %u depth %u stencil %u aux %u\n",
+@@ -1480,6 +1483,16 @@
+     for (i = 1; i <= count; i++)
+     {
+         if (!wglDescribePixelFormat( hdc, i, sizeof(format), &format )) continue;
++
++        /* Opt-in compatibility for applications which bootstrap a context with
++         * ChoosePixelFormat and then require alpha with wglChoosePixelFormatARB
++         * on the same window. Select a format with real requested alpha support
++         * instead of preferring an exact RGB-only color depth match. */
++        if (require_alpha && format.cAlphaBits < ppfd->cAlphaBits)
++        {
++            TRACE( "Requested alpha bits %u not available for iPixelFormat=%d\n", ppfd->cAlphaBits, i );
++            continue;
++        }
+ 
+         if ((ppfd->iPixelType == PFD_TYPE_COLORINDEX) != (format.iPixelType == PFD_TYPE_COLORINDEX))
+         {

@@ -1,0 +1,147 @@
+--- a/libs/vkd3d/shared_metadata.c
++++ b/libs/vkd3d/shared_metadata.c
+@@ -20,16 +20,120 @@
+ #include "vkd3d_private.h"
+ 
+ #include "winioctl.h"
++#ifdef _WIN32
++#include <ddk/d3dkmthk.h>
++#endif
+ 
+ #define IOCTL_SHARED_GPU_RESOURCE_SET_METADATA           CTL_CODE(FILE_DEVICE_VIDEO, 4, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+ #define IOCTL_SHARED_GPU_RESOURCE_GET_METADATA           CTL_CODE(FILE_DEVICE_VIDEO, 5, METHOD_BUFFERED, FILE_READ_ACCESS)
+ #define IOCTL_SHARED_GPU_RESOURCE_OPEN                   CTL_CODE(FILE_DEVICE_VIDEO, 1, METHOD_BUFFERED, FILE_WRITE_ACCESS)
+ 
+-bool vkd3d_set_shared_metadata(HANDLE handle, void *buf, uint32_t buf_size)
++#ifdef _WIN32
++/* Wine upstream stores runtime texture descriptors on its D3DKMT resource.
++ * Keep the Proton IOCTL path first, and use this channel when it is absent. */
++static bool vkd3d_set_wine_shared_metadata(HANDLE handle, const LUID *luid, const void *buf, uint32_t buf_size)
++{
++    struct {
++        UINT size, version, width, height, format, unknown0, unknown1;
++        UINT keyed_mutex, mutex_handle, sync_handle, nt_shared, unknown2, unknown3, unknown4;
++        UINT dimension;
++        UINT texture_desc[11];
++    } desc = {0};
++    HMODULE gdi32 = LoadLibraryA("gdi32.dll");
++    D3DKMT_OPENADAPTERFROMLUID adapter = {0};
++    D3DKMT_CREATEDEVICE device = {0};
++    D3DKMT_QUERYRESOURCEINFOFROMNTHANDLE query = {0};
++    D3DKMT_OPENRESOURCEFROMNTHANDLE open = {0};
++    D3DDDI_OPENALLOCATIONINFO2 allocation = {0};
++    D3DKMT_ESCAPE escape = {0};
++    D3DKMT_DESTROYALLOCATION destroy_resource = {0};
++    D3DKMT_DESTROYDEVICE destroy_device = {0};
++    D3DKMT_CLOSEADAPTER close_adapter = {0};
++    char dummy;
++    void *runtime_data = NULL;
++    bool result = false;
++    NTSTATUS status;
++#define DECLARE_KMT(name, arg) NTSTATUS (WINAPI *p##name)(arg) = gdi32 ? (void *)GetProcAddress(gdi32, #name) : NULL
++    DECLARE_KMT(D3DKMTOpenAdapterFromLuid, D3DKMT_OPENADAPTERFROMLUID *);
++    DECLARE_KMT(D3DKMTCreateDevice, D3DKMT_CREATEDEVICE *);
++    DECLARE_KMT(D3DKMTQueryResourceInfoFromNtHandle, D3DKMT_QUERYRESOURCEINFOFROMNTHANDLE *);
++    DECLARE_KMT(D3DKMTOpenResourceFromNtHandle, D3DKMT_OPENRESOURCEFROMNTHANDLE *);
++    DECLARE_KMT(D3DKMTEscape, const D3DKMT_ESCAPE *);
++    DECLARE_KMT(D3DKMTDestroyAllocation, const D3DKMT_DESTROYALLOCATION *);
++    DECLARE_KMT(D3DKMTDestroyDevice, const D3DKMT_DESTROYDEVICE *);
++    DECLARE_KMT(D3DKMTCloseAdapter, const D3DKMT_CLOSEADAPTER *);
++#undef DECLARE_KMT
++    _Static_assert(sizeof(desc) == 104, "D3DKMT D3D11 descriptor layout");
++    _Static_assert(offsetof(struct DxvkSharedTextureMetadata, TextureLayout) == 44, "D3D11 texture descriptor layout");
++    if (!pD3DKMTOpenAdapterFromLuid || !pD3DKMTCreateDevice || !pD3DKMTQueryResourceInfoFromNtHandle ||
++        !pD3DKMTOpenResourceFromNtHandle || !pD3DKMTEscape || !pD3DKMTDestroyAllocation ||
++        !pD3DKMTDestroyDevice || !pD3DKMTCloseAdapter || buf_size < 44)
++        goto done;
++    adapter.AdapterLuid = *luid;
++    if (pD3DKMTOpenAdapterFromLuid(&adapter)) goto done;
++    device.hAdapter = adapter.hAdapter;
++    if (pD3DKMTCreateDevice(&device)) goto done;
++    query.hDevice = device.hDevice;
++    query.hNtHandle = handle;
++    if (pD3DKMTQueryResourceInfoFromNtHandle(&query)) goto done;
++    /* Wine currently has one allocation and no driver-private blob. Do not
++     * reinterpret other implementations' private allocation data. */
++    if (query.NumAllocations != 1 || query.TotalPrivateDriverDataSize || query.ResourcePrivateDriverDataSize)
++        goto done;
++    if (query.PrivateRuntimeDataSize && !(runtime_data = vkd3d_malloc(query.PrivateRuntimeDataSize)))
++        goto done;
++    open.hDevice = device.hDevice;
++    open.hNtHandle = handle;
++    open.NumAllocations = 1;
++    open.pOpenAllocationInfo2 = &allocation;
++    open.pPrivateRuntimeData = runtime_data ? runtime_data : &dummy;
++    open.PrivateRuntimeDataSize = query.PrivateRuntimeDataSize;
++    open.pTotalPrivateDriverDataBuffer = &dummy;
++    if (pD3DKMTOpenResourceFromNtHandle(&open)) goto done;
++    desc.size = sizeof(desc);
++    desc.version = 4;
++    desc.nt_shared = 1;
++    desc.dimension = 3; /* D3D11_RESOURCE_DIMENSION_TEXTURE2D */
++    memcpy(desc.texture_desc, buf, sizeof(desc.texture_desc));
++    escape.Type = (D3DKMT_ESCAPETYPE)0x80000000; /* D3DKMT_ESCAPE_UPDATE_RESOURCE_WINE */
++    escape.hContext = open.hResource;
++    escape.pPrivateDriverData = &desc;
++    escape.PrivateDriverDataSize = sizeof(desc);
++    status = pD3DKMTEscape(&escape);
++    result = !status;
++    if (status) WARN("Wine shared texture metadata update failed, status %#lx.\n", status);
++done:
++    if (open.hResource) {
++        destroy_resource.hDevice = device.hDevice;
++        destroy_resource.hResource = open.hResource;
++        pD3DKMTDestroyAllocation(&destroy_resource);
++    }
++    if (device.hDevice) {
++        destroy_device.hDevice = device.hDevice;
++        pD3DKMTDestroyDevice(&destroy_device);
++    }
++    if (adapter.hAdapter) {
++        close_adapter.hAdapter = adapter.hAdapter;
++        pD3DKMTCloseAdapter(&close_adapter);
++    }
++    vkd3d_free(runtime_data);
++    if (gdi32) FreeLibrary(gdi32);
++    return result;
++}
++
++#endif
++
++bool vkd3d_set_shared_metadata(HANDLE handle, const LUID *luid, void *buf, uint32_t buf_size)
+ {
+     DWORD ret_size;
+ 
+-    return DeviceIoControl(handle, IOCTL_SHARED_GPU_RESOURCE_SET_METADATA, buf, buf_size, NULL, 0, &ret_size, NULL);
++    if (DeviceIoControl(handle, IOCTL_SHARED_GPU_RESOURCE_SET_METADATA, buf, buf_size, NULL, 0, &ret_size, NULL))
++        return true;
++#ifdef _WIN32
++    return vkd3d_set_wine_shared_metadata(handle, luid, buf, buf_size);
++#else
++    return false;
++#endif
+ }
+ 
+ bool vkd3d_get_shared_metadata(HANDLE handle, void *buf, uint32_t buf_size, uint32_t *metadata_size)
+--- a/libs/vkd3d/device.c
++++ b/libs/vkd3d/device.c
+@@ -5960,7 +5960,7 @@
+                 if (resource->desc.Flags & D3D12_RESOURCE_FLAG_DENY_SHADER_RESOURCE)
+                     metadata.BindFlags &= ~D3D11_BIND_SHADER_RESOURCE;
+ 
+-                if (!vkd3d_set_shared_metadata(*handle, &metadata, sizeof(metadata)))
++                if (!vkd3d_set_shared_metadata(*handle, &device->adapter_luid, &metadata, sizeof(metadata)))
+                     ERR("Failed to set metadata for shared resource, importing created handle will fail.\n");
+             }
+         }
+--- a/libs/vkd3d/vkd3d_private.h
++++ b/libs/vkd3d/vkd3d_private.h
+@@ -5978,7 +5978,7 @@
+     D3D11_TEXTURE_LAYOUT TextureLayout;
+ };
+ 
+-bool vkd3d_set_shared_metadata(HANDLE handle, void *buf, uint32_t buf_size);
++bool vkd3d_set_shared_metadata(HANDLE handle, const LUID *luid, void *buf, uint32_t buf_size);
+ bool vkd3d_get_shared_metadata(HANDLE handle, void *buf, uint32_t buf_size, uint32_t *metadata_size);
+ HANDLE vkd3d_open_kmt_handle(HANDLE kmt_handle);
+ 

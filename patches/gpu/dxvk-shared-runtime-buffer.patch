@@ -1,0 +1,30 @@
+--- a/src/dxvk/dxvk_memory.cpp
++++ b/src/dxvk/dxvk_memory.cpp
+@@ -310,7 +310,26 @@
+       open.pTotalPrivateDriverDataBuffer = &dummy;
+       open.TotalPrivateDriverDataBufferSize = 0;
+ 
+-      if (D3DKMTOpenResourceFromNtHandle(&open)) {
++      // Imported Vulkan memory may already carry a runtime texture descriptor.
++      // Query its size instead of assuming a newly created, empty resource.
++      D3DKMT_QUERYRESOURCEINFOFROMNTHANDLE query = { };
++      query.hDevice = open.hDevice;
++      query.hNtHandle = sharedHandle;
++      NTSTATUS status = D3DKMTQueryResourceInfoFromNtHandle(&query);
++      std::vector<char> runtimeData;
++
++      bool unsupported = query.NumAllocations != 1
++        || query.ResourcePrivateDriverDataSize
++        || query.TotalPrivateDriverDataSize;
++
++      if (!status && !unsupported) {
++        runtimeData.resize(query.PrivateRuntimeDataSize);
++        open.pPrivateRuntimeData = runtimeData.empty() ? &dummy : runtimeData.data();
++        open.PrivateRuntimeDataSize = query.PrivateRuntimeDataSize;
++        status = D3DKMTOpenResourceFromNtHandle(&open);
++      }
++
++      if (status || unsupported) {
+         Logger::warn("DxvkMemoryAllocator::createImageResource: Failed to open shared NT handle");
+       } else {
+         m_kmtLocal = open.hResource;

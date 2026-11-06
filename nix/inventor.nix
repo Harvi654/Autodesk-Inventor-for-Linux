@@ -2,6 +2,7 @@
   pkgs,
   overlayfsLib,
   modules,
+  wine,
 }:
 {
   # A fixed-output derivation containing the original Autodesk install image.
@@ -11,6 +12,7 @@
   version ? year,
   executableName ? if year == "2026" then "inventor" else "inventor-${year}",
   contentCenter ? true,
+  gpuRayTracing ? false,
 }:
 let
   inherit (pkgs) lib;
@@ -33,28 +35,46 @@ let
     });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
   # session when the main process exits so overlayfs can unmount it cleanly.
-  launchWine = pkgs.writeShellScript "inventor-wine-session" ''
-    set +e
-    ${modules.runtime.toolsPackage}/bin/wine "$@"
-    status=$?
-    ${modules.runtime.toolsPackage}/bin/wineserver -k
-    exit "$status"
+  launchWine =
+    selectedRuntime:
+    pkgs.writeShellScript "inventor-wine-session" ''
+      set +e
+      ${selectedRuntime.toolsPackage}/bin/wine "$@"
+      status=$?
+      ${selectedRuntime.toolsPackage}/bin/wineserver -k
+      exit "$status"
+    '';
+  launchRuntime =
+    selectedRuntime:
+    selectedRuntime
+    // {
+      mkSession =
+        args:
+        let
+          session = selectedRuntime.mkSession args;
+        in
+        session
+        // {
+          commands =
+            session.commands
+            // lib.optionalAttrs (args.phase == "launch") {
+              wine = "${launchWine selectedRuntime}";
+            };
+        };
+    };
+  runtime = launchRuntime modules.runtime;
+  preLaunch = selectedRuntime: ''
+    export PATH=${selectedRuntime.toolsPackage}/bin:${
+      lib.makeBinPath (tools ++ [ pkgs.util-linux ])
+    }:$PATH
+    ${builtins.readFile ./launch-lock.sh}
+    ${(overlayfsLib.mkGraphicsBootstrap {
+      runtime = selectedRuntime;
+      defaultMode = "system";
+    }).extraPreLaunchCommands
+    }
+    ${builtins.readFile ./launch-services.sh}
   '';
-  runtime = modules.runtime // {
-    mkSession =
-      args:
-      let
-        session = modules.runtime.mkSession args;
-      in
-      session
-      // {
-        commands =
-          session.commands
-          // lib.optionalAttrs (args.phase == "launch") {
-            wine = "${launchWine}";
-          };
-      };
-  };
   tools = [
     pkgs.python3
     pkgs._7zz
@@ -110,98 +130,122 @@ let
           license = lib.licenses.unfree;
         };
       });
-in
-withInventorMeta (overlayfsLib.mkWindowsPackage {
-  inherit runtime;
-  inherit version;
-  portableReparsePoints = true;
-  pname = "inventor";
-  packageName = "autodesk-inventor-${year}";
-  inherit executableName;
-  executablePath = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe";
-  workingDirectory = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin";
-  src = media;
-  overlayDependencies = [ webview2 ];
-  # These replace Wine's stock DLLs; keep them when the library prunes duplicates.
-  extraPathsToInclude =
-    lib.concatMap
-      (
-        directory:
-        map (dll: "windows/${directory}/${dll}.dll") [
-          "d3d8"
-          "d3d9"
-          "d3d10core"
-          "d3d11"
-          "d3d12"
-          "d3d12core"
-          "dxgi"
-        ]
-      )
-      [
-        "system32"
-        "syswow64"
-      ];
-  unshareInstall = { session, ... }: ''
-    set -euo pipefail
-    export PATH=${lib.makeBinPath tools}:${modules.runtime.toolsPackage}/bin:$PATH
-    export INV_YEAR=${lib.escapeShellArg year}
-    export INV_WINE=system INV_SANDBOX=0 INV_DATA_DIR="" INV_FONTS=linux
-    export INV_NORMALIZE_REPARSE=${session.commands.normalizeReparsePoints}
-    export INV_PREFIX="$WINEPREFIX" INV_LOGDIR="$TMPDIR/inventor-logs"
-    export XDG_CACHE_HOME="$TMPDIR/inventor-cache"
-    mkdir -p "$INV_LOGDIR" "$TMPDIR/inventor-project" "$TMPDIR/inventor-downloads"
-    cp -R ${../scripts} "$TMPDIR/inventor-project/scripts"
-    cp -R ${../wine} "$TMPDIR/inventor-project/wine"
-    mkdir -p "$TMPDIR/inventor-project/registry"
-    chmod -R u+w "$TMPDIR/inventor-project"
-    cat > "$TMPDIR/inventor-project/config.env" <<'EOF'
-    INV_FONT_DIRS=(${fonts}/share/fonts ${modules.runtime.toolsPackage}/share/wine)
-    EOF
-    export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
-    ln -s ${dxvkArchive} "$DOWNLOAD_DIR/dxvk-2.7.1.tar.gz"
-    ln -s ${vkd3dArchive} "$DOWNLOAD_DIR/vkd3d-proton-3.0.1.tar.zst"
-    python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
-      --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 ${
-        lib.optionalString (!contentCenter) "--no-content"
-      }
-    ${lib.concatMapStringsSep "\n" (update: ''
-      python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" ${lib.escapeShellArg (toString update)} \
-        --prefix "$WINEPREFIX"
-    '') updates}
-    ${session.commands.normalizeReparsePoints} "$WINEPREFIX"
-    bash "$TMPDIR/inventor-project/scripts/finish-install.sh" --no-sandbox
-    ${session.commands.wineserver} --wait
-    test -s "$WINEPREFIX/drive_c/windows/Fonts/NotoSans.ttf"
-    test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
-    test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
-    test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe"
-  '';
-  runtimeEnvVars = {
-    INVENTOR_YEAR = year;
-    WINE_LARGE_ADDRESS_AWARE = "1";
-    WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d";
+  packageArgs = {
+    inherit runtime;
+    inherit version;
+    portableReparsePoints = true;
+    pname = "inventor";
+    packageName = "autodesk-inventor-${year}";
+    inherit executableName;
+    executablePath = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe";
+    workingDirectory = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin";
+    src = media;
+    overlayDependencies = [ webview2 ];
+    # These replace Wine's stock DLLs; keep them when the library prunes duplicates.
+    extraPathsToInclude =
+      lib.concatMap
+        (
+          directory:
+          map (dll: "windows/${directory}/${dll}.dll") [
+            "d3d8"
+            "d3d9"
+            "d3d10core"
+            "d3d11"
+            "d3d12"
+            "d3d12core"
+            "dxgi"
+          ]
+        )
+        [
+          "system32"
+          "syswow64"
+        ];
+    unshareInstall = { session, ... }: ''
+      set -euo pipefail
+      export PATH=${lib.makeBinPath tools}:${modules.runtime.toolsPackage}/bin:$PATH
+      export INV_YEAR=${lib.escapeShellArg year}
+      export INV_WINE=system INV_SANDBOX=0 INV_DATA_DIR="" INV_FONTS=linux
+      export INV_NORMALIZE_REPARSE=${session.commands.normalizeReparsePoints}
+      export INV_PREFIX="$WINEPREFIX" INV_LOGDIR="$TMPDIR/inventor-logs"
+      export XDG_CACHE_HOME="$TMPDIR/inventor-cache"
+      mkdir -p "$INV_LOGDIR" "$TMPDIR/inventor-project" "$TMPDIR/inventor-downloads"
+      cp -R ${../scripts} "$TMPDIR/inventor-project/scripts"
+      cp -R ${../wine} "$TMPDIR/inventor-project/wine"
+      mkdir -p "$TMPDIR/inventor-project/registry"
+      chmod -R u+w "$TMPDIR/inventor-project"
+      cat > "$TMPDIR/inventor-project/config.env" <<'EOF'
+      INV_FONT_DIRS=(${fonts}/share/fonts ${modules.runtime.toolsPackage}/share/wine)
+      EOF
+      export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
+      ln -s ${dxvkArchive} "$DOWNLOAD_DIR/dxvk-2.7.1.tar.gz"
+      ln -s ${vkd3dArchive} "$DOWNLOAD_DIR/vkd3d-proton-3.0.1.tar.zst"
+      python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
+        --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 ${
+          lib.optionalString (!contentCenter) "--no-content"
+        }
+      ${lib.concatMapStringsSep "\n" (update: ''
+        python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" ${lib.escapeShellArg (toString update)} \
+          --prefix "$WINEPREFIX"
+      '') updates}
+      ${session.commands.normalizeReparsePoints} "$WINEPREFIX"
+      bash "$TMPDIR/inventor-project/scripts/finish-install.sh" --no-sandbox
+      ${session.commands.wineserver} --wait
+      test -s "$WINEPREFIX/drive_c/windows/Fonts/NotoSans.ttf"
+      test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
+      test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
+      test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe"
+    '';
+    runtimeEnvVars = {
+      INVENTOR_YEAR = year;
+      WINE_LARGE_ADDRESS_AWARE = "1";
+      WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d";
+    };
+    urlSchemes = [ "adskidmgr" ];
+    entrypointWrapper = entrypoint: ''
+      case "''${1:-}" in
+        adskidmgr:*) exec ${entrypoint} --nix-overlayfs-open-url "$1" ;;
+        *) exec ${entrypoint} "$@" ;;
+      esac
+    '';
+    urlSchemeOpenCommands = ''
+      exec ${modules.runtime.toolsPackage}/bin/wine \
+        'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
+    '';
+    extraPreLaunchCommands = preLaunch modules.runtime;
   };
-  urlSchemes = [ "adskidmgr" ];
-  entrypointWrapper = entrypoint: ''
-    case "''${1:-}" in
-      adskidmgr:*) exec ${entrypoint} --nix-overlayfs-open-url "$1" ;;
-      *) exec ${entrypoint} "$@" ;;
-    esac
-  '';
-  urlSchemeOpenCommands = ''
-    exec ${modules.runtime.toolsPackage}/bin/wine \
-      'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
-  '';
-  extraPreLaunchCommands = ''
-    export PATH=${modules.runtime.toolsPackage}/bin:${
-      lib.makeBinPath (tools ++ [ pkgs.util-linux ])
-    }:$PATH
-    ${builtins.readFile ./launch-lock.sh}
-    ${(overlayfsLib.mkGraphicsBootstrap {
-      inherit (modules) runtime;
-      defaultMode = "system";
-    }).extraPreLaunchCommands
-    }
-    ${builtins.readFile ./launch-services.sh}
-  '';
-}) executableName
+  application = withInventorMeta (overlayfsLib.mkWindowsPackage packageArgs) executableName;
+  rtExecutableName = "${executableName}-rt";
+  gpu = import ./gpu-ray-tracing.nix {
+    inherit
+      pkgs
+      overlayfsLib
+      modules
+      wine
+      ;
+  };
+in
+if gpuRayTracing then
+  withInventorMeta (overlayfsLib.composeWindowsLayers {
+    inherit (packageArgs)
+      packageName
+      executablePath
+      workingDirectory
+      runtimeEnvVars
+      urlSchemes
+      entrypointWrapper
+      ;
+    runtime = launchRuntime gpu.runtime;
+    urlSchemeOpenCommands = ''
+      exec ${gpu.runtime.toolsPackage}/bin/wine \
+        'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
+    '';
+    executableName = rtExecutableName;
+    baseLayer = gpu.withRuntime application;
+    extraPreLaunchCommands = ''
+      ${builtins.readFile ../runtime/gpu-ray-tracing.sh}
+      ${preLaunch gpu.runtime}
+      ${builtins.readFile ../runtime/enable-gpu-renderer.sh}
+    '';
+  }) rtExecutableName
+else
+  application
