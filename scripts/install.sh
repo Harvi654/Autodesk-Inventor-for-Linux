@@ -166,7 +166,7 @@ step "Checking..."
 [ "$EUID" -ne 0 ] || die "run this as your normal user, not with sudo - it asks for the password itself"
 case "$INV_DISTRO" in
     arch) ;;
-    debian|fedora)
+    debian|fedora|openSUSE)
         [ "$INV_WINE" != system ] || die "INV_WINE=system (fixes built into the system's Wine) is only supported on Arch"
         ;;
     *) die "unsupported distribution (supported: Arch, Debian/Ubuntu, Fedora)" ;;
