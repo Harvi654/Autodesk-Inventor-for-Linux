@@ -970,9 +970,10 @@ Open/New, Recent, Help links) after copying `ProgramData\Autodesk\Inventor 2026`
 **2026-10-18 - iLogic:** enabled with `addins.sh enable ilogic`. The iLogic
 ribbon panel, the iLogic browser, the Edit Rule dialog (snippets, model tree,
 parameters, code editor with syntax colours) work, and a rule
-`MessageBox.Show("Ahoj", "Test")` runs in an assembly. The old `E_FAIL` on
+`MessageBox.Show("Ahoj", "Test")` ("hello") runs in an assembly. The old `E_FAIL` on
 `get_ActiveDesignProject` was the missing `Default.ipj`, not iLogic itself.
-A rule `Dlzka = CDbl(InputBox("Dĺžka v mm", "Test", Dlzka))` with
+A rule `Dlzka = CDbl(InputBox("Dĺžka v mm", "Test", Dlzka))` (Slovak for
+"length in mm", quoted as run: the non-ASCII prompt was part of the test) with
 `iLogicVb.UpdateWhenDone = True` in a part changed a renamed extrusion
 parameter from 50 to 120 mm and the model updated (checked with Measure).
 iLogic is now on by default.
