@@ -66,3 +66,7 @@ Wine build yet. Before it can move to `patches/` it needs a test (dlls/win32u
 or the display-device tests) and a check what real Windows drivers write for each
 vendor (the names above come from AMD/NVIDIA/Intel driver INF files and a
 Windows install).
+
+> 2026-11-06: `oleaut32-typelib-keep-released.patch` continues in
+> [winum](https://github.com/Harvi654/winum) as the candidate
+> `patches/candidates/oleaut32-typelib-cache/`; this copy is kept as it was.
