@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/8bf7c5cfa2541cf1478b87b519dcdc4c75831407";
+      url = "github:krokosik/nix-overlayfs/64e1ea8c42a281831bdb362b6078f61721c3e527";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
@@ -34,7 +34,10 @@
         inherit wine;
         windowsArch = "wow64";
       };
-      mediaSources = import ./nix/media.nix { inherit pkgs; };
+      mediaSources2026 = import ./nix/media.nix {
+        inherit pkgs;
+        year = "2026";
+      };
       mediaSources2027 = import ./nix/media.nix {
         inherit pkgs;
         year = "2027";
@@ -45,35 +48,76 @@
         updates = [ mediaSources2027.update ];
         version = "2027.1";
       };
-      inventor = self.lib.mkInventor {
-        inherit (mediaSources) media;
-        updates = [ mediaSources.update ];
+      inventor2026 = self.lib.mkInventor {
+        year = "2026";
+        inherit (mediaSources2026) media;
+        updates = [ mediaSources2026.update ];
         version = "2026.4";
       };
     in
     {
       packages.${system} = {
-        inherit wine inventor;
-        inventor-2026 = inventor;
+        inherit wine;
+        inventor-2026 = inventor2026;
         inventor-2027 = inventor2027;
-        inventor-media = mediaSources.media;
-        default = inventor;
+        inventor-2026-media = mediaSources2026.media;
+        inventor-2027-media = mediaSources2027.media;
+        default = inventor2027;
       };
       apps.${system} = {
-        default = self.apps.${system}.inventor;
-        inventor-2026 = self.apps.${system}.inventor;
+        default = self.apps.${system}.inventor-2027;
         inventor-2027 = {
           type = "app";
           program = "${inventor2027}/bin/inventor-2027";
           meta.description = "Autodesk Inventor Professional 2027.1";
         };
-        inventor = {
+        inventor-2026 = {
           type = "app";
-          program = "${inventor}/bin/inventor";
+          program = "${inventor2026}/bin/inventor";
           meta.description = "Autodesk Inventor Professional 2026.4";
         };
       };
       checks.${system} = {
+        module-empty-versions =
+          let
+            moduleConfig =
+              settings:
+              (nixpkgs.lib.nixosSystem {
+                inherit system;
+                modules = [
+                  self.nixosModules.default
+                  {
+                    system.stateVersion = "26.05";
+                    programs.autodesk-inventor = settings;
+                  }
+                ];
+              }).config;
+            cfg = moduleConfig { enable = true; };
+            selectionWarnings =
+              config:
+              builtins.filter (nixpkgs.lib.hasPrefix "programs.autodesk-inventor.versions is empty;") config.warnings;
+          in
+          assert cfg.programs.autodesk-inventor.versions == [ ];
+          assert
+            selectionWarnings cfg == [
+              ''programs.autodesk-inventor.versions is empty; select [ "2026" ] and/or [ "2027" ] to install Inventor.''
+            ];
+          assert
+            selectionWarnings (moduleConfig {
+              enable = false;
+            }) == [ ];
+          assert
+            selectionWarnings (moduleConfig {
+              enable = true;
+              versions = [ "2027" ];
+            }) == [ ];
+          assert !(cfg.xdg.mime.defaultApplications ? "x-scheme-handler/adskidmgr");
+          assert builtins.all (
+            package: !(nixpkgs.lib.hasPrefix "inventor" (package.pname or package.name))
+          ) cfg.environment.systemPackages;
+          pkgs.runCommand "inventor-module-empty-versions" { } ''
+            touch "$out"
+          '';
         runtime-state =
           pkgs.runCommand "inventor-runtime-state-tests"
             {
