@@ -115,5 +115,18 @@ class PreparedPrefixTests(unittest.TestCase):
             self.assertEqual(len(calls), 2)
 
 
+class InstallLocationTests(unittest.TestCase):
+    def test_allusersprofile_is_programdata(self):
+        # Inventor 2027.2 Update: the MCP Server ZIP goes below
+        # %ALLUSERSPROFILE% (C:\ProgramData on Windows 10 and in Wine).
+        from argparse import Namespace
+        with tempfile.TemporaryDirectory() as directory:
+            instance = installer.Installer(Namespace(image=directory, prefix=directory, lang="en-US"))
+            step = {"name": "InvMCP", "installLocation":
+                    r"%ALLUSERSPROFILE%\Autodesk\Inventor 2027\Addins\Assistant\31.20.33400"}
+            self.assertEqual(Path(instance.target_dir(step)),
+                             Path(instance.c) / "ProgramData/Autodesk/Inventor 2027/Addins/Assistant/31.20.33400")
+
+
 if __name__ == "__main__":
     unittest.main()

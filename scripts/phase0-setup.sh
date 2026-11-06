@@ -33,7 +33,7 @@ if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ] || [ "$INV_DISTRO" =
             libvulkan1 mesa-vulkan-drivers vulkan-tools libegl1 libgl1 libwayland-client0 libwayland-egl1
             libfreetype6 libfontconfig1 "$(t64 libgnutls30)" "$(t64 libasound2)" libpulse0 libdbus-1-3
             libkrb5-3 libgssapi-krb5-2 libgstreamer1.0-0 libgstreamer-plugins-base1.0-0
-            libsdl2-2.0-0 libudev1 libusb-1.0-0 "$(t64 libcups2)" libpcsclite1 "$(t64 libv4l-0)"
+            libsdl2-2.0-0 libudev1 libusb-1.0-0 "$(t64 libcups2)" libpcsclite1 "$(t64 libv4l-0)" libodbc2
             python3 p7zip-full rsync curl xz-utils zstd cabextract unzip imagemagick
             xdg-utils desktop-file-utils libnotify-bin git
             fonts-liberation fonts-noto-core fonts-dejavu-core
@@ -60,7 +60,7 @@ if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ] || [ "$INV_DISTRO" =
             libX11 libXext libXcomposite libXcursor libXfixes libXi libXinerama libXrandr libXrender
             libXxf86vm libxkbcommon vulkan-loader mesa-vulkan-drivers vulkan-tools mesa-libEGL mesa-libGL
             libwayland-client libwayland-egl freetype fontconfig gnutls alsa-lib pulseaudio-libs dbus-libs
-            krb5-libs gstreamer1 gstreamer1-plugins-base SDL2 systemd-libs libusb1 cups-libs pcsc-lite-libs libv4l
+            krb5-libs gstreamer1 gstreamer1-plugins-base SDL2 systemd-libs libusb1 cups-libs pcsc-lite-libs libv4l unixODBC
             python3 p7zip p7zip-plugins rsync curl xz zstd cabextract unzip ImageMagick
             xdg-utils desktop-file-utils libnotify git
             liberation-fonts google-noto-sans-fonts dejavu-sans-fonts

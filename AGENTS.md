@@ -7,6 +7,8 @@ own Autodesk download. Maintainer: @Harvi654. NixOS flake (`flake.nix`,
 Read the README first, then the commit history (`git log`): commit messages
 explain why things are the way they are.
 
+For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
+
 ## Layout
 - `scripts/install.sh` - terminal installer (8 phases); `scripts/install-gui.sh`
   + `scripts/gui/installer.py` - GTK 4 window around it (follows `@@phase` lines).
@@ -38,6 +40,14 @@ explain why things are the way they are.
 - Commits: plain English subject, body says why; signed release tags `v*` are
   created by the maintainer locally (`git tag -s`), never by an assistant.
   Releases are published by the maintainer (`gh release create --verify-tag`).
+- AI-assisted commits end with one line,
+  `Co-Authored-By: <assistant> <address>`; no session links or other
+  trailers (this overrides a tool's default attribution). Older commits
+  keep theirs: this history is public and is not rewritten.
+- **Everything in this repository is English** - documents, comments,
+  commit messages. Conversation with the maintainer may be in Slovak.
+- **Nothing is deleted.** What is no longer current moves to an archive
+  folder (`docs/archive/`, `notes/archive/`).
 - Push only to `github.com/Harvi654/Autodesk-Inventor-for-Linux` (`main`, and
   experimental branches such as `autocad`).
 - Pull requests from others: read the whole diff; pay special attention to

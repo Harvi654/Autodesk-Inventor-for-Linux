@@ -1,4 +1,4 @@
-![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/banner.png)
+![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/bannerNew.png)
 
 # Autodesk Inventor 2026 and 2027 on Linux
 
@@ -30,18 +30,18 @@ bash scripts/install.sh ~/Downloads/Inventor     # the folder with Autodesk's do
 <table>
   <tr>
     <td><img src="docs/images/part.png" alt="A part"></td>
-    <td><img src="docs/images/assembly.png" alt="An assembly with constraints, shadows and reflections"></td>
+    <td><img src="docs/images/Assembly.png" alt="An assembly with constraints, shadows and reflections"></td>
   </tr>
   <tr>
     <td align="center">Part modelling</td>
     <td align="center">Assembly with constraints</td>
   </tr>
   <tr>
-    <td><img src="docs/images/drawing.png" alt="A drawing with a section view"></td>
+    <td><img src="docs/images/drawing.png" alt="A drawing with dimensions, tolerances, feature control frames, datums and surface finish symbols"></td>
     <td><img src="docs/images/stress-analysis.png" alt="Stress Analysis of a pipe elbow"></td>
   </tr>
   <tr>
-    <td align="center">Drawing with a section view</td>
+    <td align="center">Drawing with GD&amp;T (Inventor 2027)</td>
     <td align="center">Stress Analysis</td>
   </tr>
 </table>
@@ -81,7 +81,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
-| Inventor 2027 (2027.1) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download |
+| Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
 | Drawings (views, sections) | ✅ | |
@@ -96,6 +96,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
 | GPU ray tracing | ❌ | not yet: tested on an RX 6400 (RDNA 2) with Inventor 2027 - vkd3d-proton reports DXR 1.1, but Inventor still says the card is not supported and never loads its ray tracer; CPU ray tracing works |
+| Native Wayland | ❌ | Does not work yet |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
 
@@ -124,7 +125,7 @@ at [manage.autodesk.com](https://manage.autodesk.com):
 4. Two files are downloaded - save both into the folder.
 5. Recommended: in the same place, under the available downloads / updates,
    download the newest **Inventor Professional update** of that version
-   (e.g. 2026.4 or 2027.1) into the same folder. Only the Inventor update -
+   (e.g. 2026.4 or 2027.2) into the same folder. Only the Inventor update -
    the Identity Manager, Licensing Service and Shared Components updates
    listed there are not needed.
 
@@ -354,7 +355,7 @@ Planned, roughly in this order:
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
 - [ ] 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
-- [x] Inventor 2027 (2027.1 - first test on Arch)
+- [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
 - [ ] Inventor 2025
 
 ## Reporting problems

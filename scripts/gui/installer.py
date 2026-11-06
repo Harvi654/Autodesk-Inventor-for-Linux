@@ -408,6 +408,17 @@ class Installer(Gtk.ApplicationWindow):
         self.next_btn.connect("clicked", self.on_next)
 
         self.pages = ["welcome", "downloads", "options", "summary", "progress", "done"]
+        self.inhibit_cookie = 0
+        self.build_pages()
+        self.connect("close-request", self.on_close_request)
+
+    def build_pages(self):
+        """All pages from the current state of the system (installed releases,
+        downloads, free space) - at the start and again after "Back to the start"."""
+        for name in self.pages + ["uninstall"]:
+            old = self.stack.get_child_by_name(name)
+            if old is not None:
+                self.stack.remove(old)
         self.stack.add_named(self.page_welcome(), "welcome")
         # every page scrolls, so the window fits small screens (and GTK does not complain)
         for name, page in (("downloads", self.page_downloads()), ("options", self.page_options()),
@@ -417,10 +428,15 @@ class Installer(Gtk.ApplicationWindow):
             scroll.set_child(page)
             self.stack.add_named(scroll, name)
         self.mode = "install"
-        self.inhibit_cookie = 0
         self.recent = []
         self.show_page("welcome")
-        self.connect("close-request", self.on_close_request)
+
+    def back_to_start(self):
+        self.settings = project_settings()   # what is installed now
+        self.cancelled = False
+        self.logfile = None
+        self.errors = []
+        GLib.idle_add(lambda: (self.build_pages(), False)[1])   # not from inside the button's own handler
 
     # ---------------------------------------------------------------- target
 
@@ -1005,7 +1021,7 @@ class Installer(Gtk.ApplicationWindow):
         # after the run: back to the result page ("Show details" leads here)
         self.result_btn = Gtk.Button(label="Back to the result", visible=False)
         self.result_btn.add_css_class("suggested-action")
-        self.result_btn.connect("clicked", lambda *_: self.show_page("done"))
+        self.result_btn.connect("clicked", lambda *_: (self.show_page("done"), self.focus_done()))
         row.append(self.result_btn)
         self.cancel_btn = Gtk.Button(label="Stop")
         self.cancel_btn.add_css_class("destructive-action")
@@ -1271,10 +1287,13 @@ class Installer(Gtk.ApplicationWindow):
             self.done_buttons.remove(child)
             child = nxt
 
+        default = []
+
         def button(text, cb, suggested=False):
             b = Gtk.Button(label=text)
             if suggested:
                 b.add_css_class("suggested-action")
+                default.append(b)
             b.connect("clicked", lambda *_: cb())
             self.done_buttons.append(b)
 
@@ -1286,7 +1305,10 @@ class Installer(Gtk.ApplicationWindow):
                 "bash <(curl -fsSL https://raw.githubusercontent.com/Harvi654/Autodesk-Inventor-for-Linux/main/get.sh)"
                 if gone_self else ""))
             button("Close", self.close, suggested=True)
+            if not gone_self:
+                button("Back to the start", self.back_to_start)
             self.show_page("done")
+            self.focus_done(default)
             return
         if success:
             self.done_title.set_text("Done")
@@ -1326,8 +1348,21 @@ class Installer(Gtk.ApplicationWindow):
             button("Open an issue", lambda: self.open_web(
                 "https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/new"))
         button("Show details", lambda: self.show_page("progress"))
+        button("Back to the start", self.back_to_start)
         button("Close", self.close)
         self.show_page("done")
+        self.focus_done(default)
+
+    def focus_done(self, default=None):
+        """Focus the main button - also when coming back from "Show details".
+        Otherwise GTK focuses the selectable text first and shows all of it
+        selected (it can still be selected and copied)."""
+        if default is not None:
+            self.done_default = default
+        main = (getattr(self, "done_default", None) or [None])[0] or self.done_buttons.get_first_child()
+        if main is not None:
+            main.grab_focus()
+        self.done_text.select_region(0, 0)
 
     def make_report(self):
         out = os.path.join(os.path.expanduser("~"), "inventor-report.txt")

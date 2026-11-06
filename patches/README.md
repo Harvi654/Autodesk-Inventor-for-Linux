@@ -4,7 +4,9 @@
   Wine build discover these automatically.
 - `libgsf/` contains the empty OLE stream fix used by the flake's libgsf overlay.
 - `debug/` contains optional diagnostic patches, excluded from normal builds.
-- `drafts/` contains unfinished patches that are not applied.
+- `drafts/` contains unfinished patches that are not applied (and patches waiting
+  for cross review); `build-wine-dll.sh DLL --draft` builds one of them for a test
+  without installing it into a normal build.
 
 Keep patches for other projects and optional runtime variants in subdirectories
 so Wine's automatic top-level patch discovery cannot apply them accidentally.

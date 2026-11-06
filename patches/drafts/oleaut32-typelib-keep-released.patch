@@ -1,0 +1,401 @@
+oleaut32: Keep a released type library read from a file for a while.
+
+A type library read from a file stays in the typelib cache after its last
+Release (up to 8 of them, the least recently released goes first), and
+LoadTypeLib of the same, unchanged file (size and last write time) uses it
+again instead of parsing the file again. A changed or deleted file is read
+anew (or not found), also when GetRefTypeInfo looks for an imported library
+in the cache. A kept library holds no references: the libraries it imports
+are released and loaded again when needed, so their refcounts are the same
+as on Windows.
+
+Why: Inventor's 3D PDF export (Anark's corewrapper.exe) reads the part
+through Inventor's COM API from another process. Every new object gets a
+typelib-marshaled proxy and stub; get_typeinfo_for_iid() loads the type
+library, takes the ITypeInfo and releases the library again, and the proxy
+keeps no reference (Windows 10 neither, measured). So RxInventor.tlb went
+out of the cache each time and was parsed again - about 0.5 s per load,
+two per object, ~7 minutes for one export. With this: 15 s.
+
+Windows 10 drops a library after its last Release too (another pointer
+after reloading, in 2 of 3 measured runs), but loads it ~10x faster
+(0.35-2.5 ms for a 2.2 MB library, Wine ~20 ms: it parses everything up
+front). Measured with docs/wine-repro/oleaut32-typelib-cache/measure.c:
+Windows and Wine show the same reference counts (no extra reference held
+while a proxy and stub exist, ITypeLib refcount 0 after the last Release),
+which this keeps.
+
+The test checks what Windows does and what must stay correct with the cache:
+reloading after the last Release, refcounts, and that another library
+written to the same file is read anew. It passes without the change too;
+the speed-up is shown by the MEASURE program (L3).
+
+Written with AI help (Claude); not submitted to Wine. LGPL 2.1 or later.
+
+diff --git a/dlls/oleaut32/tests/typelib.c b/dlls/oleaut32/tests/typelib.c
+index 535b97e..50527d9 100644
+--- a/dlls/oleaut32/tests/typelib.c
++++ b/dlls/oleaut32/tests/typelib.c
+@@ -7373,6 +7373,84 @@ static void test_LoadTypeLib(void)
+     ok(tl == (void *)0xdeadbeef, "Got %p.\n", tl);
+ }
+ 
++static void write_reload_typelib(const WCHAR *filename, const GUID *guid, int count)
++{
++    ICreateTypeLib2 *ctl;
++    ICreateTypeInfo *cti;
++    WCHAR name[16];
++    HRESULT hr;
++    int i;
++
++    hr = CreateTypeLib2(SYS_WIN32, filename, &ctl);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    for (i = 0; i < count; ++i)
++    {
++        GUID iid = *guid;
++
++        iid.Data4[7] += i;
++        swprintf(name, ARRAY_SIZE(name), L"reload%d", i);
++        hr = ICreateTypeLib2_CreateTypeInfo(ctl, name, TKIND_INTERFACE, &cti);
++        ok(hr == S_OK, "Got hr %#lx.\n", hr);
++        hr = ICreateTypeInfo_SetGuid(cti, &iid);
++        ok(hr == S_OK, "Got hr %#lx.\n", hr);
++        ICreateTypeInfo_Release(cti);
++    }
++    hr = ICreateTypeLib2_SaveAllChanges(ctl);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    ICreateTypeLib2_Release(ctl);
++}
++
++static void test_LoadTypeLib_released(void)
++{
++    static const GUID guid1 = {0x6c1f0a11, 0x3b2e, 0x4d7a, {0x9a, 0x51, 0x0f, 0x2c, 0x5e, 0xa1, 0x00, 0x10}};
++    static const GUID guid2 = {0x6c1f0a11, 0x3b2e, 0x4d7a, {0x9a, 0x51, 0x0f, 0x2c, 0x5e, 0xa1, 0x00, 0x20}};
++    char filenameA[MAX_PATH];
++    WCHAR filenameW[MAX_PATH];
++    ITypeInfo *ti;
++    ITypeLib *tl;
++    HRESULT hr;
++    ULONG ref;
++
++    GetTempFileNameA(".", "tlb", 0, filenameA);
++    MultiByteToWideChar(CP_ACP, 0, filenameA, -1, filenameW, MAX_PATH);
++    write_reload_typelib(filenameW, &guid1, 1);
++
++    hr = LoadTypeLib(filenameW, &tl);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    hr = ITypeLib_GetTypeInfoOfGuid(tl, &guid1, &ti);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    ITypeInfo_Release(ti);
++    ref = ITypeLib_Release(tl);
++    ok(!ref, "Got refcount %lu.\n", ref);
++
++    /* the same file again after the last reference went */
++    hr = LoadTypeLib(filenameW, &tl);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    ok(ITypeLib_GetTypeInfoCount(tl) == 1, "Got %u type infos.\n", ITypeLib_GetTypeInfoCount(tl));
++    hr = ITypeLib_GetTypeInfoOfGuid(tl, &guid1, &ti);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    ITypeInfo_Release(ti);
++    ref = ITypeLib_Release(tl);
++    ok(!ref, "Got refcount %lu.\n", ref);
++
++    /* another library written to the same file is read, not the released one */
++    ok(DeleteFileA(filenameA), "Failed to delete %s, error %lu.\n", filenameA, GetLastError());
++    write_reload_typelib(filenameW, &guid2, 3);
++    hr = LoadTypeLib(filenameW, &tl);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    ok(ITypeLib_GetTypeInfoCount(tl) == 3, "Got %u type infos.\n", ITypeLib_GetTypeInfoCount(tl));
++    ti = (void *)0xdeadbeef;
++    hr = ITypeLib_GetTypeInfoOfGuid(tl, &guid1, &ti);
++    ok(hr == TYPE_E_ELEMENTNOTFOUND, "Got hr %#lx.\n", hr);
++    hr = ITypeLib_GetTypeInfoOfGuid(tl, &guid2, &ti);
++    ok(hr == S_OK, "Got hr %#lx.\n", hr);
++    ITypeInfo_Release(ti);
++    ref = ITypeLib_Release(tl);
++    ok(!ref, "Got refcount %lu.\n", ref);
++
++    ok(DeleteFileA(filenameA), "Failed to delete %s, error %lu.\n", filenameA, GetLastError());
++}
++
+ static void test_SetVarHelpContext(void)
+ {
+     static OLECHAR nameW[] = {'n','a','m','e',0};
+@@ -8847,6 +8925,7 @@ START_TEST(typelib)
+     test_register_typelib_64();
+     test_create_typelibs();
+     test_LoadTypeLib();
++    test_LoadTypeLib_released();
+     test_TypeInfo2_GetContainingTypeLib();
+     test_LoadRegTypeLib();
+     test_GetLibAttr();
+diff --git a/dlls/oleaut32/typelib.c b/dlls/oleaut32/typelib.c
+index b72a005..846a268 100644
+--- a/dlls/oleaut32/typelib.c
++++ b/dlls/oleaut32/typelib.c
+@@ -1106,6 +1106,13 @@ typedef struct tagITypeLibImpl
+     struct list entry;
+     WCHAR *path;
+     INT index;
++    /* the file it was read from, to tell whether a released library can be used again */
++    BOOL reusable;
++    ULONGLONG file_size;
++    FILETIME file_time;
++    /* in released_tlbs while nobody holds a reference */
++    BOOL released;
++    struct list released_entry;
+ } ITypeLibImpl;
+ 
+ static const ITypeLib2Vtbl tlbvt;
+@@ -2847,6 +2854,36 @@ static HRESULT MSFT_ReadAllRefs(TLBContext *pcx)
+  * tradeoff here.
+  */
+ static struct list tlb_cache = LIST_INIT(tlb_cache);
++
++/* Type libraries read from a file stay in tlb_cache for a while after their
++ * last reference went, so that loading the same unchanged file again (e.g.
++ * for every typelib-marshaled proxy of a new object) does not parse it again.
++ * Most recently released first; protected by cache_section. */
++static struct list released_tlbs = LIST_INIT(released_tlbs);
++static unsigned int released_count;
++#define MAX_RELEASED_TLBS 8
++
++static void ITypeLibImpl_Destroy(ITypeLibImpl *This);
++
++static BOOL get_file_info(const WCHAR *path, ULONGLONG *size, FILETIME *time)
++{
++    WIN32_FILE_ATTRIBUTE_DATA data;
++
++    if (!GetFileAttributesExW(path, GetFileExInfoStandard, &data)) return FALSE;
++    *size = ((ULONGLONG)data.nFileSizeHigh << 32) | data.nFileSizeLow;
++    *time = data.ftLastWriteTime;
++    return TRUE;
++}
++
++/* a released library may be used again if its file did not change */
++static BOOL released_tlb_valid(ITypeLibImpl *entry)
++{
++    ULONGLONG size;
++    FILETIME time;
++
++    if (!get_file_info(entry->path, &size, &time)) return FALSE;
++    return size == entry->file_size && !CompareFileTime(&time, &entry->file_time);
++}
+ static CRITICAL_SECTION cache_section;
+ static CRITICAL_SECTION_DEBUG cache_section_debug =
+ {
+@@ -3337,6 +3374,12 @@ static HRESULT TLB_ReadTypeLib(LPCWSTR pszFileName, LPWSTR pszPath, UINT cchPath
+     {
+         if (!wcsicmp(entry->path, pszPath) && entry->index == index)
+         {
++            if (entry->released && !released_tlb_valid(entry))
++            {
++                TRACE("file changed, dropping released %p\n", entry);
++                ITypeLibImpl_Destroy(entry);
++                break;
++            }
+             TRACE("cache hit\n");
+             *ppTypeLib = &entry->ITypeLib2_iface;
+             ITypeLib2_AddRef(*ppTypeLib);
+@@ -3380,6 +3423,7 @@ static HRESULT TLB_ReadTypeLib(LPCWSTR pszFileName, LPWSTR pszPath, UINT cchPath
+ 	impl->path = wcsdup(pszPath);
+ 	/* We should really canonicalise the path here. */
+         impl->index = index;
++        impl->reusable = get_file_info(pszPath, &impl->file_size, &impl->file_time);
+ 
+         /* FIXME: check if it has added already in the meantime */
+         EnterCriticalSection(&cache_section);
+@@ -4818,84 +4862,124 @@ static ULONG WINAPI ITypeLib2_fnAddRef( ITypeLib2 *iface)
+ 
+     TRACE("%p, refcount %lu.\n", iface, ref);
+ 
++    /* A released library is only reachable through the cache, under
++     * cache_section: it is in use again. */
++    if (ref == 1 && This->released)
++    {
++        list_remove(&This->released_entry);
++        This->released = FALSE;
++        released_count--;
++    }
++
+     return ref;
+ }
+ 
+-static ULONG WINAPI ITypeLib2_fnRelease( ITypeLib2 *iface)
++/* Called with cache_section held. */
++static void ITypeLibImpl_Destroy(ITypeLibImpl *This)
+ {
+-    ITypeLibImpl *This = impl_from_ITypeLib2(iface);
+-    ULONG ref;
+-
+-    EnterCriticalSection(&cache_section);
+-    ref = InterlockedDecrement(&This->ref);
++    TLBImpLib *pImpLib, *pImpLibNext;
++    TLBRefType *ref_type, *ref_type_next;
++    TLBString *tlbstr, *tlbstr_next;
++    TLBGuid *tlbguid, *tlbguid_next;
++    int i;
+ 
+-    TRACE("%p, refcount %lu.\n", iface, ref);
++    if (This->released)
++    {
++        list_remove(&This->released_entry);
++        released_count--;
++    }
+ 
+-    if (!ref)
++    /* remove cache entry */
++    if(This->path)
+     {
+-      TLBImpLib *pImpLib, *pImpLibNext;
+-      TLBRefType *ref_type, *ref_type_next;
+-      TLBString *tlbstr, *tlbstr_next;
+-      TLBGuid *tlbguid, *tlbguid_next;
+-      int i;
++        TRACE("removing from cache list\n");
++        if(This->entry.next)
++            list_remove(&This->entry);
++        free(This->path);
++    }
++    TRACE(" destroying ITypeLib(%p)\n",This);
+ 
+-      /* remove cache entry */
+-      if(This->path)
+-      {
+-          TRACE("removing from cache list\n");
+-          if(This->entry.next)
+-              list_remove(&This->entry);
+-          free(This->path);
+-      }
+-      TRACE(" destroying ITypeLib(%p)\n",This);
++    LIST_FOR_EACH_ENTRY_SAFE(tlbstr, tlbstr_next, &This->string_list, TLBString, entry) {
++        list_remove(&tlbstr->entry);
++        SysFreeString(tlbstr->str);
++        free(tlbstr);
++    }
+ 
+-      LIST_FOR_EACH_ENTRY_SAFE(tlbstr, tlbstr_next, &This->string_list, TLBString, entry) {
+-          list_remove(&tlbstr->entry);
+-          SysFreeString(tlbstr->str);
+-          free(tlbstr);
+-      }
++    LIST_FOR_EACH_ENTRY_SAFE(tlbstr, tlbstr_next, &This->name_list, TLBString, entry) {
++        list_remove(&tlbstr->entry);
++        SysFreeString(tlbstr->str);
++        free(tlbstr);
++    }
+ 
+-      LIST_FOR_EACH_ENTRY_SAFE(tlbstr, tlbstr_next, &This->name_list, TLBString, entry) {
+-          list_remove(&tlbstr->entry);
+-          SysFreeString(tlbstr->str);
+-          free(tlbstr);
+-      }
++    LIST_FOR_EACH_ENTRY_SAFE(tlbguid, tlbguid_next, &This->guid_list, TLBGuid, entry) {
++        list_remove(&tlbguid->entry);
++        free(tlbguid);
++    }
+ 
+-      LIST_FOR_EACH_ENTRY_SAFE(tlbguid, tlbguid_next, &This->guid_list, TLBGuid, entry) {
+-          list_remove(&tlbguid->entry);
+-          free(tlbguid);
+-      }
++    TLB_FreeCustData(&This->custdata_list);
+ 
+-      TLB_FreeCustData(&This->custdata_list);
++    for (i = 0; i < This->ctTypeDesc; i++)
++        if (This->pTypeDesc[i].vt == VT_CARRAY)
++            free(This->pTypeDesc[i].lpadesc);
+ 
+-      for (i = 0; i < This->ctTypeDesc; i++)
+-          if (This->pTypeDesc[i].vt == VT_CARRAY)
+-              free(This->pTypeDesc[i].lpadesc);
++    free(This->pTypeDesc);
+ 
+-      free(This->pTypeDesc);
++    LIST_FOR_EACH_ENTRY_SAFE(pImpLib, pImpLibNext, &This->implib_list, TLBImpLib, entry)
++    {
++        if (pImpLib->pImpTypeLib)
++            ITypeLib2_Release(&pImpLib->pImpTypeLib->ITypeLib2_iface);
++        SysFreeString(pImpLib->name);
+ 
+-      LIST_FOR_EACH_ENTRY_SAFE(pImpLib, pImpLibNext, &This->implib_list, TLBImpLib, entry)
+-      {
+-          if (pImpLib->pImpTypeLib)
+-              ITypeLib2_Release(&pImpLib->pImpTypeLib->ITypeLib2_iface);
+-          SysFreeString(pImpLib->name);
++        list_remove(&pImpLib->entry);
++        free(pImpLib);
++    }
+ 
+-          list_remove(&pImpLib->entry);
+-          free(pImpLib);
+-      }
++    LIST_FOR_EACH_ENTRY_SAFE(ref_type, ref_type_next, &This->ref_list, TLBRefType, entry)
++    {
++        list_remove(&ref_type->entry);
++        free(ref_type);
++    }
+ 
+-      LIST_FOR_EACH_ENTRY_SAFE(ref_type, ref_type_next, &This->ref_list, TLBRefType, entry)
+-      {
+-          list_remove(&ref_type->entry);
+-          free(ref_type);
+-      }
++    for (i = 0; i < This->TypeInfoCount; ++i){
++        free(This->typeinfos[i]->tdescAlias);
++        ITypeInfoImpl_Destroy(This->typeinfos[i]);
++    }
++    free(This->typeinfos);
++    free(This);
++}
+ 
+-      for (i = 0; i < This->TypeInfoCount; ++i){
+-          free(This->typeinfos[i]->tdescAlias);
+-          ITypeInfoImpl_Destroy(This->typeinfos[i]);
+-      }
+-      free(This->typeinfos);
+-      free(This);
++static ULONG WINAPI ITypeLib2_fnRelease( ITypeLib2 *iface)
++{
++    ITypeLibImpl *This = impl_from_ITypeLib2(iface);
++    ULONG ref;
++
++    EnterCriticalSection(&cache_section);
++    ref = InterlockedDecrement(&This->ref);
++
++    TRACE("%p, refcount %lu.\n", iface, ref);
++
++    if (!ref)
++    {
++        if (This->path && This->reusable)
++        {
++            TLBImpLib *implib;
++
++            /* keep it; the least recently released one goes */
++            TRACE("keeping released %p\n", This);
++            /* it holds nothing: imported libraries are loaded again when used */
++            LIST_FOR_EACH_ENTRY(implib, &This->implib_list, TLBImpLib, entry)
++            {
++                if (!implib->pImpTypeLib) continue;
++                ITypeLib2_Release(&implib->pImpTypeLib->ITypeLib2_iface);
++                implib->pImpTypeLib = NULL;
++            }
++            This->released = TRUE;
++            list_add_head(&released_tlbs, &This->released_entry);
++            if (++released_count > MAX_RELEASED_TLBS)
++                ITypeLibImpl_Destroy(LIST_ENTRY(list_tail(&released_tlbs), ITypeLibImpl, released_entry));
++        }
++        else
++            ITypeLibImpl_Destroy(This);
+     }
+ 
+     LeaveCriticalSection(&cache_section);
+@@ -7954,6 +8038,8 @@ static HRESULT WINAPI ITypeInfo_fnGetRefTypeInfo(
+                 EnterCriticalSection(&cache_section);
+                 LIST_FOR_EACH_ENTRY(entry, &tlb_cache, ITypeLibImpl, entry)
+                 {
++                    if (entry->released && !released_tlb_valid(entry))
++                        continue;
+                     if (entry->guid
+                         && IsEqualIID(&entry->guid->guid, TLB_get_guid_null(ref_type->pImpTLInfo->guid))
+                         && entry->ver_major == ref_type->pImpTLInfo->wVersionMajor

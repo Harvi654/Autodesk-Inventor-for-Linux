@@ -38,6 +38,21 @@ if [ ${#DO[@]} -eq 0 ]; then                       # the classic way
 fi
 [ -z "${DO[data]:-}" ] || [ "$YES" -eq 1 ] || die "--data deletes your own Inventor files - it needs --yes as well"
 
+# Which Inventor: the one given (INV_YEAR, INV_PREFIX, config.env), else the
+# only one installed; with several it asks (only --prefix and --desktop
+# depend on the release). Without this, common.sh assumes
+# 2026 - with only Inventor 2027 installed nothing was removed, with both
+# installed 2026 was removed without asking.
+if [ "$INV_YEAR_GIVEN" -eq 0 ] && [ -z "$INV_CONFIG_PREFIX" ] && [ -n "${DO[prefix]:-}${DO[desktop]:-}" ]; then
+    mapfile -t _installs < <(inventor_installs)
+    case ${#_installs[@]} in
+        0) ;;
+        1) INV_YEAR="${_installs[0]%%$'\t'*}" INV_PREFIX="${_installs[0]#*$'\t'}" ;;
+        *) die "several Inventor releases are installed ($(printf '%s\n' "${_installs[@]}" | cut -f1 | paste -sd' ' -)) - say which one: export INV_YEAR=<year>, then run this again" ;;
+    esac
+fi
+export INV_YEAR INV_PREFIX   # install-desktop-integration.sh --uninstall uses them too
+
 pgrep -x wineserver >/dev/null && die "close Inventor and all Wine programs first (or: wineserver -k)"
 
 # never remove something that is not ours (an empty variable, /, $HOME itself)
@@ -80,6 +95,8 @@ if [ -n "${DO[prefix]:-}" ] && [ -d "$INV_PREFIX" ]; then
     else
         info "prefix kept"
     fi
+elif [ -n "${DO[prefix]:-}" ]; then
+    info "no Wine prefix with Inventor found ($INV_PREFIX) - nothing to delete"
 fi
 
 CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/inventor-on-linux"
