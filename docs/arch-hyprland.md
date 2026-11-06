@@ -1069,3 +1069,31 @@ MCP Server package (`%ALLUSERSPROFILE%`), `uninstall.sh` always assuming
 2026, the Assistant panel (off by default), two GUI details. The Arch machine's
 2027 prefix was updated to 2027.2 (build 334). Details: section "Inventor
 2027: unpacked image without a year, the 2027.2 Update (issue #6)".
+
+**2026-11-06 - Inventor 2027 on Ubuntu 26.04.1 LTS (VM, llvmpipe), with the
+SOLIDWORKS project's MSI test runtime:** fresh install with
+`install.sh ~/Downloads/Inventor2027 --prefix ~/.wine-inventor2027-msitest
+--skip-wine --no-desktop --no-content`, Wine = the SOLIDWORKS profile -8 with
+the 18 MSI candidates (59 patches, msi.dll is shared with Inventor). All 27
+ODIS steps exit 0; the 2027.2 update installs all 19 steps. Inventor installs
+only three MSI packages (`adsk-hive-host.msi`, `InvPrivate.msi`,
+`InvPrivateLoc.msi`); the 2027.2 update is not an MSP but a new ODIS image
+(ADIX/EXE plus `adsk-hive-host.msi` 1.4.1.2). File list of
+`Program Files/Autodesk` against the Arch install (2027.1): 5238 files in
+both; the 5 + 14 differences are Assistant/MCP and `Microsoft.Extensions.*`
+DLLs that differ between 2027.1 and 2027.2, `vkd3d-proton.cache` and the home
+path inside `uninstall.dat`. Sign-in, Open, New part, sketch, Extrude,
+assembly, save and double-click on a `.ipt` in Nautilus work.
+Found on the way, to fix in the scripts:
+- `--no-desktop` also skips the `adskidmgr://` handler, so the browser
+  sign-in cannot reach Inventor; a test prefix needs
+  `install-desktop-integration.sh` (or the handler alone).
+- `install.sh` hides 7-Zip's error and reports a damaged download as "not an
+  Inventor download" (here: a copy broken on the way into the VM).
+- The SOLIDWORKS test runtime has no wine-mono inside, so Wine asked to
+  download it (the project's own Wine release bundles it).
+- The update runs Autodesk's `dotNetFx48_Full_x86_x64.exe`, which exits 0 but
+  installs nothing while wine-mono reports .NET 4.8 (no `clr.dll`, builtin
+  `mscoree`).
+- Cosmetic: Inventor files show the Inventor app icon in the file manager,
+  not their type icon or a preview.
