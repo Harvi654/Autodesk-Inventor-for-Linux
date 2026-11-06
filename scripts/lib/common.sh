@@ -96,6 +96,7 @@ detect_distro() {
         *" arch "*) echo arch ;;
         *" debian "*|*" ubuntu "*) echo debian ;;
         *" fedora "*|*" rhel "*) echo fedora ;;
+        *" opensuse "*) echo openSUSE ;;
         *) command -v pacman >/dev/null && echo arch || echo unknown ;;
     esac
 }
