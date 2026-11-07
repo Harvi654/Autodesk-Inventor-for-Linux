@@ -93,6 +93,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
+| Vault Basic 2027 client (Vault Explorer, Vault add-in in Inventor) | ✅ | first tests with Inventor 2027: open from Vault, check out, check in; installed into the Inventor prefix, started with `INV_APP=vault` - [details](docs/arch-hyprland.md#vault-basic-2027-client-vault-explorer--inventors-vault-add-in) |
 | 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
 | GPU ray tracing | ❌ | not yet: tested on an RX 6400 (RDNA 2) with Inventor 2027 - vkd3d-proton reports DXR 1.1, but Inventor still says the card is not supported and never loads its ray tracer; CPU ray tracing works |
