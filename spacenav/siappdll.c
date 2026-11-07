@@ -31,8 +31,12 @@
  *                     (see v3dk_names; for applications that read them)
  *   SIAPPDLL_SCALE    motion scale in percent (default 100)
  *
- * Interface facts (function names, struct layouts, constants) follow the
- * public SIAPP API as other open implementations use it; the code is new.
+ * Only interface facts (exported names and signatures, struct layouts,
+ * constant and event values) were taken, for ABI compatibility, from the
+ * headers of SpaceNavigatorEmulator (GPLv3, github.com/lukenuttall/
+ * SpaceNavigatorEmulator, siappdll/src/sidef.h, siappdll.h, syncapi.h).
+ * No code or header text was copied; no 3Dconnexion or Autodesk binaries
+ * were examined.
  *
  * SPDX-License-Identifier: MIT
  */
@@ -1349,13 +1353,24 @@ __declspec(dllexport) int SPWAPI SiDispatch(void *hdl, void *data, SiSpwEvent *e
 
 __declspec(dllexport) const char * SPWAPI SpwErrorString(enum spw_ret err)
 {
-    static const char * const strings[] =
+    switch (err)
     {
-        "no error", "function failed", "invalid handle", "invalid device ID", "invalid argument",
-        "is an event", "skip this event", "not an event", "spacenavd relay not running",
-        "no response", "unsupported", "not initialized", "wrong driver", "internal error"
-    };
-    return (unsigned)err < sizeof(strings) / sizeof(strings[0]) ? strings[err] : "unknown error";
+    case SPW_NO_ERROR:      return "ok";
+    case SPW_ERROR:         return "call failed";
+    case SI_BAD_HANDLE:     return "handle not from SiOpen";
+    case SI_BAD_ID:         return "unknown device";
+    case SI_BAD_VALUE:      return "bad parameter";
+    case SI_IS_EVENT:       return "message is a 3D mouse event";
+    case SI_SKIP_EVENT:     return "message is the library's own, ignore it";
+    case SI_NOT_EVENT:      return "message is not a 3D mouse event";
+    case SI_NO_DRIVER:      return "spacenavd relay on 127.0.0.1 not listening";
+    case SI_NO_RESPONSE:    return "spacenavd did not answer";
+    case SI_UNSUPPORTED:    return "not implemented by this library";
+    case SI_UNINITIALIZED:  return "SiInitialize was not called";
+    case SI_WRONG_DRIVER:   return "driver version not supported";
+    case SI_INTERNAL_ERROR: return "bug in siappdll";
+    }
+    return "unknown error";
 }
 
 /* Calls the library accepts and ignores. Logged, so a trace shows what an
