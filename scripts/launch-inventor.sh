@@ -38,7 +38,14 @@ case "$INV_APP" in
         # from its own folder.
         APP_DIR="$(ls -d "$P_C/Program Files/Autodesk/Vault Client "*/Explorer 2>/dev/null | tail -1)"
         APP_EXE=Connectivity.Vault.exe
-        [ -f "$APP_DIR/$APP_EXE" ] || { err "Vault client not installed (install-from-image.py --app vbc)"; exit 1; } ;;
+        [ -f "$APP_DIR/$APP_EXE" ] || { err "Vault client not installed (install-from-image.py --app vbc)"; exit 1; }
+        # Vault runs DPI-unaware, so above 96 DPI Wine scales its windows; the
+        # CefSharp browser (start page) is a child window of
+        # another process and is drawn unscaled: misplaced, with a black hole
+        # where it belongs. System DPI aware, Vault scales itself.
+        IFEO='HKLM\Software\Microsoft\Windows NT\CurrentVersion\Image File Execution Options'
+        grep -qi '^\[Software\\\\Microsoft\\\\Windows NT\\\\CurrentVersion\\\\Image File Execution Options\\\\Connectivity.Vault.exe\]' "$WINEPREFIX/system.reg" ||
+            wine_reg_add "$IFEO\Connectivity.Vault.exe" /v dpiAwareness /t REG_DWORD /d 1 ;;
     *) err "INV_APP must be inventor or vault"; exit 1 ;;
 esac
 
