@@ -167,13 +167,14 @@ rm -f "$ICONREG"
 if [ -S /run/spnav.sock ] && [ -f "$P_C/windows/system32/siappdll.dll" ] && command -v socat >/dev/null; then
     socat "TCP-LISTEN:${SIAPPDLL_PORT:-17462},bind=127.0.0.1,reuseaddr,fork" UNIX-CONNECT:/run/spnav.sock 2>/dev/null &
     SPNAV_RELAY=$!
-    # its button file lives on the Linux side, linked into the prefix
-    # (%APPDATA%\inventor-on-linux\spacemouse.ini), so edits apply while it runs
+    # its button file stays on the Linux side, read through Wine's \\?\unix
+    # path: no drive or link needed (isolation would turn a link into an empty
+    # folder), and edits apply while Inventor runs
     SPNAV_CFG="${XDG_CONFIG_HOME:-$HOME/.config}/inventor-on-linux"
-    SPNAV_LINK="$P_C/users/$USER/AppData/Roaming/inventor-on-linux"
     mkdir -p "$SPNAV_CFG"
     [ -e "$SPNAV_CFG/spacemouse.ini" ] || cp "$SCRIPTS_DIR/../spacenav/spacemouse.ini" "$SPNAV_CFG/"
-    [ -e "$SPNAV_LINK" ] || ln -s "$SPNAV_CFG" "$SPNAV_LINK"
+    SIAPPDLL_CONFIG="\\\\?\\unix$(realpath "$SPNAV_CFG/spacemouse.ini" | tr / '\\')"
+    export SIAPPDLL_CONFIG
 fi
 
 info "[2/4] starting Identity Manager"

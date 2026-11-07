@@ -25,7 +25,8 @@
  * Environment (Windows side; Wine passes the Linux environment through):
  *   SIAPPDLL_PORT     relay port on 127.0.0.1 (default 17462)
  *   SIAPPDLL_LOG      write a log to this Windows path
- *   SIAPPDLL_CONFIG   button file (default %APPDATA%\inventor-on-linux\spacemouse.ini)
+ *   SIAPPDLL_CONFIG   button file (default %APPDATA%\inventor-on-linux\spacemouse.ini;
+ *                     the launcher sets it to ~/.config/... as a \\?\unix\ path)
  *   SIAPPDLL_BUTTONS  V3DK codes in the button events, e.g. "0:fit,1:menu"
  *                     (see v3dk_names; for applications that read them)
  *   SIAPPDLL_SCALE    motion scale in percent (default 100)
@@ -110,6 +111,7 @@ static SOCKET sock = INVALID_SOCKET;
 static int initialized, opened, connected;
 static ULONG buttons, button_map[MAX_BUTTONS];
 static int scale = 100;
+static volatile LONG rotation_locked;   /* "lockrot": only pan and zoom */
 
 static SiSpwEvent queue[QUEUE_SIZE];
 static int q_head, q_tail;
@@ -187,12 +189,12 @@ static void handle_packet(const int *p)
     switch (p[0])
     {
     case 0: /* motion */
-        for (i = 0; i < 6; i++) if (p[i + 1]) zero = 0;
+        for (i = 0; i < 6; i++) if (p[i + 1] && !(i >= 3 && rotation_locked)) zero = 0;
         EnterCriticalSection(&cs);
         post = !motion_pending;
         memset(&motion, 0, sizeof(motion));
         motion.type = zero ? SI_ZERO_EVENT : SI_MOTION_EVENT;
-        for (i = 0; i < 6; i++) motion.u.spw.motion[i] = p[i + 1] * scale / 100;
+        for (i = 0; i < 6; i++) motion.u.spw.motion[i] = (i >= 3 && rotation_locked) ? 0 : p[i + 1] * scale / 100;
         motion.u.spw.period = p[7];
         motion.u.spw.button.current = motion.u.spw.button.last = buttons;
         motion_pending = 1;
@@ -487,6 +489,135 @@ static void set_view(const char *name)
     IDispatch_Release(view);
 }
 
+/* --- camera: saved views (V1-V3) and rotating the view by 90 degrees */
+
+static IDispatch *saved_view[10][3];   /* Eye, Target, UpVector of each slot */
+
+static double get_double(IDispatch *obj, const WCHAR *name)
+{
+    VARIANT v;
+    double d = 0;
+
+    if (SUCCEEDED(invoke(obj, name, DISPATCH_PROPERTYGET, &v, 0, NULL)) &&
+        SUCCEEDED(VariantChangeType(&v, &v, 0, VT_R8))) d = V_R8(&v);
+    VariantClear(&v);
+    return d;
+}
+
+/* Camera.Eye = point: a put with an object, or a putref where only that exists */
+static HRESULT put_object(IDispatch *obj, const WCHAR *name, IDispatch *value)
+{
+    VARIANT arg;
+    HRESULT hr;
+
+    V_VT(&arg) = VT_DISPATCH;
+    V_DISPATCH(&arg) = value;
+    if (FAILED(hr = invoke(obj, name, DISPATCH_PROPERTYPUT, NULL, 1, &arg)))
+        hr = invoke(obj, name, DISPATCH_PROPERTYPUTREF, NULL, 1, &arg);
+    return hr;
+}
+
+static IDispatch *active_camera(IDispatch **view)
+{
+    IDispatch *camera;
+
+    if (!(*view = active_view())) return NULL;
+    if (!(camera = get_object(*view, L"Camera", 0, NULL)))
+    {
+        IDispatch_Release(*view);
+        *view = NULL;
+    }
+    return camera;
+}
+
+static void save_view(int slot)
+{
+    static const WCHAR *names[3] = { L"Eye", L"Target", L"UpVector" };
+    IDispatch *view, *camera;
+    int i;
+
+    if (slot < 0 || slot > 9 || !(camera = active_camera(&view))) return;
+    for (i = 0; i < 3; i++)
+    {
+        if (saved_view[slot][i]) IDispatch_Release(saved_view[slot][i]);
+        saved_view[slot][i] = get_object(camera, names[i], 0, NULL);
+    }
+    trace("view %d saved\n", slot);
+    IDispatch_Release(camera);
+    IDispatch_Release(view);
+}
+
+static void restore_view(int slot)
+{
+    static const WCHAR *names[3] = { L"Eye", L"Target", L"UpVector" };
+    IDispatch *view, *camera;
+    int i;
+
+    if (slot < 0 || slot > 9 || !saved_view[slot][0])
+    {
+        trace("view %d: nothing saved\n", slot);
+        return;
+    }
+    if (!(camera = active_camera(&view))) return;
+    for (i = 0; i < 3; i++) put_object(camera, names[i], saved_view[slot][i]);
+    invoke(camera, L"Apply", DISPATCH_METHOD, NULL, 0, NULL);
+    IDispatch_Release(camera);
+    IDispatch_Release(view);
+}
+
+/* turn the picture by 90 degrees about the viewing direction: the up vector
+ * becomes (direction x up), or (up x direction) for -90 */
+static void roll_view(int degrees)
+{
+    IDispatch *view, *camera, *eye, *target, *up, *geometry, *new_up;
+    double d[3], u[3], r[3], len;
+    VARIANT args[3];
+
+    if (!(camera = active_camera(&view))) return;
+    eye = get_object(camera, L"Eye", 0, NULL);
+    target = get_object(camera, L"Target", 0, NULL);
+    up = get_object(camera, L"UpVector", 0, NULL);
+    geometry = get_object(inventor(), L"TransientGeometry", 0, NULL);
+    if (eye && target && up && geometry)
+    {
+        d[0] = get_double(target, L"X") - get_double(eye, L"X");
+        d[1] = get_double(target, L"Y") - get_double(eye, L"Y");
+        d[2] = get_double(target, L"Z") - get_double(eye, L"Z");
+        len = sqrt(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+        u[0] = get_double(up, L"X");
+        u[1] = get_double(up, L"Y");
+        u[2] = get_double(up, L"Z");
+        if (len > 0)
+        {
+            int i;
+
+            for (i = 0; i < 3; i++) d[i] /= len;
+            r[0] = d[1] * u[2] - d[2] * u[1];
+            r[1] = d[2] * u[0] - d[0] * u[2];
+            r[2] = d[0] * u[1] - d[1] * u[0];
+            if (degrees < 0) for (i = 0; i < 3; i++) r[i] = -r[i];
+            /* arguments in reverse order */
+            for (i = 0; i < 3; i++)
+            {
+                V_VT(&args[2 - i]) = VT_R8;
+                V_R8(&args[2 - i]) = r[i];
+            }
+            if ((new_up = get_object(geometry, L"CreateUnitVector", 3, args)))
+            {
+                if (SUCCEEDED(put_object(camera, L"UpVector", new_up)))
+                    invoke(camera, L"Apply", DISPATCH_METHOD, NULL, 0, NULL);
+                IDispatch_Release(new_up);
+            }
+        }
+    }
+    if (eye) IDispatch_Release(eye);
+    if (target) IDispatch_Release(target);
+    if (up) IDispatch_Release(up);
+    if (geometry) IDispatch_Release(geometry);
+    IDispatch_Release(camera);
+    IDispatch_Release(view);
+}
+
 static IDispatch *control_definitions(void)
 {
     IDispatch *manager = get_object(inventor(), L"CommandManager", 0, NULL), *defs;
@@ -558,7 +689,8 @@ static void dump_commands(void)
 
 /* --- keys: "ctrl+z", "esc", "f6", "shift+tab" */
 
-static void send_keys(const char *keys)
+/* virtual keys of "ctrl+z" into vks (up to 8), their number or 0 */
+static int parse_keys(const char *keys, WORD *vks)
 {
     static const struct { const char *name; WORD vk; } names[] =
     {
@@ -568,10 +700,8 @@ static void send_keys(const char *keys)
         { "home", VK_HOME }, { "end", VK_END }, { "pgup", VK_PRIOR }, { "pgdn", VK_NEXT },
         { "left", VK_LEFT }, { "right", VK_RIGHT }, { "up", VK_UP }, { "down", VK_DOWN },
     };
-    INPUT in[16];
-    WORD vks[8];
     char buf[64], *tok, *ctx = NULL;
-    int n = 0, i;
+    int n = 0;
     unsigned int j;
 
     snprintf(buf, sizeof(buf), "%s", keys);
@@ -596,10 +726,35 @@ static void send_keys(const char *keys)
         if (!vk)
         {
             trace("unknown key \"%s\"\n", tok);
-            return;
+            return 0;
         }
         vks[n++] = vk;
     }
+    return n;
+}
+
+/* down (press) or up (release) only, for keys held with a button */
+static void key_events(const WORD *vks, int n, BOOL up)
+{
+    INPUT in[8];
+    int i;
+
+    memset(in, 0, sizeof(in));
+    for (i = 0; i < n; i++)
+    {
+        in[i].type = INPUT_KEYBOARD;
+        in[i].ki.wVk = vks[up ? n - 1 - i : i];
+        in[i].ki.dwFlags = up ? KEYEVENTF_KEYUP : 0;
+    }
+    SendInput(n, in, sizeof(INPUT));
+}
+
+static void send_keys(const char *keys)
+{
+    INPUT in[16];
+    WORD vks[8];
+    int n = parse_keys(keys, vks), i;
+
     memset(in, 0, sizeof(in));
     for (i = 0; i < n; i++)
     {
@@ -849,6 +1004,16 @@ static void run_action(const char *action)
     else if (!_stricmp(a, "fit")) view_call(L"Fit");
     else if (!_stricmp(a, "home")) view_call(L"GoHome");
     else if (!_stricmp(a, "dumpcmds")) dump_commands();
+    else if (!_strnicmp(a, "saveview:", 9)) save_view(atoi(a + 9));
+    else if (!_strnicmp(a, "restoreview:", 12)) restore_view(atoi(a + 12));
+    else if (!_strnicmp(a, "roll:", 5)) roll_view(atoi(a + 5));
+    else if (!_stricmp(a, "cw")) roll_view(90);
+    else if (!_stricmp(a, "ccw")) roll_view(-90);
+    else if (!_stricmp(a, "lockrot"))
+    {
+        rotation_locked = !rotation_locked;
+        trace("rotation %s\n", rotation_locked ? "locked" : "unlocked");
+    }
     else
     {
         /* the V3DK names: "front", "top", ... */
@@ -863,9 +1028,46 @@ static void run_action(const char *action)
     }
 }
 
+/* "hold:ctrl": the keys stay down while the button is, like 3DxWare's
+ * Ctrl/Alt/Shift buttons (Ctrl+click, Shift+click work) */
+static struct { WORD vks[8]; int n; } held[MAX_BUTTONS];
+
+/* "<n>.long = action": what a button does when held (default 500 ms, [settings]
+ * long_ms); its short action then runs on release instead of on press */
+#define LONG_TIMER 0x100
+static char short_action[MAX_BUTTONS][ACTION_SIZE], long_action[MAX_BUTTONS][ACTION_SIZE];
+
+static void button_long(int b)
+{
+    char action[ACTION_SIZE];
+
+    KillTimer(action_hwnd, LONG_TIMER + b);
+    short_action[b][0] = 0;
+    strcpy(action, long_action[b]);
+    trace("button %d long\n", b);
+    run_action(action);
+}
+
+static void button_released(int b)
+{
+    if (b < 0 || b >= MAX_BUTTONS) return;
+    if (short_action[b][0])
+    {
+        char action[ACTION_SIZE];
+
+        KillTimer(action_hwnd, LONG_TIMER + b);
+        strcpy(action, short_action[b]);
+        short_action[b][0] = 0;
+        run_action(action);
+    }
+    if (!held[b].n) return;
+    key_events(held[b].vks, held[b].n, TRUE);
+    held[b].n = 0;
+}
+
 static void button_pressed(int b)
 {
-    char key[8], action[ACTION_SIZE];
+    char key[16], action[ACTION_SIZE], *a;
 
     /* the menu button again: take the item under the pointer, or close */
     if (menu_hwnd)
@@ -875,15 +1077,41 @@ static void button_pressed(int b)
     }
     snprintf(key, sizeof(key), "%d", b);
     GetPrivateProfileStringA("buttons", key, default_button(b), action, sizeof(action), config_path);
-    run_action(action);
+    a = trim(action);
+    snprintf(key, sizeof(key), "%d.long", b);
+    if (b >= 0 && b < MAX_BUTTONS &&
+        GetPrivateProfileStringA("buttons", key, "", long_action[b], sizeof(long_action[b]), config_path))
+    {
+        snprintf(short_action[b], sizeof(short_action[b]), "%s", a);
+        if (!short_action[b][0]) strcpy(short_action[b], "none");
+        SetTimer(action_hwnd, LONG_TIMER + b, GetPrivateProfileIntA("settings", "long_ms", 500, config_path), NULL);
+        return;
+    }
+    if (!_strnicmp(a, "hold:", 5))
+    {
+        if (b < 0 || b >= MAX_BUTTONS) return;
+        button_released(b);
+        if ((held[b].n = parse_keys(a + 5, held[b].vks))) key_events(held[b].vks, held[b].n, FALSE);
+        trace("hold \"%s\"\n", a + 5);
+        return;
+    }
+    run_action(a);
 }
 
 static LRESULT CALLBACK action_proc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
 {
     switch (msg)
     {
+    case WM_TIMER:
+        if (wparam >= LONG_TIMER && wparam < LONG_TIMER + MAX_BUTTONS)
+        {
+            button_long((int)(wparam - LONG_TIMER));
+            return 0;
+        }
+        break;
     case WM_SPNAV_BUTTON:
         if (lparam) button_pressed((int)wparam);
+        else button_released((int)wparam);
         return 0;
     case WM_SPNAV_RUN:
     {
