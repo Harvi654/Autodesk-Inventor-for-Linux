@@ -120,6 +120,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
+| 3D mouse (SpaceMouse) | ✅ | through spacenavd: navigation, buttons, radial menu (Wireless and Enterprise tested); `scripts/install-spacemouse.sh` - [details](docs/arch-hyprland.md#3d-mouse-spacemouse-through-spacenavd) |
 | 3D PDF (Anark) | ✅ | the installer puts .NET Framework 4.0 (Microsoft's, pinned) and the install image's 4.8 into the prefix and turns 3D PDF on; with winum's typelib cache fix a part exports in about 15 s, an assembly in about 20 s. Publish confirmed on a clean Inventor 2027.2 installation (2026-11-11). An installation from before 2026-11-11 has no .NET 4.8: [reinstall](#3d-pdf-and-property-mapping-in-an-older-installation). Off without .NET 4.8 (Publish crashes on wine-mono). Needs testing by others. [Details](docs/arch-hyprland.md#net-framework-48-in-the-prefix-installer-step) |
 | Weldments | 🧪 | a weld is created; not verified in depth |
 | Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |

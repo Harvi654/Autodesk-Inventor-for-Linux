@@ -39,7 +39,7 @@ fi
 
 hdr "Packages"
 if grep -qE '^\[multilib\]' /etc/pacman.conf 2>/dev/null; then ok "multilib enabled"; else warn "[multilib] not enabled in /etc/pacman.conf"; fi
-for p in wine wine-staging wine-mono wine-gecko winetricks hivex rsync imagemagick mingw-w64-gcc xdg-utils vulkan-icd-loader lib32-vulkan-icd-loader; do
+for p in wine wine-staging wine-mono wine-gecko winetricks hivex rsync imagemagick mingw-w64-gcc xdg-utils vulkan-icd-loader lib32-vulkan-icd-loader spacenavd socat; do
     v="$(pacman -Q "$p" 2>/dev/null)" && info "$v" || info "($p not installed)"
 done
 
