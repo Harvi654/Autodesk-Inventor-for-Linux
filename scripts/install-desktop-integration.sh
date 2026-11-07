@@ -5,7 +5,8 @@
 # Usage: bash scripts/install-desktop-integration.sh [--uninstall]
 #
 # One entry per Inventor release ("Autodesk Inventor 2026", "... 2027"), each
-# starting its own prefix. The sign-in handler and the file types are shared:
+# starting its own prefix, plus "Autodesk Vault <year>" when the Vault client
+# is installed there. The sign-in handler and the file types are shared:
 # .ipt/.iam/... open in the newest installed release, the others are offered
 # under "Open with". --uninstall removes this release's entry; the shared
 # parts go with the last one.
@@ -37,8 +38,10 @@ other_entries() {
     return 0
 }
 
+VNAME="autodesk-vault-$INV_YEAR"
+
 if [ "${1:-}" = "--uninstall" ]; then
-    rm -f "$APPS/$NAME.desktop" "$ICONS/$NAME.png" "$ICONS/$NAME"-*.png
+    rm -f "$APPS/$NAME.desktop" "$ICONS/$NAME.png" "$ICONS/$NAME"-*.png "$APPS/$VNAME.desktop" "$ICONS/$VNAME.png"
     if [ -z "$(other_entries)" ]; then
         rm -f "$APPS/adskidmgr-handler.desktop" "$BIN/adskidmgr-callback" "$BIN/launch-inventor" "$MIME_XML"
         ok "removed (Inventor $INV_YEAR, and the shared sign-in handler and file types)"
@@ -149,6 +152,30 @@ Categories=Graphics;Engineering;3DGraphics;
 StartupWMClass=inventor.exe
 Keywords=CAD;3D;Modeling;Engineering;Inventor;Autodesk;
 EOF
+# Vault Explorer, when the Vault client is installed in this prefix
+# (install-from-image.py --app vbc): same launcher with INV_APP=vault
+VAULT_EXE="$(ls -d "$P_C/Program Files/Autodesk/Vault Client "*/Explorer/Connectivity.Vault.exe 2>/dev/null | tail -1)"
+if [ -n "$VAULT_EXE" ]; then
+    python3 -I "$COMMON_DIR/exe-icon.py" "$VAULT_EXE" "$ICONS/$VNAME.png" >/dev/null 2>&1 \
+        || warn "Vault icon extraction failed"
+    gtk-update-icon-cache -q -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" 2>/dev/null || true
+    cat > "$APPS/$VNAME.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Autodesk Vault $INV_YEAR
+GenericName=Data Management
+Comment=Autodesk Vault Explorer $INV_YEAR (Wine, Inventor $INV_YEAR prefix)
+Exec=${EXEC/#env /env INV_APP=vault }
+Icon=$VNAME
+Terminal=false
+Categories=Graphics;Engineering;
+StartupWMClass=connectivity.vault.exe
+Keywords=CAD;PDM;Vault;Autodesk;
+EOF
+    ok "launcher entry: $APPS/$VNAME.desktop"
+else
+    rm -f "$APPS/$VNAME.desktop" "$ICONS/$VNAME.png"
+fi
 update-desktop-database "$APPS" 2>/dev/null || true
 # the file types open in the newest release; an older one is only offered
 NEWEST="$( { other_entries; echo "$APPS/$NAME.desktop"; } | sort | tail -1)"

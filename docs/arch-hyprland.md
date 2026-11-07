@@ -182,7 +182,8 @@ stricter than needed and say different things - still to be aligned.
   step 1 should say so;
 - in the VM the New dialog showed generic icons without previews, on the
   Arch machine it shows Inventor's icons and previews - not looked into yet;
-- Vault 2026 client/add-in: not tried by anyone yet.
+- Vault 2026 client/add-in: not tried by anyone yet (Vault 2027: see
+  [Vault Basic 2027 client](#vault-basic-2027-client-vault-explorer--inventors-vault-add-in)).
 
 **Wine bug report:** none - these are installer bugs of this project, not Wine.
 
@@ -569,6 +570,73 @@ bash scripts/build-wine-dll.sh kernelbase --install --hook
 ```
 
 Confirmed: Place from Content Center lists and places parts (ISO screws).
+
+## Vault Basic 2027 client (Vault Explorer + Inventor's Vault add-in)
+
+Vault is a client of a Vault server (here a Vault Basic 2027 server on
+Windows in the same network); the server itself is not part of this project.
+The client is the Vault Explorer and the Vault add-in inside Inventor (Vault
+tab: check out, check in, Get, open from Vault).
+
+**Same prefix as Inventor, on purpose.** This breaks the rule "one Autodesk
+program per prefix": the Vault client install brings the Inventor add-in, and
+the add-in has to sit next to Inventor, as on Windows. Vault Explorer also
+starts Inventor when a file is opened from it.
+
+**Install:** the Vault Basic Client 2027 download is an ODIS image like
+Inventor's, with `manifest/app.vbc.xml`:
+
+```bash
+python3 scripts/install-from-image.py <unpacked Vault Basic Client image> \
+    --app vbc --prefix ~/.wine-inventor2027 --dry-run    # shows the steps
+python3 scripts/install-from-image.py <unpacked Vault Basic Client image> \
+    --app vbc --prefix ~/.wine-inventor2027 --only <the Vault client steps>
+```
+
+Left out with `--only`: .NET Framework 4.8 with its language packs (Vault 2027
+is a .NET 10 program, and .NET 10 is in the prefix from Inventor already) and
+DWG TrueView. Done on a btrfs reflink copy of the working prefix first
+(`cp -a --reflink=always`), which costs no space and keeps the original.
+
+**Start:** `INV_APP=vault bash scripts/launch-inventor.sh` (with
+`INV_PREFIX=...` for another prefix). The launcher starts Identity Manager
+and the licensing service as for Inventor - Inventor opened from Vault needs
+both - and waits for an Inventor that Vault opened before it shuts the prefix
+down. Started while Inventor or Vault already runs, it only starts Vault
+Explorer. `install-desktop-integration.sh` adds an "Autodesk Vault <year>"
+menu entry when the Vault client is in the prefix.
+
+| Problem | Cause | Fix |
+|---|---|---|
+| Vault Explorer does not start: `DirectoryNotFoundException` for a path `...\unix\home\...` | Vault's .NET host uses the working directory as content root; started from a Linux folder, which has no drive letter with isolation (no `Z:`), the working directory becomes a `\\?\unix\...` path it cannot use | the launcher starts it from its own folder (`Vault Client <year>\Explorer`) |
+| Black area over the right pane, start page drawn shifted to the left, login dialog with doubled labels (scaling above 96 DPI) | `Connectivity.Vault.exe` is DPI unaware, so Wine scales its window surface; the start page is CefSharp, a child window owned by another process, which draws unscaled straight to the X window - in the wrong place, and the place it belongs stays black | `dpiAwareness=1` (system aware) under `Image File Execution Options\Connectivity.Vault.exe`, which Wine's `user32` reads at process start: Vault scales itself, nothing is scaled by Wine (the launcher sets it once) |
+| Dark-theme menus invisible (opened, but behind a shadow) under KWin | winex11 keeps a window managed although it lost its caption before it was shown | separate draft patch, `patches/drafts/winex11-unmanaged-before-map.patch` |
+
+How the DPI cause was found: at 96 DPI (`wine reg add 'HKCU\Control
+Panel\Desktop' /v LogPixels /t REG_DWORD /d 96 /f`) the black area, the
+shifted start page and the doubled labels were gone, so it was the scaling;
+the shifted page belongs to `CefSharp.BrowserSubprocess.exe`, which runs as
+its own process. Probably the same for any DPI-unaware program that embeds a
+browser from another process.
+
+**For a Wine bug report:** a DPI-unaware window with a child window owned by
+another process: Wine scales the parent's surface but not the cross-process
+child, which `X11DRV_GetDC` draws to the X drawable unscaled. A synthetic test
+needs two processes (a DPI-unaware parent, a child created with `SetParent`
+from another process that paints a known pattern).
+
+Confirmed with Vault Basic 2027 against a Vault Basic 2027 server: sign-in,
+Vault Explorer (folders, files, preview, history), the start page, Inventor's
+Vault tab (open from Vault, check out, change, check in) and a project
+(`.ipj`) of type Vault with its workspace in `D:`.
+
+Still open: Content Center libraries from the Vault server (the project's
+libraries point at the server name `localhost`), Vault 2026 (not tried).
+
+**Level:** launcher changes, not Wine patches. `bash -n`, the unit tests, the
+menu entry with a fake prefix in a temporary `HOME` (install and
+`--uninstall`, with and without `Explorer\Connectivity.Vault.exe`), and the
+whole of the above on Arch (CachyOS) + KDE Plasma (Xwayland) at 144 DPI.
 
 ## Frame Generator: Insert Frame creates nothing
 
@@ -1112,3 +1180,11 @@ Found on the way, to fix in the scripts:
   `mscoree`).
 - Cosmetic: Inventor files show the Inventor app icon in the file manager,
   not their type icon or a preview.
+
+**2026-11-07 - Vault Basic 2027 client (Inventor 2027, Arch/CachyOS + KDE
+Plasma, Xwayland, 144 DPI, NVIDIA):** installed into the Inventor prefix from
+the Vault Basic Client image (`--app vbc`, without .NET 4.8 and DWG TrueView);
+Vault Explorer starts with `INV_APP=vault` and from its menu entry, the start
+page and the login dialog are drawn correctly with `dpiAwareness=1`, and
+Inventor's Vault add-in opens, checks out and checks in files. See
+[Vault Basic 2027 client](#vault-basic-2027-client-vault-explorer--inventors-vault-add-in).
