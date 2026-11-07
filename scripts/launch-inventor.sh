@@ -90,7 +90,11 @@ fi
 ACTIVE_PREFIX_FILE="${XDG_RUNTIME_DIR:-/tmp}/inventor-on-linux.prefix"
 echo "$WINEPREFIX" > "$ACTIVE_PREFIX_FILE"
 
-cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; rm -f "$ACTIVE_PREFIX_FILE"; }
+SPNAV_RELAY=""
+cleanup() {
+    info "shutting down Wine prefix"; wineserver -k 2>/dev/null; rm -f "$ACTIVE_PREFIX_FILE"
+    [ -z "$SPNAV_RELAY" ] || kill "$SPNAV_RELAY" 2>/dev/null
+}
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
@@ -155,6 +159,15 @@ if [ "${N:-0}" -gt 0 ] 2>/dev/null; then
     import_reg_file "$ICONREG" && info "    $N file type entries updated"
 fi
 rm -f "$ICONREG"
+
+# 3D mouse: Inventor navigates with a 3D mouse through siappdll.dll; ours
+# (spacenav/siappdll.c) reads spacenavd. Windows programs can't open its UNIX
+# socket (no AF_UNIX in Wine's ws2_32), so relay it to 127.0.0.1 while the
+# prefix runs. A relay that is already listening is fine too.
+if [ -S /run/spnav.sock ] && [ -f "$P_C/windows/system32/siappdll.dll" ] && command -v socat >/dev/null; then
+    socat "TCP-LISTEN:${SIAPPDLL_PORT:-17462},bind=127.0.0.1,reuseaddr,fork" UNIX-CONNECT:/run/spnav.sock 2>/dev/null &
+    SPNAV_RELAY=$!
+fi
 
 info "[2/4] starting Identity Manager"
 # Only look at log lines written after this point, not a previous session's "ready".
