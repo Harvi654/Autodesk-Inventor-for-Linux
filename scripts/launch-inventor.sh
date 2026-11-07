@@ -72,10 +72,27 @@ for a in "$@"; do
 done
 [ $# -eq 0 ] || [ ${#WIN_ARGS[@]} -gt 0 ] || exit 1
 
-if [ "$INV_APP" = vault ] && pgrep -if '(^|[\\/])(inventor|connectivity\.vault)\.exe( |$)' >/dev/null; then
-    # services already run in this prefix
+# Inventor or Vault Explorer running in this prefix (not in another release's)
+app_running_in_prefix() {   # [pattern] (default: either of them)
+    local pid
+    for pid in $(pgrep -if "(^|[\\\\/])(${1:-inventor|connectivity\\.vault})\\.exe( |\$)"); do
+        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qxF "WINEPREFIX=$WINEPREFIX" && return 0
+    done
+    return 1
+}
+
+# The other program of the pair already runs in this prefix: its launcher set
+# the prefix up (services, isolation) and keeps it until both are closed, so
+# only start this one - a second setup would wipe the running Identity
+# Manager's state.
+if [ "$INV_APP" = vault ] && app_running_in_prefix; then
     info "starting Vault Explorer next to the running Inventor/Vault"
     cd "$APP_DIR" && wine "$APP_EXE" >>"$LOGDIR/vault-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+    exit 0
+fi
+if [ "$INV_APP" = inventor ] && ! app_running_in_prefix inventor && app_running_in_prefix 'connectivity\.vault'; then
+    info "starting Inventor next to the running Vault Explorer"
+    cd "$APP_DIR" && wine "$APP_EXE" "${WIN_ARGS[@]}" >>"$LOGDIR/inventor-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
     exit 0
 fi
 if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
@@ -266,8 +283,9 @@ wait "$INV_PID"
 RC=$?
 sleep 1
 info "${APP_EXE%.exe} exited (code $RC)"
-# An Inventor that Vault opened runs in the same prefix: the cleanup trap would
-# kill it with wineserver -k, so wait for it first.
-while [ "$INV_APP" = vault ] && pgrep -if '(^|[\\/])(inventor|connectivity\.vault)\.exe( |$)' >/dev/null; do
+# Inventor and Vault share the prefix: the other one may still run (started
+# from its own menu entry, or Inventor opened from Vault), and the cleanup
+# trap would kill it with wineserver -k, so wait until both are closed.
+while app_running_in_prefix; do
     sleep 5
 done

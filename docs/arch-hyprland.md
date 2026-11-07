@@ -582,9 +582,14 @@ DWG TrueView. Done on a btrfs reflink copy of the working prefix first
 **Start:** `INV_APP=vault bash scripts/launch-inventor.sh` (with
 `INV_PREFIX=...` for another prefix). The launcher starts Identity Manager
 and the licensing service as for Inventor - Inventor opened from Vault needs
-both - and waits for an Inventor that Vault opened before it shuts the prefix
-down. Started while Inventor or Vault already runs, it only starts Vault
-Explorer. `install-desktop-integration.sh` adds an "Autodesk Vault <year>"
+both. Inventor and Vault Explorer share the prefix, so a launcher shuts the
+prefix down (`wineserver -k`) only when neither of them runs there any more,
+whichever was started first and whether Inventor was opened from Vault or
+from its own menu entry. Started while the other one runs in the same prefix,
+the launcher only starts the program: a second setup would wipe the running
+Identity Manager's state. Programs of another prefix (another Inventor
+release) are not counted; the launcher tells them apart by the `WINEPREFIX`
+in their environment. `install-desktop-integration.sh` adds an "Autodesk Vault <year>"
 menu entry when the Vault client is in the prefix.
 
 | Problem | Cause | Fix |
