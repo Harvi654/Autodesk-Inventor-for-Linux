@@ -559,10 +559,14 @@ Windows in the same network); the server itself is not part of this project.
 The client is the Vault Explorer and the Vault add-in inside Inventor (Vault
 tab: check out, check in, Get, open from Vault).
 
-**Same prefix as Inventor, on purpose.** This breaks the rule "one Autodesk
-program per prefix": the Vault client install brings the Inventor add-in, and
-the add-in has to sit next to Inventor, as on Windows. Vault Explorer also
-starts Inventor when a file is opened from it.
+**Same prefix as Inventor: one integration group.** Inventor and the Vault
+client of the same year are treated as one group in one prefix, an
+intentional exception to "one Autodesk release per prefix": the Vault client
+install brings the Inventor add-in, which has to sit next to Inventor, as on
+Windows, and Vault Explorer starts Inventor when a file is opened from it.
+Unrelated programs and other Inventor releases stay in their own prefixes.
+Vault stays optional: nothing installs it unless `--app vbc` is run, and it
+uses the same launcher, services and menu-entry script as Inventor.
 
 **Install:** the Vault Basic Client 2027 download is an ODIS image like
 Inventor's, with `manifest/app.vbc.xml`:
@@ -610,6 +614,19 @@ another process: Wine scales the parent's surface but not the cross-process
 child, which `X11DRV_GetDC` draws to the X drawable unscaled. A synthetic test
 needs two processes (a DPI-unaware parent, a child created with `SetParent`
 from another process that paints a known pattern).
+
+Tested setup:
+
+| | Version |
+|---|---|
+| Inventor | Inventor 2027 (31.0.19200.0000) |
+| Vault client | Autodesk Vault Basic 2027 (Client) 32.0.71.0, from the Vault Basic Client 2027 image |
+| Vault server | Vault Basic 2027 on Windows, same network |
+| Wine | this project's `wine-11.20-6` |
+| Desktop | Arch (CachyOS), KDE Plasma 6 on Wayland, Inventor and Vault through Xwayland |
+| DPI | 144 (150 %), `LogPixels` 144 in the prefix |
+| GPU | NVIDIA RTX 5080 |
+| Extra dependencies | none (no downloads; .NET Framework 4.8 and DWG TrueView from the image left out) |
 
 Confirmed with Vault Basic 2027 against a Vault Basic 2027 server: sign-in,
 Vault Explorer (folders, files, preview, history), the start page, Inventor's
