@@ -24,6 +24,13 @@ bash scripts/addins.sh reset             # back to the default set
 
 Untested means: please try it with `addins.sh enable` and report what happens.
 
+3D PDF (2026-11-08): with Microsoft's .NET Framework 4.8 in the prefix
+instead of wine-mono for the .NET Framework parts, `corewrapper.exe` runs,
+and with winum's `oleaut32-typelib-keep-released` the export takes about
+15 s for a part and 20 s for an assembly (in testing). The two add-ins stay
+off in the current release; the next release installs .NET Framework 4.8
+and turns them on. See "3D PDF (Anark)" in `docs/arch-hyprland.md`.
+
 iLogic was off by default until 2026-10-18; it works now (rules, parameters
 driving the model) and is on. An existing prefix: `bash scripts/addins.sh enable ilogic`.
 

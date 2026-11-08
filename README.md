@@ -8,12 +8,18 @@ with one command. Both releases can be installed side by side.
 
 > **Status: early release (v0.3), in active development.** Works for everyday
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
-> on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on two
-> machines: AMD RX 580, and an Intel UHD 630 + NVIDIA GTX 1050 laptop - the
-> laptop with a slightly older version). **Ubuntu 26.04** and **Fedora 44**
+> on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on AMD RX 580
+> and RX 6400, and an Intel UHD 630 + NVIDIA GTX 1050 laptop; testers report
+> on other machines, e.g. an NVIDIA RTX 5080). **Ubuntu 26.04** and **Fedora 44**
 > install and run too (first tests, in a virtual machine). Inventor 2027 is
 > newer here and less tested than 2026. NixOS: a declarative flake (see
-> [NixOS](#nixos)). Reports are welcome.
+> [NixOS](#nixos)).
+>
+> New features are added and tested all the time - see
+> [What works](#what-works) and the [Roadmap](#roadmap). Items marked 🧪
+> work in our tests but are not verified in depth or arrive with the next
+> release. Reports, and testers who know those parts of Inventor, are very
+> welcome.
 >
 > This is an unofficial community project. It is not made, supported or
 > endorsed by Autodesk. You need your own Inventor license (an education
@@ -68,6 +74,11 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 
 ## What works
 
+✅ works · 🧪 works in testing - not verified in depth, or in the
+development setup and coming with the next release · ⚠️ works with a known
+issue · ❌ does not work yet. Nothing here is guaranteed; see
+[Disclaimer](#disclaimer).
+
 | | Status | Notes |
 |---|---|---|
 | Installation from Autodesk's download | ✅ | Autodesk's own installers run under Wine; no Windows needed |
@@ -84,6 +95,7 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
+| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and an NVIDIA RTX 5080. Needs a card with hardware ray tracing and a Vulkan driver that supports it; a Wine and vkd3d-proton fix and three settings, set by hand for now - the next release sets them up. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
@@ -93,10 +105,15 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
-| 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
+| 3D PDF (Anark) | 🧪 | current release: off (Publish crashes Anark's `corewrapper.exe` under wine-mono). In testing for the next release, with .NET Framework 4.8 in the prefix and a Wine fix: a part exports in about 15 s, an assembly in about 20 s. Needs testing by others. [Details](docs/arch-hyprland.md#3d-pdf-anark---works-in-testing) |
+| Weldments | 🧪 | a weld is created; not verified in depth |
+| Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |
+| Cable & Harness | 🧪 | wires connect; not verified in depth - testers who use Cable & Harness are welcome |
+| Inventor Studio | 🧪 | starts, its ribbon and commands open; animations and renderings not verified |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
-| GPU ray tracing | ❌ | not yet: tested on an RX 6400 (RDNA 2) with Inventor 2027 - vkd3d-proton reports DXR 1.1, but Inventor still says the card is not supported and never loads its ray tracer; CPU ray tracing works |
-| Native Wayland | ❌ | Does not work yet |
+| Status bar text after GPU ray tracing | ⚠️ | in a maximised window old text stays under new text; workaround: `ClientSideWithRender=N` for Inventor ([how](docs/arch-hyprland.md#status-bar-old-text-stays-after-gpu-ray-tracing-workaround)) |
+| Home page after closing Application Options | ⚠️ | can show an old picture until clicked |
+| Native Wayland | ❌ | Does not work yet: Inventor runs through XWayland (retested 2026-11-07: WebView2 pages, dialogs and typing values still broken) |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
 
@@ -107,7 +124,7 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 - tested desktops: **Hyprland**, **KDE Plasma** and **GNOME** (Wayland); others will likely work too
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
-- an Autodesk account with an Inventor 2026 license
+- an Autodesk account with an Inventor 2026 or 2027 license
 - about an hour, most of it waiting
 
 ## Installation
@@ -283,7 +300,7 @@ system graphics drivers and keeps sign-in and settings in persistent user state.
 
 ## FAQ
 
-**Which license do I need?** Your own Inventor 2026 license - a paid
+**Which license do I need?** Your own Inventor 2026 or 2027 license - a paid
 subscription or a free education license. Sign-in and licensing are Autodesk's
 own, in your browser; nothing is bypassed.
 
@@ -345,18 +362,40 @@ Details, background and every problem found on the way:
 
 ## Roadmap
 
-Planned, roughly in this order:
+Done:
 
-- [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
-- [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
-- [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
-- [ ] openSUSE
-- [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
-- [ ] 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
 - [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
-- [ ] Inventor 2025
+- [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
+- [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
+- [x] GPU ray tracing works in testing (Inventor 2027, AMD and NVIDIA)
+- [x] 3D PDF works in testing (with .NET Framework 4.8)
+
+Next release (in progress):
+
+- [ ] [winum](https://github.com/Harvi654/winum) as the Wine for Inventor: one
+      Wine shared with other engineering programs, with tests on real Windows
+      for every fix
+- [ ] .NET Framework 4.8 in the prefix (3D PDF and other .NET parts)
+- [ ] GPU ray tracing set up by the installer, with a check whether the card
+      and driver support it
+- [ ] updates that reach existing installations: "Update project" also
+      updates the Wine prefix (new settings, components), step by step
+- [ ] the status bar workaround by default, until a Wine fix
+
+Later, roughly in this order:
+
+- [ ] Weldments, Tube & Pipe, Cable & Harness, Inventor Studio - test in
+      depth and fix (testers who use them are welcome)
+- [ ] Autodesk Vault Basic client (contribution in review)
+- [ ] openSUSE (contribution in review)
+- [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
+- [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests -
+      Hyprland-specific parts are only window rules
+- [ ] AutoCAD (experiments)
+- [ ] native Wayland, when Wine's Wayland driver can run Inventor's
+      WebView2 pages and dialogs
 
 ## Reporting problems
 

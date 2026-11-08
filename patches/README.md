@@ -1,5 +1,11 @@
 # Compatibility patches
 
+The Wine fixes are moving to [winum](https://github.com/Harvi654/winum), a
+Wine shared with other engineering programs, where each patch has its own
+page with validation levels. The patches here build the current release's
+Wine (`wine-inventor-*`) until the installer switches to winum; new Wine
+fixes go to winum.
+
 - Top-level `*.patch` files target Wine. Both `nix/wine.nix` and the script-based
   Wine build discover these automatically.
 - `libgsf/` contains the empty OLE stream fix used by the flake's libgsf overlay.

@@ -1,23 +1,31 @@
-# Arch Linux + Hyprland
+# Arch Linux + Hyprland: setup notes and findings
 
-Notes for running this project on vanilla Arch with the Hyprland compositor,
-with Windows (and Inventor) installed on a second disk in a dual-boot.
+The engineering log of this project: how the installation works, every
+problem found on the way (symptom, cause down to the Wine function, fix,
+how it was found) and the dated **Result log** at the end. Written on Arch
+Linux with Hyprland and KDE Plasma; most of it applies to every
+distribution. For installing and using Inventor, read the
+[README](../README.md) first.
 
-The original setup was done on CachyOS. Everything Inventor-specific is the same;
-the differences are packages, mounting, and Wayland/XWayland details.
+Wine fixes are being moved to [winum](https://github.com/Harvi654/winum),
+a Wine shared with other engineering programs; its per-patch pages
+(`docs/patches/`) carry the validation tables. Sections here describe what
+Inventor needed and point there for details.
 
-## Order of operations
+Some older sections mention `rebuild-prefix.sh` or `/mnt/windows`: that was
+the first setup, which copied a Windows installation. Its sections are in
+[archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-retired-2026-11-08.md).
 
-```bash
-bash scripts/phase0-setup.sh                 # packages from official repos only (asks for sudo)
-sudo mount -t ntfs3 -o ro /dev/sdXN /mnt/windows   # see "Mounting Windows" below
-bash scripts/check-system.sh                 # read-only; fix anything it marks ERROR
-bash scripts/export-registry.sh              # registry/autodesk-full.reg (gitignored)
-bash scripts/build-wbemprox.sh --install --hook   # patched Wine WMI DLL
-bash scripts/rebuild-prefix.sh               # ~15-30 min, mostly copying
-bash scripts/install-desktop-integration.sh  # adskidmgr:// handler + launcher entry
-bash scripts/launch-inventor.sh              # first run opens the browser for SSO
-```
+## Contents
+
+- **Installation:** [One command: scripts/install.sh](#one-command-scriptsinstallsh); [Installing from Autodesk's install image (no Windows needed)](#installing-from-autodesks-install-image-no-windows-needed); [Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)](#inventor-2027-unpacked-image-without-a-year-the-20272-update-issue-6)
+- **Desktop:** [Hyprland](#hyprland)
+- **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
+- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6)
+- **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
+- **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing)
+- **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02)
+- **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
 
@@ -43,8 +51,9 @@ The 2026.x update is a separate download (account -> Updates); the
 
 ## Installing from Autodesk's install image (no Windows needed)
 
-Work in progress, but it gets to a working Inventor. Instead of copying a
-Windows installation, Autodesk's own packages are installed under Wine:
+This is how `install.sh` installs Inventor: instead of copying a Windows
+installation (the first setup of this project, archived), Autodesk's own
+packages are installed under Wine. The steps by hand:
 
 ```bash
 # IMAGE = the unpacked "Browser download" (folder with Setup.exe, manifest/, x64/ ...)
@@ -190,27 +199,6 @@ stricter than needed and say different things - still to be aligned.
 (`python3 -m unittest discover -s tests`, 21 OK), fake-prefix tests for
 `uninstall.sh`, a full installation in a clean Ubuntu VM and an update on Arch.
 
-## Mounting Windows
-
-Mount **read-only**. The scripts only read from it, and if Windows Fast Startup
-or hibernation is on, mounting NTFS read-write can corrupt it (the kernel `ntfs3`
-driver refuses rw in that case anyway).
-
-```bash
-sudo mkdir -p /mnt/windows
-sudo mount -t ntfs3 -o ro /dev/sdc2 /mnt/windows      # replace sdc2 with your partition
-```
-
-Permanent (`/etc/fstab`, use the UUID from `lsblk -f`; `nofail` so boot doesn't
-hang if the disk is missing):
-
-```
-UUID=XXXXXXXXXXXXXXXX  /mnt/windows  ntfs3  ro,nofail,uid=1000,gid=1000  0 0
-```
-
-Windows only has to be mounted while building the prefix. Launching Inventor
-uses the copy inside `~/.wine-inventor2026`.
-
 ## Hyprland
 
 Wine runs through **XWayland** (the prefix pins Wine's X11 driver). Make sure
@@ -249,6 +237,11 @@ waiting for upstream support. See the [reproducer and investigation](wine-repro/
 for screenshots, diagnosis, patch limitations, validation and tracked issues,
 including [Wine #58921](https://bugs.winehq.org/show_bug.cgi?id=58921).
 
+Retested 2026-11-07 on a copy of the 2027 prefix with Wine's Wayland driver:
+GPU ray tracing worked, but the WebView2 pages stayed broken, dialogs were
+abnormal, dimension values could not be typed and Restore Down/maximise was
+not right. The X11 driver through XWayland stays the supported path.
+
 ### Window rules
 
 Ready-made rules: `config/hyprland-inventor.lua` (Hyprland 0.55+, Lua config)
@@ -281,43 +274,6 @@ xdg-settings get default-web-browser
 
 Firefox asks once which application should open the link - choose
 "Autodesk Identity Manager" and tick "always".
-
-## wine-mono on Arch
-
-README "Key Discovery #1" says the WPF stub assemblies in the wine-mono GAC must
-be deleted. On Arch the `wine-mono` package is a **shared system install**
-(`/usr/share/wine/mono/wine-mono-*`), not a copy inside the prefix, so
-`rebuild-prefix.sh` only warns instead of deleting system files.
-
-Status: **untested on Arch.** If Inventor exits right after starting (log shows
-a mono assertion and `Environment.Exit`), options to try, in this order:
-
-1. Remove the four DLLs from the system install
-   (`PresentationCore`, `PresentationFramework`, `WindowsBase`, `System.Xaml`
-   under `/usr/share/wine/mono/wine-mono-*/lib/mono/gac/`). A `wine-mono` update
-   restores them.
-2. Uninstall the `wine-mono` package and let Wine install mono into the prefix
-   (it offers to on `wineboot`), then rerun `rebuild-prefix.sh`, which then
-   finds and removes the stubs inside the prefix.
-
-Please report which one was needed.
-
-## Differences from the original scripts
-
-| Area | Original | Here |
-|------|----------|------|
-| Component versions | hard-coded (Licensing 15.4.2.4, Components 1.8.0, IdMgr 1.16.5.1/1.14.0.3, build 30.0.17500) | detected from `/mnt/windows` and the registry export |
-| Registry export | generated but never imported | imported with `regedit` **as UTF-16** before setting keys (see below) |
-| `rebuild-prefix.sh` | under `set -e`, any failing `cp`/`mv ... 2>/dev/null` of an optional file (license cache, Design Data dir that doesn't exist yet, `wineserver -k` with nothing running) can abort the run | optional steps warn and continue |
-| OGSFactory.dll patch | written blindly at fixed offsets | not needed: fixed in Wine (wbemprox patch), Autodesk files stay untouched |
-| WebView2 installer | expected in `/tmp`, never downloaded | downloaded to `downloads/` |
-| Wine patch | `patch -p1` fails (absolute `/tmp/...` paths in header) | regenerated as a proper `a/ b/` patch |
-| Logs | `~/Projects/Inventor on linux/logs` | `logs/` in the checkout |
-| IPC cleanup | only `interprocess/01000000` | whole `interprocess/` (Open Problem #4) |
-| `msquic=` override | documented, not set | set in `launch-inventor.sh` |
-| Packages | `dxvk-mingw-git` via pacman (not in Arch repos) | official repos only, no AUR |
-| DXVK | `setup_dxvk` from a system package | release 2.7.1 from github.com/doitsujin/dxvk, SHA-256 pinned (same hash as winetricks `dxvk2071`); `INV_DXVK=system` to use `setup_dxvk`; vkd3d-proton 3.0.1 (Direct3D 12) from github.com/HansKristian-Work/vkd3d-proton, SHA-256 pinned, `INV_VKD3D=off` keeps Wine's d3d12 |
-| File access | `Z:` = whole filesystem, Documents/Desktop/... linked into `$HOME` | only `C:` (prefix) and `D:` = `~/Inventor`; `--no-sandbox` restores Wine defaults |
 
 ## OGSFactory.dll is not modified
 
@@ -380,20 +336,6 @@ scanning drives, default save locations in `$HOME` - not against malicious
 code. A real boundary needs a namespace sandbox such as `bubblewrap`, which is
 harder here because the browser login (`adskidmgr://` handler) and the
 wineserver socket must cross it. Not done yet.
-
-## Registry import must be UTF-16
-
-`hivexregedit` writes strings as `hex(1):` UTF-16LE bytes into a plain-text
-file. Wine's `regedit` reads a file without a UTF-16 byte-order mark as ANSI and
-widens each byte of `hex(1)` data separately, so `"False"` is stored as
-`F\0a\0l\0s\0e\0`. It looks normal in logs, but .NET rejects it. Inventor's
-InfoCenter then fails silently (`InfoCenter.log` in
-`%LOCALAPPDATA%\Autodesk\Inventor 2026\ENU\`: *String 'False' was not
-recognized as a valid Boolean*) and Inventor dies at startup with
-`NullReferenceException` in `InforCenterUtil.GetInfoCenterHwnd()`.
-
-`import_reg_file` converts the export to UTF-16LE with a BOM before importing.
-To repair an older prefix: `bash scripts/import-registry.sh`.
 
 ## Windows fonts are required
 
@@ -709,30 +651,10 @@ the background is painted in `WM_ERASEBKGND`, `WM_PAINT` paints it only if
 nobody erased (`ps.fErase`), invalidations ask for an erase, and owner-drawn
 parts get no theme pane. Built into `comctl32` and `comctl32_v6`. Confirmed:
 the status bar is dark with "Ready", coordinates and "Fully Constrained"
-as on Windows.
-
-## This project's own Wine (v0.2)
-
-Up to v0.1 the fixes were built per DLL and copied over the system's Wine
-(`build-wine-dll.sh --install`). Every Arch Wine update replaced them, and the
-prefix then ran without them until `rebuild-wine-fixes.sh`. Since v0.2 the
-whole Wine is built once, in public, by `.github/workflows/build-wine.yml`
-(`scripts/build-wine.sh`: vanilla source of the version in `wine/version.env`,
-all of `patches/`, `--enable-archs=x86_64,i386`, Arch Linux container) and
-published as release `wine-<version>-<build>`. `scripts/get-wine.sh` downloads
-it, checks it against `wine/SHA256SUMS` and unpacks it to
-`~/.local/share/inventor-on-linux/`; `common.sh` puts its `bin/` first in
-`PATH` (`INV_WINE=auto|bundled|system`). The system's Wine is not touched.
-The build also patches the 32-bit (i386) PE DLLs, which the per-DLL builds
-never did. A build made on Arch also runs on Ubuntu 24.04 (glibc 2.38 symbols).
-
-**Do not mix Wine versions on one prefix.** The first test used a 11.19 build
-while Arch had moved to 11.20: the launcher's `wineboot -u` then switched the
-prefix between the two versions on every start, and under KDE the maximized
-Inventor window lost its own title bar row (quick access toolbar, user name)
-behind a KDE title bar, and only part of the window was drawn. With the 11.20
-build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
-the version the prefix was last updated with, and move forward only.
+as on Windows. Later findings (2026-11-07/08): the patch matches Windows for
+Inventor's themed status bar, and the old text that stays after GPU ray
+tracing has another cause - see "Status bar: old text stays after GPU ray
+tracing". A v2 in winum corrects the patch for unthemed status bars.
 
 ## Open: crash while browsing (fixed in wine-11.20-4)
 
@@ -918,21 +840,160 @@ the wrappers (generated, one per vtable method); the logic is "enter
 should pass on Windows 10 (`rkernel.exe` suggests it does) - and whether a
 per-file lock would be closer to Windows.
 
-## GPU ray tracing (Inventor 2027, not working yet)
+## GPU ray tracing (Inventor 2027, works in testing)
 
-Tested 2026-10-21 on an RX 6400 (RDNA 2, on the Linux host via `INV_GPU=6400`,
-monitor on the other card): Inventor 2027 runs on DirectX 12 through
-vkd3d-proton, which reports `DXR 1.1 support enabled` and `DX Ultimate`;
-Vulkan has `VK_KHR_ray_tracing_pipeline`, `acceleration_structure`,
-`ray_query`. Inventor still greys out *Enable Viewport GPU Ray Tracing*
-("The graphics card in use does not support this option") and never loads
-`aurora.dll` (its GPU ray tracer). Ruled out: driver name/version (Wine does not
-register `InstalledDisplayDrivers`; with `INV_DRIVER_NAMES=1` Diagnostics shows
-"aticfx64 ... 35.0.21025.1024" instead of "Unknown", no change), Windows build,
-no capability cached in the registry (`GraphicsUtil` has `UseGPURaytracing=1`).
-Still open: DXVK answers an unknown `IDXGIAdapter` query `f0db4c7f-fe5a-42a2-
-bd62-f2a6cf6fc83e` (possibly DXCore) right before vkd3d-proton starts. A test
-with an NVIDIA RTX card would show whether this is AMD-specific.
+**Symptom (until 2026-11-06):** *Enable Viewport GPU Ray Tracing* was greyed
+out ("The graphics card in use does not support this option"), although
+vkd3d-proton reported DXR 1.1 on the RX 6400. The earlier investigation is
+archived in [archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-retired-2026-11-08.md).
+
+**Cause, two separate problems:**
+
+1. Wine (opengl32): Windows reports window pixel formats with 8/8/8 bits of
+   colour and no alpha as 32 colour bits; GLX and EGL report 24.
+   `wglChoosePixelFormat` compares colour bits before alpha, so Inventor's two
+   pixel-format choices disagreed, the second `SetPixelFormat` failed and
+   Inventor declared the card unsupported. Fixed by
+   `opengl32-window-format-color-bits` in winum (values measured on
+   Windows 10 with an own MEASURE program, Wine test passes on Windows 10
+   x86_64 and i686).
+2. vkd3d-proton (dxil-spirv): ray payloads with matrices became 12-component
+   vectors, which SPIR-V does not allow (RADV has no long-vector extension),
+   so the ray tracing pipelines failed. Fixed by
+   `gpu/vkd3d-proton/dxil-spirv-ray-payload-long-vector.patch` in winum
+   (vectors longer than 4 become arrays; synthetic shaders fail without and
+   validate with it in CI).
+
+**Settings it needs** (set by hand for now; the installer will do it in the
+next release):
+
+- `HKCU\Software\Autodesk\Inventor\RegistryVersion31.0\System\Preferences\Driver`
+  `EnableHydra` = 1 (DWORD);
+- `HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver` `UseEGL` = `N`
+  (GLX; the tested path);
+- `HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver`
+  `ClientSideWithRender` = `N` (see the status bar section below);
+- a GPU with hardware ray tracing and a Vulkan driver with
+  `VK_KHR_ray_tracing_pipeline` and `VK_KHR_acceleration_structure`
+  (tested: AMD RDNA 2 with RADV, NVIDIA RTX with the proprietary driver);
+  `INV_GPU` picks the card when there are several.
+
+**What to expect:** the option is available, the ray tracing panel shows
+**GPU**, Low/Draft/High render on the graphics card (High converges in about
+a second on a small part on an RTX 5080). Known side effects: without
+`ClientSideWithRender=N` the status bar text overlaps; after ray tracing has
+been started, Restore Down and maximising again can leave parts of the window
+drawn shifted (section below). Inventor 2026 is not tested.
+
+**Validation:** opengl32 fix L1 (Windows 10, both architectures) and cross
+review (Codex); vkd3d-proton port cross review (Codex, 2026-11-07; one CI
+check fixed after it, an inherited `float2x2` payload limitation of
+vkd3d-proton 3.0.1 open). L4: Inventor 2027 on an RX 6400 (maintainer,
+part, assembly, drawing, PDF, save/reopen) and on an RTX 5080 (tester in
+PR #3). Not a guarantee for other cards or drivers - reports welcome.
+Details: winum `docs/patches/opengl32-window-format-color-bits.md`,
+`docs/wine-repro/opengl32-pixel-format-alpha/`, `gpu/vkd3d-proton/`.
+
+## Status bar: old text stays after GPU ray tracing (workaround)
+
+**Symptom:** once GPU ray tracing has been started in a maximised window, new
+status texts ("Ready", coordinates, prompts) are drawn over the old ones and
+the strip never clears; Restore Down cleans it, maximising again brings it
+back. Seen on AMD (RX 6400) and NVIDIA (RTX 5080).
+
+**Cause, as far as measured:** not the status bar patch. Windows 10
+measurements (own MEASURE program) and Wine traces show that Inventor asks
+for the erase and fills the strip with an opaque `ExtTextOutW` before
+drawing the text, the same before and after ray tracing, and Wine's paint
+areas do not change. A Wine trace channel added only to a diagnostic build
+(`+sbdiag`) showed that after ray tracing starts in a maximised window Wine
+stops drawing the status bar into the window's bitmap surface and draws
+directly to the X11 window through XRender; the fills report success, but
+the old text survives on screen. With Wine's XRender drawing disabled for
+Inventor the direct path is still taken and the text stays clean in all four
+states (before, after ray tracing, restored, maximised again), with ray
+tracing working. The exact faulty XRender operation is not identified yet.
+
+**Workaround:** with Inventor closed, using the same Wine and prefix as
+Inventor:
+
+```bash
+export WINEPREFIX=~/.wine-inventor2027
+wine reg add 'HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver' /v ClientSideWithRender /t REG_SZ /d N /f
+```
+
+It disables Wine's XRender 2D drawing for Inventor only. Smoke test on AMD
+(part, assembly, drawing, 2D PDF, ray tracing, save, close, reopen): OK, no
+change in fonts or responsiveness noticed. NVIDIA not yet confirmed.
+
+The status bar patch (`comctl32-statusbar-erase-background`, the dark status
+bar) matches Windows for Inventor's themed status bar; its divergence for
+unthemed status bars is corrected by a v2 candidate in winum. Full
+investigation: winum `docs/wine-repro/comctl32-statusbar-erase/README.md`.
+
+**For a Wine bug report:** a synthetic reproducer has not reproduced it yet
+(Vulkan, D3D12, OpenGL and their combinations in a maximised window, two
+GPUs); the trigger is still Inventor's switch to GPU ray tracing. Report
+when there is a public test case.
+
+## Window drawn shifted after ray tracing (open)
+
+After GPU ray tracing has been started, Restore Down and maximising again can
+leave parts of the interface drawn in other places, with a white strip along
+the top and left of the viewport. Minimising and showing the window again, or
+reopening it, clears it. In a fresh session without starting ray tracing,
+repeated Restore Down/maximise is correct. `ClientSideWithRender=N` does not
+change it. Cause unknown; possibly the same window-surface change as the
+status bar, not proven.
+
+## Home page stays stale after a dialog (open)
+
+After closing Application Options, the Home page (WebView2) can keep showing
+an old picture until it is clicked. Seen on AMD and NVIDIA, also before the
+ray tracing work. `ClientSideWithRender=N` does not change it. Not yet
+investigated; an earlier attribution to WebView2's GPU process was premature.
+
+## 3D PDF (Anark) - works in testing
+
+**Current release:** *Publish* crashes Anark's `corewrapper.exe` under
+wine-mono, so 3D PDF is off.
+
+**In testing (next release):** with Microsoft's .NET Framework 4.8 installed
+in the prefix (used as a black box) instead of wine-mono for the .NET
+Framework parts, `corewrapper.exe` runs. The export then took about
+7 minutes: every typelib-marshaled proxy for an Inventor interface parsed
+Inventor's type library again, because Wine dropped the library from its
+cache when the last reference went. The winum patch
+`oleaut32-typelib-keep-released` keeps up to 8 released libraries (Windows
+keeps released libraries too, measured): part 15 s, assembly 20 s, the PRC
+model present in the PDF (Inventor 2027.2, 2026-11-03, with a draft of the
+patch). The patch passed cross review and L1. Open: L4 with the final cache
+version (v2.2) on the full winum build, the .NET Framework 4.8 step in the
+installer, and tests by others.
+Measurements: [wine-repro/oleaut32-typelib-cache](wine-repro/oleaut32-typelib-cache/README.md).
+
+## This project's own Wine (v0.2)
+
+Up to v0.1 the fixes were built per DLL and copied over the system's Wine
+(`build-wine-dll.sh --install`). Every Arch Wine update replaced them, and the
+prefix then ran without them until `rebuild-wine-fixes.sh`. Since v0.2 the
+whole Wine is built once, in public, by `.github/workflows/build-wine.yml`
+(`scripts/build-wine.sh`: vanilla source of the version in `wine/version.env`,
+all of `patches/`, `--enable-archs=x86_64,i386`, Arch Linux container) and
+published as release `wine-<version>-<build>`. `scripts/get-wine.sh` downloads
+it, checks it against `wine/SHA256SUMS` and unpacks it to
+`~/.local/share/inventor-on-linux/`; `common.sh` puts its `bin/` first in
+`PATH` (`INV_WINE=auto|bundled|system`). The system's Wine is not touched.
+The build also patches the 32-bit (i386) PE DLLs, which the per-DLL builds
+never did. A build made on Arch also runs on Ubuntu 24.04 (glibc 2.38 symbols).
+
+**Do not mix Wine versions on one prefix.** The first test used a 11.19 build
+while Arch had moved to 11.20: the launcher's `wineboot -u` then switched the
+prefix between the two versions on every start, and under KDE the maximized
+Inventor window lost its own title bar row (quick access toolbar, user name)
+behind a KDE title bar, and only part of the window was drawn. With the 11.20
+build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
+the version the prefix was last updated with, and move forward only.
 
 ## Known harmless log messages
 
@@ -1112,3 +1173,25 @@ Found on the way, to fix in the scripts:
   `mscoree`).
 - Cosmetic: Inventor files show the Inventor app icon in the file manager,
   not their type icon or a preview.
+
+**2026-11-06 - GPU ray tracing works (Inventor 2027, RX 6400):** with the
+winum opengl32 window colour-bits fix and the vkd3d-proton ray payload fix,
+*Enable Viewport GPU Ray Tracing* is available and Low/Draft/High render on
+the GPU; part, assembly and save work. Confirmed on an NVIDIA RTX 5080 by a
+tester (PR #3, 2026-11-07). Details: section "GPU ray tracing".
+
+**2026-11-07 - Status bar text overlaps after GPU ray tracing; workaround:**
+the overlap appears only after ray tracing starts in a maximised window.
+Measurements on Windows 10 and Wine traces ruled out the status bar patch;
+a diagnostic Wine build showed the switch to direct XRender drawing, and
+`ClientSideWithRender=N` for Inventor keeps the text clean with ray tracing
+working (smoke test: part, assembly, drawing, 2D PDF, save/reopen). Still
+open: window drawn shifted after Restore Down/maximise once ray tracing ran,
+and the Home page staying stale after Application Options. Details: section
+"Status bar: old text stays after GPU ray tracing".
+
+**2026-11-08 - This file re-organised:** a contents list, sections grouped
+by topic, new sections for GPU ray tracing, the status bar workaround, the
+open repaint issues and 3D PDF. The sections of the first setup (copying a
+Windows installation) and the superseded GPU ray tracing notes moved to
+`docs/archive/arch-hyprland-retired-2026-11-08.md`, unchanged.
