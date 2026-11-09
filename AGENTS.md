@@ -108,6 +108,10 @@ problem is not added.
   other vendors') binaries beyond crash addresses.
 - Bug reports for Wine contain only the application's side and our own tests,
   never internals of Microsoft DLLs.
+- Allowed: Microsoft's public documentation (learn.microsoft.com), to
+  understand an API and choose what to measure. Never the source of a
+  test's expected values (the measurement wins), and its text is not
+  copied into code or comments.
 - AI may have seen other projects' code (Mesa, ReactOS, ...): ask for original
   code and say so in the patch; for a larger patch ask a second model whether
   it resembles a known project.
