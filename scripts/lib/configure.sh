@@ -54,7 +54,7 @@ cfg_disable_addins() {
 cfg_crash_sources() {
     local f
     mkdir -p "$P_ADDINS_OFF/libs"
-    for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
+    for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/$LANG/InteractiveTutorial.resources.dll"; do
         [ -f "$f" ] && mv "$f" "$P_ADDINS_OFF/libs/"
     done
     [ -f "$P_INV/Bin/CER/senddmp.exe" ] && mv "$P_INV/Bin/CER/senddmp.exe" "$P_INV/Bin/CER/senddmp.exe.disabled"

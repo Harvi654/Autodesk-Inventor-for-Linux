@@ -34,10 +34,12 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 _ORIG_ARGS=("$@")
 PREFIX="$INV_PREFIX"
+LANG="en-US"
 PREFIX_GIVEN=0
 NO_CONTENT=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
+        --lang)LANG="$2"; shift ;;
         --prefix) PREFIX="$2"; PREFIX_GIVEN=1; shift ;;
         --no-content) NO_CONTENT=(--no-content) ;;
         --skip-packages) SKIP_PKG=1 ;;
@@ -166,7 +168,7 @@ step "Checking..."
 [ "$EUID" -ne 0 ] || die "run this as your normal user, not with sudo - it asks for the password itself"
 case "$INV_DISTRO" in
     arch) ;;
-    debian|fedora)
+    debian|fedora|openSUSE)
         [ "$INV_WINE" != system ] || die "INV_WINE=system (fixes built into the system's Wine) is only supported on Arch"
         ;;
     *) die "unsupported distribution (supported: Arch, Debian/Ubuntu, Fedora)" ;;
@@ -264,7 +266,7 @@ fi
 
 step "Installing Inventor (Autodesk's installers, under Wine - 15-40 minutes)..."
 if [ -n "$PRODUCT" ]; then
-    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${NO_CONTENT[@]}"
+    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${NO_CONTENT[@]}" --lang "$LANG"
 else
     info "already installed"
 fi
@@ -272,7 +274,7 @@ fi
 step "Updates..."
 if [ ${#UPDATES[@]} -eq 0 ]; then info "none given"; fi
 for u in "${UPDATES[@]}"; do
-    python3 "$SCRIPTS_DIR/install-from-image.py" "$u" --prefix "$PREFIX"
+    python3 "$SCRIPTS_DIR/install-from-image.py" "$u" --prefix "$PREFIX" --lang "$LANG"
 done
 
 step "Setting up the prefix (DXVK, WebView2, fonts, isolation)..."

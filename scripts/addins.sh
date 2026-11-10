@@ -35,7 +35,7 @@ restore_tutorial_libs() {
     local f
     for f in InteractiveTutorial.dll InteractiveTutorial.resources.dll; do
         [ -f "$LIBS/$f" ] || continue
-        if [ "$f" = InteractiveTutorial.resources.dll ]; then mv "$LIBS/$f" "$P_INV/Bin/en-US/"; else mv "$LIBS/$f" "$P_INV/Bin/"; fi
+        if [ "$f" = InteractiveTutorial.resources.dll ]; then mv "$LIBS/$f" "$P_INV/Bin/$LANG/"; else mv "$LIBS/$f" "$P_INV/Bin/"; fi
         info "restored $f"
     done
 }
@@ -65,7 +65,7 @@ case "${1:-list}" in
             if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$OFF/"; ok "disabled $f"; fi
         done
         mkdir -p "$LIBS"
-        for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
+        for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/$LANG/InteractiveTutorial.resources.dll"; do
             if [ -f "$f" ]; then mv "$f" "$LIBS/"; info "moved away $(basename "$f")"; fi
         done
         ;;

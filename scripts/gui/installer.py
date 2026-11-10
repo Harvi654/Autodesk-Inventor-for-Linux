@@ -143,10 +143,10 @@ def system_checks(settings):
     rel = os_release()
     ids = (rel.get("ID", "") + " " + rel.get("ID_LIKE", "")).split()
     name = rel.get("PRETTY_NAME", "unknown")
-    if any(i in ("arch", "debian", "ubuntu", "fedora") for i in ids):
+    if any(i in ("arch", "debian", "ubuntu", "fedora", "opensuse") for i in ids):
         checks.append(("ok", "Distribution", name))
     else:
-        checks.append(("bad", "Distribution", name + " - supported: Arch, Ubuntu / Debian, Fedora"))
+        checks.append(("bad", "Distribution", name + " - supported: Arch, Ubuntu / Debian, Fedora, openSUSE"))
     arch = os.uname().machine
     checks.append(("ok" if arch == "x86_64" else "bad", "Processor", arch))
     mem = mem_total_gb()
