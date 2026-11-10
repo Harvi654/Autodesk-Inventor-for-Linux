@@ -194,7 +194,13 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   '';
   extraPreLaunchCommands = ''
     export PATH=${modules.runtime.toolsPackage}/bin:${
-      lib.makeBinPath (tools ++ [ pkgs.util-linux ])
+      lib.makeBinPath (
+        tools
+        ++ [
+          pkgs.util-linux
+          pkgs.fontconfig
+        ]
+      )
     }:$PATH
     ${builtins.readFile ./launch-lock.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
@@ -202,6 +208,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
       defaultMode = "system";
     }).extraPreLaunchCommands
     }
+    ${builtins.readFile ./launch-fonts.sh}
     ${builtins.readFile ./launch-services.sh}
   '';
 }) executableName
