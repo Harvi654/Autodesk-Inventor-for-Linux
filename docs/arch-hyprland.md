@@ -21,7 +21,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Installation:** [One command: scripts/install.sh](#one-command-scriptsinstallsh); [Installing from Autodesk's install image (no Windows needed)](#installing-from-autodesks-install-image-no-windows-needed); [Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)](#inventor-2027-unpacked-image-without-a-year-the-20272-update-issue-6)
 - **Desktop:** [Hyprland](#hyprland)
 - **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
-- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6)
+- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping crash in 2027 (issue #10, open)](#import-cad-step-and-property-mapping-crash-in-2027-issue-10-open)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing)
 - **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02)
@@ -840,6 +840,36 @@ the wrappers (generated, one per vtable method); the logic is "enter
 should pass on Windows 10 (`rkernel.exe` suggests it does) - and whether a
 per-file lock would be closer to Windows.
 
+## Import CAD (STEP) and Property Mapping crash in 2027 (issue #10, open)
+
+Reported by @krokosik on 2026-11-10 (NixOS, Hyprland, RTX 3060, Wine 11.20,
+Inventor 2027). Not yet reproduced here; to be fixed for the next release,
+after the winum release tests.
+
+- **Symptom 1:** Assembly -> Place -> Import CAD with a STEP file (a
+  Thorlabs part, PC4QR) and default options ends with "Could not import
+  object". The same file imports on Windows.
+- **Symptom 2:** the Property Mapping button of the import dialog opens
+  Wine's crash window: page fault on write in
+  `AnyCADPropertyMappingTool.exe`, in Autodesk's
+  `rxapprenticeservercore` (+0x15ff9). The written address lies in the
+  range where `libmono-2.0-x86_64` is loaded, and the tool's process has
+  Wine Mono (`mscoree`, `libmono`, `presentationnative_cor3`) loaded: it
+  runs on Wine Mono, not on the .NET Framework.
+- **First hypothesis (unproven):** the import and property-mapping tools
+  need the .NET Framework that the planned .NET 4.8 step of the installer
+  provides (3D PDF already needed it). Check that first, before any Wine
+  change.
+- **Also seen in the report:** `report.sh` on NixOS found no prefix and no
+  Wine ("system ()", prefix 2026 for a 2027 install, "NOT patched" for
+  every DLL), so the report helper needs a look on NixOS too.
+
+To do: reproduce on Arch with the same STEP file (2026 and 2027); repeat
+with .NET 4.8 in the prefix; if it still fails, `+seh` and a filtered
+`+relay` around the crash, and the import log from Inventor. Clean room:
+only the crash address and module list of Autodesk's binaries, nothing
+from inside them.
+
 ## GPU ray tracing (Inventor 2027, works in testing)
 
 **Symptom (until 2026-11-06):** *Enable Viewport GPU Ray Tracing* was greyed
@@ -1005,6 +1035,11 @@ the version the prefix was last updated with, and move forward only.
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-10 - Issue #10 recorded (open):** Import CAD of a STEP file fails
+with "Could not import object" and Property Mapping crashes in
+`AnyCADPropertyMappingTool.exe` running on Wine Mono (NixOS, Inventor 2027).
+First hypothesis: needs .NET 4.8; to be fixed for the next release.
 
 **2026-10-26 - Native Wayland remains unusable:** the draft bridge rendered
 WebView2 Home content, but was terribly slow and glitchy. Keep X11/XWayland.

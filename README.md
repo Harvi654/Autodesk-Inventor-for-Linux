@@ -383,6 +383,8 @@ Next release (in progress):
 - [ ] updates that reach existing installations: "Update project" also
       updates the Wine prefix (new settings, components), step by step
 - [ ] the status bar workaround by default, until a Wine fix
+- [ ] Import CAD (STEP) and its Property Mapping tool in 2027
+      ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10))
 
 Later, roughly in this order:
 
