@@ -1,7 +1,25 @@
 # Draft: updating existing prefixes without reinstalling
 
-Status: draft (2026-11-06), not implemented. For Autodesk-Inventor-for-Linux
-first, then the same library in Solidworks-for-Linux.
+Status: phases 1-3 implemented (2026-11-11, `scripts/lib/migrations.sh`,
+`scripts/lib/migrations/README.md`); phase 4 proposed below; phase 5 open.
+For Autodesk-Inventor-for-Linux first, then the same library in
+Solidworks-for-Linux.
+
+What the implementation does differently from the plan below:
+- Phase 1 moved `finish-install.sh`'s whole setup into one step (0001),
+  unchanged, instead of splitting it into many: it only runs at
+  installation, and splitting it would have changed tested code for no
+  user. New changes are new steps.
+- The launcher runs the pending steps itself (non-optional ones only)
+  instead of offering them: it starts from the app menu, without a
+  terminal to ask in. Optional steps run only by name.
+- The Wine runtime: `wineboot -u` does not replace the copies of Wine's
+  builtin DLLs in `system32` (measured with winum-11.20-1), so they tell
+  which Wine *made* a prefix, not which one last updated it. The prefix's
+  state records the runtime (`runtime=`); step 0002 and the launcher write
+  it. `rollback-wine.sh` is not written.
+- concrt140 and optional GPU ray tracing are not steps yet; vkd3d-proton
+  with the ray payload fix waits for a release from winum.
 
 ## Problem
 
@@ -49,8 +67,37 @@ by reinstalling.
 | 1 | Migration library and prefix state; `finish-install.sh` split into steps with unchanged behaviour; existing prefixes get a step 0 that records them as current | nothing changes yet |
 | 2 | GUI update and launcher run migrations, with backups and rollback | from here on every change arrives by itself |
 | 3 | First real migrations: winum runtime, native concrt140, vkd3d-proton with the ray payload fix, optional GPU ray tracing | first update without reinstalling |
-| 4 | Optional migration to native .NET 4.8, with a backup | after a test in a fresh prefix (Ubuntu VM) |
+| 4 | Optional migration to native .NET 4.8, with a backup | after a test in a fresh prefix (Ubuntu VM) - proposal below |
 | 5 | The same in Solidworks-for-Linux | |
 
 Each phase is tested with fake prefixes in a temporary HOME (no Wine) and
 on the maintainer's prefix after a full copy of it.
+
+## Phase 4 (proposal): .NET Framework 4.8 for an existing prefix
+
+New installations get .NET 4.0 + the image's 4.8 from `install-from-image.py`
+(since 2026-11-11). An existing prefix with wine-mono gets it only as an
+**optional** step, `0005-dotnet48`, run by name:
+
+```bash
+INV_PREFIX=... INV_YEAR=... bash scripts/migrate-prefix.sh --run 0005 --image <Inventor install image>
+```
+
+- Why optional: replacing wine-mono cannot be undone step by step
+  (uninstall entries, NDP keys, `mscoree.dll`, a .NET tree under
+  `windows/Microsoft.NET`, the GAC). The step needs the install image (the
+  4.8 installer is in it) and takes minutes.
+- Backup: the whole prefix, not a few files - `cp -a --reflink=auto` into
+  `<prefix>.before-dotnet48` (instant on btrfs/XFS; on other file systems a
+  full copy, so the step checks free space first and says how much it
+  needs), or a btrfs snapshot when the prefix is a subvolume. On failure the
+  prefix is replaced by that copy; on success the copy stays until the user
+  removes it (`migrate-prefix.sh --forget-backup 0005`).
+- What it runs: the same code as the installer (`install_dotnet48` in
+  `install-from-image.py`: remove wine-mono, .NET 4.0, the image's 4.8, the
+  checks), then `finish-install.sh`'s add-in step for Anark/Publisher.
+- Not from the launcher or an update; the launcher may say once that 3D PDF
+  needs it.
+- Test before it is offered: a copy of an old prefix (as for phases 1-3),
+  then 3D PDF, Property Mapping, Stress Analysis and the usual smoke test.
+

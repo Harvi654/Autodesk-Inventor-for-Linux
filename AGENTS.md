@@ -16,6 +16,9 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
   ODIS install image under Wine (MSI/EXE/ZIP/7Z/ADIX, quirks, skip list).
 - `scripts/finish-install.sh`, `scripts/lib/configure.sh` - prefix setup
   (DXVK, vkd3d-proton, WebView2, fonts, disabled add-ins, isolation).
+- `scripts/lib/migrations.sh` + `scripts/lib/migrations/` - numbered prefix
+  migrations (state and backups in `<prefix>/.inventor-on-linux/`);
+  `scripts/migrate-prefix.sh` runs them, `finish-install.sh` runs them all.
 - `scripts/launch-inventor.sh` - starts Identity Manager, licensing service,
   then Inventor. `scripts/lib/common.sh` - shared settings, release/prefix
   detection (`INV_YEAR`, `INV_PREFIX`, `inventor_installs`).
@@ -30,6 +33,11 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
 ## Rules
 - **One Autodesk release per Wine prefix**, never a second program or release
   into an existing prefix. Default prefix `~/.wine-inventor<year>`.
+- **Every change to what a prefix gets is a new migration file**
+  (`scripts/lib/migrations/NNNN-<what>.sh`, listed in its `SHA256SUMS`),
+  never an edit of an old one and never a change made only in
+  `finish-install.sh` - existing installations get it through the
+  migrations, new ones too. `tests/test_migrations.py` guards it.
 - **Never commit or publish:** `registry/*.reg`, logs, Autodesk binaries or
   installers, Autodesk tokens/session URLs (ODIS `.info` files, IdServices
   logs), personal data (names, e-mails, home paths of real users).

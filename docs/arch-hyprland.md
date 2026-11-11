@@ -24,7 +24,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping crash in 2027 (issue #10, open)](#import-cad-step-and-property-mapping-crash-in-2027-issue-10-open)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
-- **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
+- **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
@@ -1355,6 +1355,65 @@ Object"), into a part it works - issue #10, a separate matter (section
 wine-mono back with a real winum update (tested only with a stand-in DLL);
 a clean installation of Inventor 2026; L5 (a week of use).
 
+## Prefix migrations: updating an installed prefix (2026-11-11)
+
+**Problem:** everything in the prefix (registry, DLL overrides, DXVK,
+add-ins, ...) was set only by `finish-install.sh` at installation; an
+existing installation got a change only by reinstalling. Plan:
+`docs/drafts/prefix-migrations.md`.
+
+**What it is now:** numbered steps in `scripts/lib/migrations/`
+(`NNNN-<what>.sh`, runner `scripts/lib/migrations.sh`, overview in the
+folder's README). The prefix records what it has had in
+`<prefix>/.inventor-on-linux/state`; each step saves what it changes to
+`.inventor-on-linux/backup/<step>/` (the registry files always) and, if it
+fails, that is put back and the run stops. `finish-install.sh` runs all
+steps (0001 is its former setup, moved unchanged); `launch-inventor.sh`
+runs the pending ones at every start (seconds when there are none);
+`scripts/migrate-prefix.sh` does it by hand (`--status`, `--dry-run`,
+`--all`, `--run`, `--restore`); the GUI's Update runs `--all`. A prefix from
+before migrations is adopted: recorded as having step 0001, nothing
+changed. Each step runs in its own `bash -Eeuo pipefail`: a first version
+ran it in a subshell, where bash ignores `set -e` when the call sits in an
+`||` - a failing `wineboot -u` was not stopped; a test now covers it.
+
+**The first steps:**
+- `0002-winum-runtime`: `wineboot -u` when the prefix was last updated for
+  another Wine, then `runtime=` in the state. The launcher compared only
+  `wine --version`, which is `wine-11.20` for `wine-inventor-11.20-6` and
+  for winum-11.20-1, so it would not have updated a prefix moving to winum.
+  Finding on the way: `wineboot -u` does not replace the copies of Wine's
+  builtin DLLs in `system32`/`syswow64` (winum-11.20-1, with copies from
+  Wine 11.21 and a non-Wine file; mtime unchanged), so a prefix without a
+  record is judged by them only as "made by this Wine" (equal) or not; the
+  launcher now also runs `wineboot -u` when the record differs (a new winum
+  build of the same Wine version) and writes the record.
+- `0003-x11-driver-inventor`: `UseEGL=N`, `ClientSideWithRender=N` for
+  `Inventor.exe` (sections "GPU ray tracing" and "Status bar: old text
+  stays after GPU ray tracing").
+- `0004-enable-hydra`: `EnableHydra=1`, `RegistryVersion30.0` (2026) or
+  `31.0` (2027).
+- Waiting: vkd3d-proton with the ray payload fix (no release from winum
+  yet); optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
+
+**Rule (AGENTS.md):** every change to what a prefix gets is a new step,
+listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
+unlisted step and on prefix changes in `finish-install.sh`.
+
+**Checked:** 12 tests with fake prefixes and a fake Wine whose registry is
+the prefix's `user.reg`/`system.reg` (old prefix gets 0002-0004 and then
+"nothing to do"; a prefix made by winum gets 0003-0004; a prefix with
+everything is untouched; a failing step and a failing `wineboot -u` are put
+back; `--restore`; a busy prefix is left alone; `--status` writes nothing;
+optional steps only by name; `--all`; the runtime check; a failing command
+in the middle of a step), and 2 guard tests. With winum-11.20-1
+on a test prefix whose `ntdll.dll` copies came from Wine 11.21 (as a
+pre-winum prefix): 0002-0004 applied in 15 s, the values readable with
+`wine reg query`, a second run "nothing to do", backups 3 MB each. Open:
+the maintainer's copy of `~/.wine-invclean` (Inventor 2026 from before
+winum) and the clean `~/.wine-inventor2027`; Nix (@krokosik): the steps run
+inside `finish-install.sh` in the build, the launcher part is not wired.
+
 ## This project's own Wine (v0.2)
 
 Up to v0.1 the fixes were built per DLL and copied over the system's Wine
@@ -1437,6 +1496,12 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - Prefix migrations (phases 1-3):** numbered steps that update
+an installed prefix with backups and rollback, run by the launcher,
+`migrate-prefix.sh` and the GUI's Update; first steps: winum runtime
+(`wineboot -u`), the X11 driver values for Inventor, `EnableHydra`. Details:
+section "Prefix migrations".
 
 **2026-11-11 - .NET Framework 4.8 step: L4 on a clean installation:**
 Inventor 2027.2 installed into a new prefix from `topic/dotnet48`

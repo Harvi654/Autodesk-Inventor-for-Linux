@@ -1252,6 +1252,7 @@ class Installer(Gtk.ApplicationWindow):
     def start_update(self):
         script = ('set -e; cd "$1"; echo "Updating this project..."; bash scripts/update-project.sh; '
                   'echo "Wine..."; bash scripts/get-wine.sh; '
+                  'echo "Wine prefixes (migrations)..."; bash scripts/migrate-prefix.sh --all; '
                   'echo "App launcher and file types..."; bash scripts/install-desktop-integration.sh')
         self.last_args = ["bash", "-c", script, "bash", REPO]
         self.check_wine_then(lambda: self.run_command(self.last_args, "Updating", mode="update"))

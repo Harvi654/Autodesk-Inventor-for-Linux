@@ -398,6 +398,34 @@ wine_winum_name() {
     sed -n 's/^name: *//p' "$root/BUILDINFO" | head -1
 }
 
+# The Wine runtime a prefix is updated for: `wine --version` plus the winum
+# build (from BUILDINFO), e.g. "wine-11.20 winum-11.20-1-x86_64" - the
+# version alone is "wine-11.20" for this project's former wine-inventor-11.20-6
+# and for winum-11.20-1 alike.
+wine_runtime_id() { local w; w="$(wine_winum_name)"; echo "$(wine --version 2>/dev/null)${w:+ $w}"; }
+
+# Was the prefix last updated for another Wine than the one in PATH? The
+# prefix's state (.inventor-on-linux/state, "runtime=", written by migration
+# 0002 and by launch-inventor.sh after `wineboot -u`) says so. A prefix
+# without that record is compared by the copies of Wine's builtin DLLs in
+# system32/syswow64 (ntdll.dll): `wineboot -i` writes them when it creates
+# a prefix, `wineboot -u` does not replace them, so equal copies mean the
+# prefix was made by this Wine. A Wine without that layout (Nix, some
+# distributions) is never reported as different.
+prefix_runtime_differs() {
+    local root rt pf rec
+    rec="$(sed -n 's/^runtime=//p' "$WINEPREFIX/.inventor-on-linux/state" 2>/dev/null | tail -1)"
+    if [ -n "$rec" ]; then [ "$rec" != "$(wine_runtime_id)" ]; return; fi
+    root="$(dirname "$(dirname "$(readlink -f "$(command -v wine)")")")"
+    for rt in x86_64-windows:system32 i386-windows:syswow64; do
+        pf="$WINEPREFIX/drive_c/windows/${rt#*:}/ntdll.dll"
+        rt="$root/lib/wine/${rt%%:*}/ntdll.dll"
+        [ -f "$rt" ] && [ -f "$pf" ] || continue
+        cmp -s "$rt" "$pf" || return 0
+    done
+    return 1
+}
+
 # Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
 # both Framework folders, Microsoft's mscoree.dll in system32 and syswow64
 # (there, and not Wine's mono-backed one, which carries WINE_MONO_OVERRIDES),

@@ -110,18 +110,36 @@ info "[1/4] starting wineserver"
 # cannot handle. So the font drives must exist before ANY wine process runs.
 sandbox_fs
 fix_font_registry
+# Prefix migrations (scripts/lib/migrations/): the steps this prefix has not
+# had yet, each with a backup that is put back if it fails. Seconds when
+# there is nothing to do; optional steps are never run from here. After the
+# font drives (above), as they may start Wine.
+source "$COMMON_DIR/configure.sh"
+source "$COMMON_DIR/migrations.sh"
+# Inventor is not running (checked above); services left from an earlier
+# session would count as a busy prefix
+wine_stop
+if ! run_migrations; then
+    err "updating the prefix stopped - it is as it was before the failed step; see above and $LOGDIR/setup-wine.log"
+    notify "Updating the Inventor prefix failed - see the terminal or logs/setup-wine.log"
+    exit 1
+fi
 # Update the prefix only when the Wine version changed (auto-update is disabled
 # by the isolation setup), then re-apply isolation in case the update re-created
 # Z: or the $HOME links.
 WINE_NOW="$(wine --version 2>/dev/null)"
-if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ]; then
+# also a new build of the same Wine version (another winum release)
+if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ] || prefix_runtime_differs; then
     info "    Wine changed ($WINE_NOW) - updating the prefix (once, up to a minute;
           a Wine window about updating the configuration shows meanwhile - that is normal)"
     wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
     wineserver -w
     sandbox_reg
     echo "$WINE_NOW" > "$WINEPREFIX/.inventor-wine-version"
+    mig_state_set runtime "$(wine_runtime_id)"
 fi
+# a prefix made by this Wine, without a record yet: record it
+[ -n "$(mig_state_get runtime)" ] || mig_state_set runtime "$(wine_runtime_id)"
 wineboot >>"$LOGDIR/inventor-$TS.log" 2>&1
 sandbox_fs   # again after wineboot, so nothing it does can bring Z: or the $HOME links back
 
