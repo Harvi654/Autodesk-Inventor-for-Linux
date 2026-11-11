@@ -23,6 +23,12 @@ case "$1" in
     wineboot)
         # like Wine: the builtin DLL copies in system32 stay as they are
         echo 1794413159 > "$WINEPREFIX/.update-timestamp"
+        echo "wineboot WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-}" >> "$WINEPREFIX/calls.log"
+        # Microsoft's mscoree.dll loaded by the update: the .NET shim's window
+        m="$WINEPREFIX/drive_c/windows/system32/mscoree.dll"
+        if [ -f "$m" ] && ! grep -qs WINE_MONO_OVERRIDES "$m" && [[ ";${WINEDLLOVERRIDES:-};" != *";mscoree=d;"* ]]; then
+            echo "rundll32.exe: This application could not be started" >&2; exit 1
+        fi
         # with isolation (no Z:), Wine finds its wine-mono only through a drive
         # linked to its own share/wine - else it asks for a mono package
         if [ -n "${CHECK_SHARE_DRIVE:-}" ]; then
@@ -221,6 +227,24 @@ class Migrations(unittest.TestCase):
         out = self.migrate(p, year=2026)
         self.assertIn("wineboot -u with wine-11.20 winum-11.20-1-x86_64", out.stdout)
         self.assertEqual(self.state(p)["runtime"], "wine-11.20 winum-11.20-1-x86_64")
+
+    def test_update_with_dotnet_disables_mscoree_only_then(self):
+        # .NET Framework in place of wine-mono: Microsoft's mscoree.dll
+        p = self.prefix(".wine-invclean", 2026)
+        for d in ("system32", "syswow64"):
+            (p / "drive_c" / "windows" / d / "mscoree.dll").write_bytes(b"MZ microsoft")
+        out = self.migrate(p, "--run", "0002", year=2026)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        line = [l for l in (p / "calls.log").read_text().splitlines() if l.startswith("wineboot WINEDLLOVERRIDES=")][0]
+        self.assertIn("mscoree=d", line.split(";"))
+        # wine-mono's mscoree: left alone, so the update can update wine-mono
+        q = self.prefix(".wine-inventor2027", 2027)
+        for d in ("system32", "syswow64"):
+            (q / "drive_c" / "windows" / d / "mscoree.dll").write_bytes(b"MZ..WINE_MONO_OVERRIDES..")
+        out = self.migrate(q, "--run", "0002")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        line = [l for l in (q / "calls.log").read_text().splitlines() if l.startswith("wineboot WINEDLLOVERRIDES=")][0]
+        self.assertNotIn("mscoree", line)
 
     def test_failing_wineboot_is_undone(self):
         p = self.prefix(".wine-invclean", 2026)

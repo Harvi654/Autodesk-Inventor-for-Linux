@@ -426,6 +426,25 @@ prefix_runtime_differs() {
     return 1
 }
 
+# `wineboot -u` [LOGFILE]. With Microsoft's mscoree.dll in the prefix (.NET
+# Framework installed in place of wine-mono), the update's 64-bit
+# `rundll32 setupapi,InstallHinfSection DefaultInstall ... wine.inf` loads
+# that mscoree.dll (and mscoreei.dll) and the .NET shim shows "This
+# application could not be started" until someone closes it (measured on a
+# copy of a 2027 prefix with .NET 4.8, 2026-11-11; NoGuiFromShim=1 did not
+# stop it). With mscoree disabled for the update alone, the window does not
+# come; the .NET installer has registered mscoree already, and an update
+# that cannot load it cannot bring wine-mono back either. A prefix on
+# wine-mono keeps its mscoree, so the update can still update wine-mono.
+wine_update_prefix() {
+    local log="${1:-$LOGDIR/setup-wine.log}" f="$P_C/windows/system32/mscoree.dll"
+    if [ -f "$f" ] && ! grep -qs WINE_MONO_OVERRIDES "$f"; then
+        WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}mscoree=d" wineboot -u >>"$log" 2>&1
+    else
+        wineboot -u >>"$log" 2>&1
+    fi
+}
+
 # Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
 # both Framework folders, Microsoft's mscoree.dll in system32 and syswow64
 # (there, and not Wine's mono-backed one, which carries WINE_MONO_OVERRIDES),

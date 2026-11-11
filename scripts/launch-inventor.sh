@@ -132,7 +132,7 @@ WINE_NOW="$(wine --version 2>/dev/null)"
 if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ] || prefix_runtime_differs; then
     info "    Wine changed ($WINE_NOW) - updating the prefix (once, up to a minute;
           a Wine window about updating the configuration shows meanwhile - that is normal)"
-    wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
+    wine_update_prefix "$LOGDIR/inventor-$TS.log"
     wineserver -w
     sandbox_reg
     echo "$WINE_NOW" > "$WINEPREFIX/.inventor-wine-version"

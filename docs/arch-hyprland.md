@@ -1403,6 +1403,28 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
   launcher's `INV_WINUM`, empty in `migrate-prefix.sh`; it now prints
   `wine_runtime_id`, the same string the state records. Step 0002 had run
   only on that copy and is not on `main`, so it was changed in place.
+  Second test, a reflink copy of the clean 2027 prefix with .NET 4.8,
+  `migrate-prefix.sh --run 0002` forced (2026-11-11): `wineboot -u` did not
+  bring wine-mono back - no uninstall entry, `NDP\v4\Full` still Release
+  0x80eb1 / Version 4.8.03761, Microsoft's `mscoree.dll` unchanged
+  (444 752 / 297 808 bytes), `dotnet48_present` true, before and after
+  identical. But a window "rundll32.exe - This application could not be
+  started" (the .NET shim's, with a link to Microsoft's .NET
+  troubleshooting) came up and waited. With `WINEDEBUG=+process,+loaddll`:
+  the update runs `rundll32 setupapi,InstallHinfSection` three times
+  (`PreInstall`, `DefaultInstall` 64-bit, `Wow64Install` 32-bit); the 64-bit
+  `DefaultInstall` loaded Microsoft's `mscoree.dll` and
+  `Framework64\...\mscoreei.dll` and never unloaded them, the 32-bit one
+  loaded and unloaded them. `NoGuiFromShim=1` (both registry views) did not
+  stop the window. `WINEDLLOVERRIDES=mscoree=d` for the update did: no
+  window, no `mscoree` load, .NET unchanged, and Inventor then started from
+  the launcher (which applied the pending 0003 on the way). So
+  `wine_update_prefix` (common.sh) runs `wineboot -u` with `mscoree=d` when
+  the prefix has Microsoft's `mscoree.dll` (the .NET installer registered it
+  already, and an update that cannot load it cannot bring wine-mono back);
+  a prefix on wine-mono keeps it, so wine-mono can still be updated. 0002
+  and the launcher use it; 0002 is changed in place (only on test copies,
+  not on `main`).
 - `0003-x11-driver-inventor`: `UseEGL=N`, `ClientSideWithRender=N` for
   `Inventor.exe` (sections "GPU ray tracing" and "Status bar: old text
   stays after GPU ray tracing").
@@ -1419,14 +1441,15 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
 listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
 unlisted step and on prefix changes in `finish-install.sh`.
 
-**Checked:** 15 tests with fake prefixes and a fake Wine whose registry is
+**Checked:** 16 tests with fake prefixes and a fake Wine whose registry is
 the prefix's `user.reg`/`system.reg` (old prefix gets 0002-0003 and then
 "nothing to do"; a prefix made by winum gets 0003; 0004 only by name; a prefix with
 everything is untouched; a failing step and a failing `wineboot -u` are put
 back; `--restore`; a busy prefix is left alone; `--status` writes nothing;
 optional steps only by name; `--all`; the runtime check; a failing command
 in the middle of a step; with isolation, the new Wine's `share/wine` linked
-before `wineboot -u`; the runtime name in the step's header), and 2 guard
+before `wineboot -u`; `mscoree=d` for the update only with Microsoft's
+`mscoree.dll`; the runtime name in the step's header), and 2 guard
 tests. With winum-11.20-1
 on a test prefix whose `ntdll.dll` copies came from Wine 11.21 (as a
 pre-winum prefix): 0002-0004 applied in 15 s (0004 was not optional yet), the values readable with

@@ -24,7 +24,9 @@ mig_apply() {
     # copy of a 2026 prefix from before winum) - so the drives first.
     wine_stop
     sandbox_fs
-    wineboot -u >>"$LOGDIR/setup-wine.log" 2>&1
+    # wineboot -u; with Microsoft's .NET Framework in the prefix, without
+    # its shim's "could not be started" window (common.sh)
+    wine_update_prefix
     # services the prefix starts never exit: end them instead of waiting
     wine_stop
     # isolation: the update must not bring Z: or the home links back, and
