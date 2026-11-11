@@ -910,6 +910,32 @@ with "Data Exchange Import: problems encountered ... Could not Insert
 Object". Next: the same files in Inventor 2027 on Windows, to see whether
 Windows inserts them; then a filtered trace of the insert step.
 
+**2026-11-11, trace of the insert step:** Windows (Inventor 2027 in the
+maintainer's VM) inserts the same files. On Linux, with a line-count marker
+taken just before OK and `WINEDEBUG=err+all,fixme-all,+debugstr,warn+ole`,
+the insert step on the main thread shows:
+
+- `err:ole:com_get_class_object class {cfe9f29b-e1b6-4240-aed7-360846769314}
+  not registered`, right after `RxPart.dll` is loaded. On Windows this
+  class is "Microsoft APC 7.1 Object Library" (`apc71.dll`, VBA 7.1), but
+  there VBA was installed by SOLIDWORKS 2026 (`InstallSource` in its
+  `PreReqs\VBA`), not by Inventor: the Inventor 2027 image has no VBA
+  package (not in the plan, the manifests or the files), and our installer
+  skipped nothing but AGS, CER, ODIS and Access. A Windows machine with only
+  Inventor would miss the class too, so this is most likely Inventor
+  probing for VBA - **not the cause** (not proven: the VM has VBA).
+- `RunningObjectTableImpl_GetObject Moniker unavailable (0x800401e3)` once.
+- About 60 `ITypeInfo_fnInvoke invoked function failed` (0x80004005 and
+  0x80070057) and some `ITypeInfo_fnGetIDsOfNames no names found`: IDispatch
+  calls whose callee returned an error; which interfaces is not known yet.
+- About 40 `err:dialog:EndDialog got invalid window handle`.
+- No `OutputDebugString` text (`+debugstr` printed nothing).
+
+Noise seen with `+seh` in the same step: access violations on the main
+thread inside Autodesk's `rse.dll`, `SMData.dll`, `Cm.dll`, handled by a
+handler in `rse.dll` (continue execution); C++ exceptions on another thread
+from `AdpSDKCore.dll` (analytics). Neither is related to the import.
+
 To do: reproduce on Arch with the same STEP file (2026 and 2027); repeat
 with .NET 4.8 in the prefix (done 2026-11-11, see above); if it still fails, `+seh` and a filtered
 `+relay` around the crash, and the import log from Inventor. Clean room:
