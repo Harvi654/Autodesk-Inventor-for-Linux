@@ -937,7 +937,15 @@ assembly, Place -> Import CAD fails with both Reference Model and Convert
 Model, with every Output Location (User Path, Source Path, Workspace) and
 also with the assembly saved first: Load Model shows the model and its
 bodies, and after OK nothing is inserted. So it is not an empty or
-unwritable output path. Parked for now; the next step is a trace that
+unwritable output path. What works and what does not: placing an existing
+`.ipt` into an assembly works; Manage -> Import of the STEP file into an
+open part works (the body is inserted). What fails is every import that has
+to create a **new document** (File -> Open of the STEP file, Import CAD into
+an assembly): the preview shows, after OK no document appears. The
+templates are all in the prefix (`Templates\en-US\`, Metric and English)
+and File -> New creates a part, so a missing template is ruled out too.
+Next: repeat on a clean install with .NET 4.8 from the installer, to rule
+out state left over from earlier tests in this prefix. Parked for now; the next step is a trace that
 names the failing IDispatch calls (`trace+ole` around `ITypeInfo_fnInvoke`,
 from the marker on).
 
