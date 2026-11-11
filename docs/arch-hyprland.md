@@ -931,6 +931,16 @@ the insert step on the main thread shows:
 - About 40 `err:dialog:EndDialog got invalid window handle`.
 - No `OutputDebugString` text (`+debugstr` printed nothing).
 
+Tests in Inventor (2026-11-11): File -> Open of the STEP file works (the
+part opens, but the same "Could not Insert Object" message shows). In an
+assembly, Place -> Import CAD fails with both Reference Model and Convert
+Model, with every Output Location (User Path, Source Path, Workspace) and
+also with the assembly saved first: Load Model shows the model and its
+bodies, and after OK nothing is inserted. So it is not an empty or
+unwritable output path. Parked for now; the next step is a trace that
+names the failing IDispatch calls (`trace+ole` around `ITypeInfo_fnInvoke`,
+from the marker on).
+
 Noise seen with `+seh` in the same step: access violations on the main
 thread inside Autodesk's `rse.dll`, `SMData.dll`, `Cm.dll`, handled by a
 handler in `rse.dll` (continue execution); C++ exceptions on another thread
