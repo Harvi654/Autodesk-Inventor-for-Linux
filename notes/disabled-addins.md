@@ -28,9 +28,10 @@ Untested means: please try it with `addins.sh enable` and report what happens.
 instead of wine-mono for the .NET Framework parts, `corewrapper.exe` runs,
 and with winum's `oleaut32-typelib-keep-released` the export takes about
 15 s for a part and 20 s for an assembly (in testing). The two add-ins stay
-off without it; since 2026-11-11 `install-from-image.py` installs the
-image's .NET Framework 4.8 and `finish-install.sh` / `addins.sh reset` then
-leave them on. See "3D PDF (Anark)" and ".NET Framework 4.8 in the prefix"
+off without it; since 2026-11-11 `install-from-image.py` installs .NET
+Framework 4.0 and the image's 4.8 and `finish-install.sh` / `addins.sh
+reset` then leave them on. Confirmed on a clean Inventor 2027.2
+installation (2026-11-11): both on, 3D PDF Publish works. See "3D PDF (Anark)" and ".NET Framework 4.8 in the prefix"
 in `docs/arch-hyprland.md`.
 
 iLogic was off by default until 2026-10-18; it works now (rules, parameters

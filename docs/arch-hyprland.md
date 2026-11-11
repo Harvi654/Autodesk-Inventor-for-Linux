@@ -23,7 +23,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
 - **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping crash in 2027 (issue #10, open)](#import-cad-step-and-property-mapping-crash-in-2027-issue-10-open)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
-- **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step-in-testing)
+- **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
@@ -931,6 +931,11 @@ the insert step on the main thread shows:
 - About 40 `err:dialog:EndDialog got invalid window handle`.
 - No `OutputDebugString` text (`+debugstr` printed nothing).
 
+Clean prefix with .NET Framework 4.0 + 4.8 from the installer (2026-11-11,
+L4 of the .NET step): Property Mapping opens; importing the STEP file into
+a part works, into an assembly it still ends with "Could not Insert
+Object". So the assembly insert is what remains of this issue.
+
 Tests in Inventor (2026-11-11): File -> Open of the STEP file works (the
 part opens, but the same "Could not Insert Object" message shows). In an
 assembly, Place -> Import CAD fails with both Reference Model and Convert
@@ -1093,7 +1098,7 @@ prefix") turns the two add-ins on. Open: L4 with winum-11.20-1 and a prefix
 from the clean installation, and tests by others.
 Measurements: [wine-repro/oleaut32-typelib-cache](wine-repro/oleaut32-typelib-cache/README.md).
 
-## .NET Framework 4.8 in the prefix (installer step, in testing)
+## .NET Framework 4.8 in the prefix (installer step)
 
 **Why:** Inventor's .NET Framework programs ran on wine-mono and crashed
 there: Anark's `corewrapper.exe` (3D PDF Publish) and AnyCAD's
@@ -1332,10 +1337,23 @@ layer over the base layers.
 same place (`3rdParty/dotNetFramework/48/pkg.dotnet48.xml`, also referenced
 only by DWG TrueView), so the step runs for 2026 too.
 
-**Open:** the clean installation of Inventor 2027 into a new prefix
-(maintainer) - the step's log, `clr.dll`, 3D PDF Publish, Property Mapping,
-start, part, assembly, save/reopen; whether `wineboot -u` (the launcher after
-a Wine update) brings wine-mono back; the same for 2026.
+**L4, clean installation (2026-11-11, maintainer):** Arch, winum-11.20-1,
+Inventor 2027.2, a new prefix installed from `topic/dotnet48` at `bea99d2`.
+.NET Framework 4.0 and 4.8 installed: Microsoft's `mscoree.dll` in
+`system32` (444 752 bytes) and `syswow64` (297 808 bytes), the 4.8 setup's
+"Final Result" Success; 3D PDF's add-ins on. Start, sign-in, Wine 11.20
+with no warning from the launcher, part, assembly, save/reopen, restart:
+OK. 3D PDF Publish: OK. Import CAD's Property Mapping opens (it crashed on
+wine-mono). Stress Analysis on a 500 mm tube with a hole: element size
+0.01 -> 68 718 elements / 109 318 nodes, 0.005 -> 558 221 elements /
+816 748 nodes; mesh and simulation about 4 minutes, OK. Import of a STEP
+file into an assembly still fails on the clean prefix ("Could not Insert
+Object"), into a part it works - issue #10, a separate matter (section
+"Import CAD (STEP) and Property Mapping crash in 2027").
+
+**Open:** whether `wineboot -u` (the launcher after a Wine update) brings
+wine-mono back with a real winum update (tested only with a stand-in DLL);
+a clean installation of Inventor 2026; L5 (a week of use).
 
 ## This project's own Wine (v0.2)
 
@@ -1419,6 +1437,15 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - .NET Framework 4.8 step: L4 on a clean installation:**
+Inventor 2027.2 installed into a new prefix from `topic/dotnet48`
+(`bea99d2`) with winum-11.20-1: .NET 4.0 + 4.8 in place (`mscoree.dll` in
+both system folders, Final Result Success), 3D PDF Publish works, Property
+Mapping opens, start, sign-in, part, assembly, save/reopen, restart and a
+Stress Analysis up to 558 221 elements work. STEP import into an assembly
+still fails (issue #10). Merged into `main`. Details: section ".NET
+Framework 4.8 in the prefix".
 
 **2026-11-11 - .NET Framework 4.8 step, third round:** `mscoree.dll` was
 still missing because .NET 4.8 does not carry it - .NET 4.0 does, and
