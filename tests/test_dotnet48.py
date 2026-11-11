@@ -290,18 +290,29 @@ if [ "$1" = reg ]; then
     esac
 fi
 case "$1" in
+    *dotNetFx40_Full_x86_x64.exe)
+        # .NET 4.0 brings mscoree.dll (Windows version noted for the test)
+        echo "winver-at-4.0: $(K='hkcu\software\wine' awk -F'|' 'tolower($1) == ENVIRON["K"] && $2 == "Version"' "$reg" | tail -1)" \
+            >> "$WINEPREFIX/calls.log"
+        [ -f "$WINEPREFIX/no-mscoree-from-40" ] && exit 0
+        for d in system32 syswow64; do echo MZ-microsoft > "$WINEPREFIX/drive_c/windows/$d/mscoree.dll"; done
+        exit 0 ;;
     *.exe|*.EXE)
+        # the image's 4.8: clr.dll and a UTF-16 setup log, but no mscoree.dll
+        # (on Windows 7 and later that is a system file)
+        echo "winver-at-4.8: $(K='hkcu\software\wine' awk -F'|' 'tolower($1) == ENVIRON["K"] && $2 == "Version"' "$reg" | tail -1)" \
+            >> "$WINEPREFIX/calls.log"
         temp="$WINEPREFIX/drive_c/users/$USER/AppData/Local/Temp"; mkdir -p "$temp"
         if ! grep -qi '^hklm\\software\\microsoft\\net framework setup\\ndp\\v4\\full|release|' "$reg"; then
             for fw in Framework64 Framework; do
                 mkdir -p "$WINEPREFIX/drive_c/windows/Microsoft.NET/$fw/v4.0.30319"
                 : > "$WINEPREFIX/drive_c/windows/Microsoft.NET/$fw/v4.0.30319/clr.dll"
             done
-            # "setup-killed": the files of a setup that was ended half-way
+            # "setup-killed": a setup that was ended half-way writes no result
             if [ ! -f "$WINEPREFIX/setup-killed" ]; then
-                for d in system32 syswow64; do echo MZ-microsoft > "$WINEPREFIX/drive_c/windows/$d/mscoree.dll"; done
-                printf '<html><body><b>Final Result:</b> Installation completed successfully with success code: (0x00000000), "Success"\n</body></html>' \
-                    > "$temp/Microsoft .NET Framework 4.8 Setup_20261111_000000000.html"
+                printf '\xff\xfe' > "$temp/Microsoft .NET Framework 4.8 Setup_20261111_000000000.html"
+                printf '<html><body><table><tr><td>Final Result:</td>\r\n<td>Installation completed successfully with success code: (0x00000000), "Success"</td></tr></table></body></html>\r\n' \
+                    | iconv -f UTF-8 -t UTF-16LE >> "$temp/Microsoft .NET Framework 4.8 Setup_20261111_000000000.html"
             fi
         fi
         exit 0 ;;
@@ -355,8 +366,16 @@ class InstallDotnet48(unittest.TestCase):
         os.environ["PATH"] = self.path
         self.addCleanup(lambda: os.environ.__setitem__("PATH", old))
         os.environ["INV_LOGDIR"] = str(self.prefix / "logs")
+        dl = self.prefix.parent / "downloads"
+        dl.mkdir(exist_ok=True)
+        fake40 = dl / "dotNetFx40_Full_x86_x64.exe"
+        if not fake40.exists():
+            fake40.write_bytes(b"MZ fake .NET 4.0 installer")
+        os.environ["DOWNLOAD_DIR"] = str(dl)
+        self.addCleanup(lambda: os.environ.pop("DOWNLOAD_DIR", None))
         inst = self.mod.Installer(a)
         inst.env["PATH"] = self.path
+        inst.DOTNET40_SHA256 = __import__("hashlib").sha256(fake40.read_bytes()).hexdigest()
         inst.DOTNET48_QUIET = 0
         inst.prefix_processes = lambda: []
         return inst
@@ -401,16 +420,62 @@ class InstallDotnet48(unittest.TestCase):
 
 
     def test_setup_cut_short_is_a_failure(self):
-        # clr.dll is there but mscoree.dll and the Final Result are not: the
-        # state the first clean installation of 75712cc left
+        # clr.dll is there but the Final Result is not: a 4.8 setup ended half-way
         (self.prefix / "setup-killed").write_bytes(b"")
         inst = self.installer()
         self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
         self.assertTrue((self.prefix / "drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll").exists())
-        miss = inst.dotnet48_missing()
-        self.assertIn("windows/system32/mscoree.dll", miss)
-        self.assertIn("windows/syswow64/mscoree.dll", miss)
         self.assertFalse((self.prefix / ".odis-install-state.json").exists())
+
+    def test_48_alone_leaves_no_mscoree(self):
+        # the cause found on the maintainer's prefix: 4.8 does not bring
+        # mscoree.dll; without the 4.0 step the result must count as missing
+        (self.prefix / "no-mscoree-from-40").write_bytes(b"")
+        inst = self.installer()
+        self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertNotIn("netfx_full.exe", self.calls())
+        self.assertIn("windows/system32/mscoree.dll", inst.dotnet48_missing())
+
+    def test_40_before_48_with_their_windows_versions(self):
+        inst = self.installer()
+        self.assertTrue(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        calls = self.calls()
+        self.assertLess(calls.index("dotNetFx40_Full_x86_x64.exe /q /c:install.exe /q"), calls.index("netfx_full.exe"))
+        self.assertIn("winver-at-4.0: hkcu\\software\\wine|Version|winxp", calls)
+        self.assertIn("winver-at-4.8: hkcu\\software\\wine|Version|win7", calls)
+        reg = (self.prefix / "fake-registry").read_text()
+        self.assertIn("ndp\\v4\\full|Install|1", reg)
+        self.assertIn("ndp\\v4\\full|Version|4.0.30319", reg)
+        self.assertIn(".netframework|OnlyUseLatestCLR|1", reg)
+        self.assertIn("hkcu\\software\\wine|Version|win10", reg.splitlines()[-1] + "\n" + reg)
+        self.assertEqual(inst.dotnet48_missing(), [])
+
+    def test_40_checksum_mismatch_stops(self):
+        inst = self.installer()
+        inst.DOTNET40_SHA256 = "0" * 64
+        self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertFalse((self.prefix.parent / "downloads" / "dotNetFx40_Full_x86_x64.exe").exists())
+        self.assertNotIn("dotNetFx40_Full_x86_x64.exe /q", self.calls())
+
+    def test_40_skipped_when_mscoree_is_there(self):
+        for d in ("system32", "syswow64"):
+            (self.prefix / "drive_c" / "windows" / d / "mscoree.dll").write_bytes(b"MZ-microsoft")
+        inst = self.installer()
+        self.assertTrue(inst.install_dotnet40())
+        self.assertNotIn("dotNetFx40", (self.prefix / "calls.log").read_text()
+                         if (self.prefix / "calls.log").exists() else "")
+
+    def test_utf16_log_with_value_in_next_cell(self):
+        inst = self.installer()
+        temp = self.prefix / "drive_c" / "users" / os.environ["USER"] / "AppData" / "Local" / "Temp"
+        temp.mkdir(parents=True)
+        html = ('<html><body><table><tr><td>Final Result:</td>\r\n<td>Installation completed successfully '
+                'with success code: (0x00000000), "Success"</td></tr></table></body></html>')
+        (temp / "Microsoft .NET Framework 4.8 Setup_20261111_185018878.html").write_bytes(html.encode("utf-16"))
+        self.assertIn("Success", inst.dotnet48_setup_result(0))
+        (temp / "Microsoft .NET Framework 4.8 Setup_20261111_185018878.html").write_bytes(
+            html.encode("utf-16-le"))
+        self.assertIn("Success", inst.dotnet48_setup_result(0))
 
     def test_rerun_repairs_a_cut_short_setup(self):
         # rerunning the same command: NDP keys go again, the installer runs again

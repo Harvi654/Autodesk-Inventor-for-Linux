@@ -1126,10 +1126,11 @@ entry in the Result log).
 
 **What the step does** (`install_dotnet48` in `scripts/install-from-image.py`,
 after the product's packages, product images only, skipped when already
-done; `--no-dotnet48` leaves it out). It follows winetricks'
+done; `--no-dotnet48` leaves it out). It does what winetricks'
 [`dotnet48` verb](https://github.com/Winetricks/winetricks/blob/master/src/winetricks)
-(`load_dotnet48`, with `load_remove_mono` and `load_dotnet40`), read at
-version `20260125-next`:
+does, **including the `dotnet40` step it runs first** (`load_dotnet48`,
+`load_remove_mono`, `load_dotnet40`, read at version `20260125-next`); only
+the 4.8 installer comes from Autodesk's image instead of a download:
 
 1. Find the package by its `Identity/DisplayName` among the image's
    `pkg.*.xml` (`odis.find_package`), so the folder is not hard-coded; read
@@ -1138,24 +1139,38 @@ version `20260125-next`:
    `wine uninstaller --list`, then the `NDP\v3.5` and `NDP\v4` keys it wrote,
    and Wine's mono-backed `mscoree.dll` in `system32`/`syswow64` (the copy
    that contains `WINE_MONO_OVERRIDES`).
-3. `OnlyUseLatestCLR=1` in `HKLM\Software\(Wow6432Node\).NETFramework`, as
-   `dotnet40` sets it against a CLR popup on prefix updates.
-4. Windows version `win7` while the installer runs (the verb sets it and
-   leaves it; we put the previous value back, `win10`), `fusion=b` in
-   `WINEDLLOVERRIDES` for the installer, as the verb runs it.
-5. Check that `NDP\v4\Full\Release` is gone and no "Wine Mono" entry is
-   left (else stop: the installer would do nothing), `wineserver -k`, run
-   the image's installer with the manifest's parameters, wait until none of
-   the setup's processes (`Setup.exe`, `SetupUtility.exe`, `msiexec.exe`,
-   `ngen.exe`, `mscorsvw.exe`, the package itself) has run for 20 s (limit
-   one hour), then `wineserver -k` (what is left are the prefix's services,
-   which never exit) and set `mscoree=native` in `DllOverrides`.
-6. Check the result, not the exit code: `clr.dll` in
+3. Check that `NDP\v4\Full\Release` is gone and no "Wine Mono" entry is
+   left (else stop: the 4.8 installer would do nothing).
+4. **.NET Framework 4.0, as `dotnet40` does:** `dotNetFx40_Full_x86_x64.exe`
+   from Microsoft (pinned like DXVK: URL and SHA-256
+   `65e064258f2e418816b304f646ff9e87af101e4c9552ab064bb74d281c38659f` as in
+   winetricks, confirmed by the maintainer's download 2026-11-11; cached in
+   `DOWNLOAD_DIR`, a wrong checksum deletes it and stops), Windows version
+   `winxp` while it runs, `/q /c:"install.exe /q"`, then `mscoree=native`,
+   `NDP\v4\Full` `Install`=1 and `Version`=4.0.30319, `OnlyUseLatestCLR=1`
+   in `HKLM\Software\(Wow6432Node\).NETFramework`, the previous Windows
+   version back. Checked by Microsoft's `mscoree.dll` in `system32` and
+   `syswow64`; skipped when they are already there. **Why it is needed:**
+   4.0 brings `mscoree.dll`; the 4.8 installer does not carry it (on Windows
+   7 and later it is a file of the system) - found by the maintainer: on a
+   prefix with 4.8 alone, even a repair (`REINSTALL=ALL`, "Final Result ...
+   Success (0x00000000)") left no `mscoree.dll`.
+5. **.NET Framework 4.8** from the image, as `load_dotnet48` runs it:
+   Windows version `win7` while it runs (the verb leaves it; we put the
+   previous value back), `fusion=b`, the manifest's parameters.
+6. For both installers: `wineserver -k` before; afterwards wait until none
+   of the setup's processes (`Setup.exe`, `SetupUtility.exe`,
+   `msiexec.exe`, `ngen.exe`, `mscorsvw.exe`, the package itself) has run
+   for 20 s (limit one hour), then `wineserver -k` (what is left are the
+   prefix's services, which never exit) and set `mscoree=native` in
+   `DllOverrides`.
+7. Check the result, not the exit code: `clr.dll` in
    `windows\Microsoft.NET\Framework64\v4.0.30319` and `...\Framework\...`,
    Microsoft's `mscoree.dll` in `system32` and `syswow64` (there, and not
    Wine's mono one), the `mscoree` override, and a "Final Result" line with
    "Success" in the newest `Microsoft .NET Framework 4.8 Setup_*.html` of
-   the prefix's Temp folder. If it is not there, the install stops with a
+   the prefix's Temp folder (the setup writes it in UTF-16; the value can
+   be in the next table cell). If it is not there, the install stops with a
    message (wine-mono is gone by then, so a prefix without either is not
    left silently).
 
@@ -1273,11 +1288,12 @@ mono-backed `mscoree.dll` (it contains `WINE_MONO_OVERRIDES`) is back in
 `system32`, and the launcher warns when the prefix's install state records
 the step but `dotnet48_present` fails.
 
-**Not done like the verb:** `dotnet40` (the verb installs .NET 4.0 from
-Microsoft first). .NET 4.8 is a complete installer and replaces 4.x in
-place; of `dotnet40` only `OnlyUseLatestCLR` is kept. The `NDP\v4\Full`
-values `dotnet40` writes are written by the 4.8 installer itself. Whether
-anything else of `dotnet40` matters is what the clean install shows.
+**`dotnet40` (2026-11-11, third round):** the first version left the
+verb's `dotnet40` step out, on the assumption that 4.8 replaces 4.x in
+place. It does not bring `mscoree.dll`, so the step now runs `dotnet40` as
+well (item 4 above). The same round fixed the "Final Result" check: the
+setup's HTML log is UTF-16, which the check read as UTF-8 and so never
+found the line.
 
 **Why after the product's packages, in install-from-image.py:** the test
 prefixes got .NET 4.8 after Inventor was installed (winetricks on a finished
@@ -1304,8 +1320,9 @@ off by default only while .NET Framework 4.8 is missing
 `finish-install.sh` and `addins.sh reset` turn them on in a prefix that has
 it.
 
-**Nix:** the installer is part of the image that `requireFile` already
-covers, so there is no new `fetchurl`. `nix/inventor.nix` keeps Microsoft's
+**Nix:** the 4.8 installer is part of the image that `requireFile` already
+covers; the 4.0 installer is a `fetchurl` with the same URL and SHA-256,
+linked into `DOWNLOAD_DIR` as DXVK and vkd3d-proton are. `nix/inventor.nix` keeps Microsoft's
 `mscoree.dll` when the library prunes Wine's stock DLLs and checks for both
 `clr.dll` after the installation. Open for @krokosik: how removing wine-mono
 (uninstaller, deleted files and keys) looks in the captured installation
@@ -1402,6 +1419,13 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - .NET Framework 4.8 step, third round:** `mscoree.dll` was
+still missing because .NET 4.8 does not carry it - .NET 4.0 does, and
+winetricks' `dotnet48` installs `dotnet40` first. The step now does the
+same (4.0 downloaded from Microsoft, pinned, SHA-256 confirmed by the
+maintainer), and reads the setup's UTF-16 log for its "Final Result".
+Details: section ".NET Framework 4.8 in the prefix".
 
 **2026-11-11 - .NET Framework 4.8 step, second clean installation:**
 `clr.dll` in place but no `mscoree.dll`: the installer is a self-extractor

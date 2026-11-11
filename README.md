@@ -330,7 +330,9 @@ Python, no compiled programs are in this repository. What they do:
   winum's `patches/series`, published from a signed tag, checked against the
   SHA-256 in `wine/SHA256SUMS` (`scripts/get-wine.sh --build` says how to
   build it yourself), DXVK
-  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked)
+  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked),
+  Microsoft's .NET Framework 4.0 installer (SHA-256 checked; installed
+  before the .NET Framework 4.8 of Autodesk's image, as winetricks does)
   and Microsoft's WebView2
   runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
