@@ -37,12 +37,11 @@ done
 unset _cfg _env_inv _env_save
 
 # Inventor release: given (environment, config.env), else the one installed in
-# INV_PREFIX (newest if several); when INV_PREFIX came only from config.env
-# (or nowhere) and holds no Inventor, the release this installer finds
-# installed (inventor_installs; the newest if several - INV_YEAR or
-# INV_PREFIX chooses another), else 2026. INV_YEAR_GIVEN=1 when it was given;
-# INV_PREFIX_SOURCE says where INV_PREFIX came from (environment,
-# config.env, found, default).
+# INV_PREFIX (newest if several), else 2026. Only when INV_PREFIX comes from
+# config.env and that prefix holds no Inventor at all is the release this
+# installer finds installed taken instead (inventor_installs, the newest if
+# several). INV_YEAR_GIVEN=1 when it was given; INV_PREFIX_SOURCE says where
+# INV_PREFIX came from (environment, config.env, found, default).
 INV_YEAR_GIVEN=0; [ -z "${INV_YEAR:-}" ] || INV_YEAR_GIVEN=1
 inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
     local d y=""
@@ -76,13 +75,13 @@ inventor_installs() {
 if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
     INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
 fi
-# Nothing given and config.env's prefix (if any) holds no Inventor, e.g. a
-# test prefix that was emptied: take what is installed rather than 2026 in a
-# prefix without Inventor. A prefix from the environment is kept - it may be
-# the target of a new installation.
-# The installer and uninstaller choose their target themselves
-# (_INV_FOR_INSTALL=1 before sourcing this file).
-if [ -z "${INV_YEAR:-}" ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
+# No INV_YEAR, and the prefix config.env names holds no Inventor (an emptied
+# test prefix): take what is installed rather than 2026 in a prefix without
+# Inventor. A config.env prefix with Inventor is always kept, a prefix from
+# the environment too (it may be a new installation's target), and without
+# config.env nothing changes. The installer and uninstaller choose their
+# target themselves (_INV_FOR_INSTALL=1 before sourcing this file).
+if [ -z "${INV_YEAR:-}" ] && [ "$INV_PREFIX_SOURCE" = config.env ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
     _inst="$(inventor_installs | tail -1)"
     if [ -n "$_inst" ]; then
         INV_YEAR="${_inst%%$'\t'*}" INV_PREFIX="${_inst#*$'\t'}" INV_PREFIX_SOURCE=found

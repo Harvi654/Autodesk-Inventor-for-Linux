@@ -1257,22 +1257,22 @@ install log had neither the ".NET Framework 4.8 ... stays off" nor an "on
 `topic/dotnet48` code of `75712cc` runs `cfg_disable_addins`. Run here with
 winum-11.20-1 under `set -Eeuo pipefail` (as `finish-install.sh` runs),
 `dotnet48_present` saw the right `wine` and `WINEPREFIX` and returned the
-right answer. A first guess here was another checkout; the maintainer
-found the real cause: the installer had done it right
+right answer. Two wrong guesses were made here: another checkout, and then
+that `config.env` named an emptied prefix. The maintainer found what it
+was: no fault at all. The installer had done it right
 (`~/.wine-inventor2027/.../Addins.disabled` held only AssistantAddin,
 Feedback, InteractiveTutorial, PerfFeedback, SharedViews and
-translatorfusion, moved at 18:28 by step 8), and `addins.sh list` had read
-**another prefix**: `config.env` still named an emptied test prefix
-(`~/.wine-invclean`, no `Inventor.exe` left), so `common.sh` took that
-prefix and, finding no Inventor in it, the default release 2026 - folders
-of an old 2026 installation. Fixed in `common.sh`: when `INV_YEAR` is not
-given and the prefix from `config.env` (or none) holds no Inventor, the
-release this installer finds installed (`inventor_installs`, the newest if
-several) is taken; a prefix from the environment is kept, and `install.sh`,
-`uninstall.sh` and the GUI keep choosing their target themselves
-(`_INV_FOR_INSTALL=1`). `addins.sh` prints the release, the prefix and
-where the prefix came from on its first line (and `list` no longer exits
-1 without an `Addins.disabled/libs`). Still useful from the first round:
+translatorfusion, moved at 18:28 by step 8). `addins.sh list` without
+`INV_YEAR` read the maintainer's working Inventor 2026 prefix
+(`~/.wine-invclean`, named in `config.env` on purpose), where Anark and
+Publisher are off by the old default list - correct for that prefix.
+What came out of it: `addins.sh` prints the release, the prefix and where
+the prefix came from on its first line, so it is clear which one it reads;
+`list` no longer exits 1 without an `Addins.disabled/libs`; and only when
+the prefix `config.env` names holds no Inventor at all does `common.sh`
+take the release it finds installed (a `config.env` prefix with Inventor is
+kept; with `INV_YEAR=2027` given, the 2027 prefix is used as before).
+Still useful from the first round:
 `cfg_disable_addins` now logs the `wine` it uses,
 the prefix, the list it applies and, when .NET 4.8 counts as missing, the
 first condition that failed (`dotnet48_why`); it decides once, so the list

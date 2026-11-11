@@ -49,9 +49,19 @@ class ReleaseChoice(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         return tuple(out.stdout.strip().split("|"))
 
-    def test_only_2027_installed_no_config(self):
-        p = self.prefix(".wine-inventor2027", 2027)
-        self.assertEqual(self.choice(), ("2027", str(p), "found"))
+    def test_maintainers_case_config_prefix_2026_and_a_2027_prefix(self):
+        # config.env names a working 2026 prefix on purpose; ~/.wine-inventor2027
+        # exists beside it
+        c = self.prefix(".wine-invclean", 2026)
+        p27 = self.prefix(".wine-inventor2027", 2027)
+        self.config('INV_PREFIX=$HOME/.wine-invclean\n')
+        self.assertEqual(self.choice(), ("2026", str(c), "config.env"))
+        self.assertEqual(self.choice(INV_YEAR="2027"), ("2027", str(p27), "default"))
+
+    def test_no_config_unchanged(self):
+        # without config.env the old rule stays: 2026 and its default prefix
+        self.prefix(".wine-inventor2027", 2027)
+        self.assertEqual(self.choice(), ("2026", str(self.home / ".wine-inventor2026"), "default"))
 
     def test_config_prefix_without_inventor_falls_back_to_the_installed_one(self):
         # the maintainer's case: config.env still named an emptied test prefix
@@ -66,9 +76,11 @@ class ReleaseChoice(unittest.TestCase):
         self.config('INV_PREFIX="$HOME/.wine-invclean"\n')
         self.assertEqual(self.choice(), ("2026", str(c), "config.env"))
 
-    def test_several_installed_newest(self):
+    def test_empty_config_prefix_several_installed_newest(self):
+        self.prefix(".wine-invclean")
         self.prefix(".wine-inventor2026", 2026)
         p = self.prefix(".wine-inventor2027", 2027)
+        self.config('INV_PREFIX="$HOME/.wine-invclean"\n')
         self.assertEqual(self.choice(), ("2027", str(p), "found"))
 
     def test_year_given(self):
@@ -89,15 +101,16 @@ class ReleaseChoice(unittest.TestCase):
                          ("2026", str(self.home / ".wine-inventor2026"), "default"))
 
     def test_addins_list_names_prefix_and_release(self):
-        self.prefix(".wine-invclean")
-        p = self.prefix(".wine-inventor2027", 2027, addins=["Anark.Core.addin", "iLogic.addin"])
-        self.config('INV_PREFIX="$HOME/.wine-invclean"\n')
+        c = self.prefix(".wine-invclean", 2026, addins=["Anark.Core.addin", "iLogic.addin"])
+        self.prefix(".wine-inventor2027", 2027)
+        self.config('INV_PREFIX=$HOME/.wine-invclean\n')
         out = subprocess.run(["bash", "scripts/addins.sh", "list"], cwd=str(ROOT), env=self.env(),
                              capture_output=True, text=True)
+        # also: exit code 0 without Addins.disabled/libs
         self.assertEqual(out.returncode, 0, out.stderr)
         first = out.stdout.splitlines()[0]
-        self.assertEqual(first, "Inventor 2027 in %s (prefix: found; INV_YEAR=... or INV_PREFIX=... "
-                                "chooses another)" % p)
+        self.assertEqual(first, "Inventor 2026 in %s (prefix: config.env; INV_YEAR=... or INV_PREFIX=... "
+                                "chooses another)" % c)
         self.assertIn("Anark.Core.addin", out.stdout)
 
 
