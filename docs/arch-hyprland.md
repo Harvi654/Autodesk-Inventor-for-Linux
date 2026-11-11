@@ -206,6 +206,43 @@ XWayland is enabled (it is by default) and `DISPLAY` is set in your session.
 
 ### HiDPI / fractional scaling
 
+On 2026-11-10, NixOS + Hyprland already had `force_zero_scaling=true`, but
+Inventor 2027's ribbon and status text looked jagged while the Home WebView
+text looked smooth. The prefix had `FontSmoothing="2"`,
+`FontSmoothingType=1` (grayscale), RGB orientation (`1`), and 120 DPI.
+A local experiment changed only the smoothing type to `2` (ClearType), using
+the packaged Wine inside the launcher's composed prefix before starting
+Inventor:
+
+```bash
+wine reg query 'HKCU\Control Panel\Desktop' /v FontSmoothingType
+wine reg add 'HKCU\Control Panel\Desktop' /v FontSmoothingType /t REG_DWORD /d 2 /f
+```
+
+These commands require the package's Wine and active composed `WINEPREFIX`;
+do not use a system Wine or assume the source installer's prefix location.
+Restore `/d 1` to undo this experiment. The live registry query confirmed the
+change from `1` to `2`; the user reported no visible improvement. No default
+package setting or Wine patch was changed.
+
+Follow-up: a synthetic GDI probe run inside Inventor's actual user and mount
+namespaces confirmed smoothing type `2`, but zero intermediate pixels in small
+Tahoma text. Wine's `+font` trace reported `aa disabled by GASP` from
+`freetype_get_aa_flags()` in `dlls/win32u/freetype.c`. Segoe UI and Noto Sans
+rendered with intermediate pixels in the same DIB test. This user had Windows
+fonts available from a mounted Windows installation; the package's free-family
+replacements do not override an already available real family. A local
+`HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes` string
+`Tahoma=Segoe UI`, followed by restart, changed system menu/status fonts to
+Segoe UI. Their probe output then had intermediate pixels; explicit Tahoma
+requests remained unsmoothed. The user confirmed that the change looked good.
+The Nix launcher now checks real host/prefix font families and applies this
+mapping only when Segoe UI is available. It removes that mapping if the family
+disappears and preserves substitutions to other families. No fonts are added
+to the package. Local rollback is to delete that value and restart; the launcher
+will restore it if Segoe UI is still available. Other launchers are unchanged.
+See [the probe and commands](wine-repro/win32u-font-smoothing/README.md).
+
 With monitor scale > 1, XWayland apps are upscaled and look blurry. Two options:
 
 1. Let Hyprland not scale XWayland and make Wine scale itself:
@@ -1040,6 +1077,19 @@ the version the prefix was last updated with, and move forward only.
 with "Could not import object" and Property Mapping crashes in
 `AnyCADPropertyMappingTool.exe` running on Wine Mono (NixOS, Inventor 2027).
 First hypothesis: needs .NET 4.8; to be fixed for the next release.
+
+**2026-11-10 - NixOS font experiment:** with compositor scaling already
+disabled for XWayland, changed Inventor 2027's grayscale smoothing to ClearType
+in its user state before UI startup. Registry readback passed; the user saw no
+improvement. A probe traced unsmoothed Tahoma to Wine's GASP handling. A second
+local experiment substituted Segoe UI for system menu/status fonts; probe
+rendering is antialiased and the user confirmed improvement. The Nix launcher
+now applies the mapping conditionally on real Segoe UI availability. Six
+regression cases cover host/prefix detection, fallback families, disappearance,
+idempotence and custom substitutions. All 17 repository tests and flake checks
+passed; the updated 2027 launcher built and started Inventor, and a probe in
+its namespace confirmed Segoe UI for menu/status fonts. DPI unchanged. No Wine
+patch.
 
 **2026-10-26 - Native Wayland remains unusable:** the draft bridge rendered
 WebView2 Home content, but was terribly slow and glitchy. Keep X11/XWayland.

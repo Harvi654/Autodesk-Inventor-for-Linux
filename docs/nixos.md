@@ -265,3 +265,36 @@ The hidden Xvfb desktop still stops at “Loading…” when creating a standard
 with either graphics setup. Its cause remains undetermined; the successful
 normal-desktop test establishes the supported smoke-test result. The isolated
 desktop was stopped, and the authenticated test state was preserved.
+
+## Fonts and small UI text
+
+The launcher checks actual host font families with `fc-list` and prefix font
+files with `fc-scan`. If **Segoe UI** is available, it adds the Wine
+`FontSubstitutes` entry `Tahoma=Segoe UI` for smoother system menu/status text.
+This is conditional on the actual family, not Wine's Segoe-to-Noto alias or
+Fontconfig's fallback matching. If Segoe UI disappears, that specific mapping
+is removed; substitutions to other families are preserved. The check runs in
+the composed prefix at launch, for both Inventor releases. Microsoft fonts are
+not downloaded or included in the package by this change.
+
+On 2026-11-10 the user confirmed the substitution improved Inventor 2027's UI.
+ClearType settings alone had not helped: Wine's font trace showed smoothing
+disabled by small Tahoma glyphs' GASP instructions. Explicit application
+requests for Tahoma can remain unsmoothed; this changes system font selection.
+See the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling).
+
+Which fonts to provide:
+
+| Fonts | Purpose and existing coverage |
+|---|---|
+| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family; needed for the conditional substitution. Supply it through your own host fonts or prefix. |
+| Tahoma / Microsoft Sans Serif | Legacy UI families. Providing them does not itself solve small-text smoothing; free replacements already exist. |
+| Arial, Times New Roman, Courier New | Useful for matching documents that name these fonts. Liberation Sans, Serif and Mono are already bundled as substitutes. |
+| Calibri / Cambria | Optional for documents that use them; Carlito and Caladea substitutes are already bundled. |
+| AIGDT / AMGDT | Autodesk engineering-symbol fonts. Verified present in the built Inventor 2027 application layer from the user's installation media; do not replace them with general-purpose sans fonts. |
+| Other template/import fonts | Supply the specific families used by your drawings and templates when exact appearance matters. |
+
+Autodesk documents [AIGDT as necessary for correct drawing symbols](https://www.autodesk.com/support/technical/article/caas/sfdcarticles/sfdcarticles/Special-characters-and-symbols-are-not-displayed-correctly-in-drawings.html)
+and explains that [DWG import maps source fonts to available Windows/TrueType families](https://help.autodesk.com/cloudhelp/2021/ENU/Inventor-Help/files/GUID-8AF446D5-3854-43B2-B88B-711E6AA2FF5F.htm).
+The table distinguishes observed UI usage and document compatibility; it is not
+an exhaustive inventory of every font requested by Inventor or its add-ins.

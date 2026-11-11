@@ -135,6 +135,7 @@
               cp ${./tests/test_runtime_state.py} tests/test_runtime_state.py
               cp ${./nix/launch-lock.sh} nix/launch-lock.sh
               cp ${./nix/launch-services.sh} nix/launch-services.sh
+              cp ${./nix/launch-fonts.sh} nix/launch-fonts.sh
               python3 tests/test_runtime_state.py
               touch "$out"
             '';

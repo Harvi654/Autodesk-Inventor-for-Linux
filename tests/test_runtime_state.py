@@ -10,6 +10,79 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 LOCK = ROOT / "nix/launch-lock.sh"
 SERVICES = ROOT / "nix/launch-services.sh"
+FONTS = ROOT / "nix/launch-fonts.sh"
+
+
+class RuntimeFonts(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="inventor-runtime-fonts-")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        mock_bin = self.root / "bin"
+        mock_bin.mkdir()
+        self.actions = self.root / "actions"
+        self.env = os.environ | {
+            "PATH": str(mock_bin) + os.pathsep + os.environ["PATH"],
+            "WINEPREFIX": str(self.root / "prefix"),
+            "FONT_HOST_FAMILIES": "",
+            "FONT_PREFIX_FAMILIES": "",
+            "FONT_CURRENT": "",
+            "FONT_ACTIONS": str(self.actions),
+        }
+        scripts = {
+            "fc-list": 'printf "%s\\n" "$FONT_HOST_FAMILIES"',
+            "fc-scan": 'printf "%s\\n" "$FONT_PREFIX_FAMILIES"',
+            "wine": '''
+if [ "$2" = query ]; then
+    if [ -z "$FONT_CURRENT" ]; then
+        printf 'reg: Unable to find the specified registry value\\n'
+        exit 1
+    fi
+    printf 'HKEY_LOCAL_MACHINE\\n    Tahoma    REG_SZ    %s\\n' "$FONT_CURRENT"
+else
+    printf '%s\\n' "$*" >> "$FONT_ACTIONS"
+fi
+''',
+        }
+        for name, script in scripts.items():
+            path = mock_bin / name
+            path.write_text(f"#!{shutil.which('bash')}\n{script}\n")
+            path.chmod(0o755)
+
+    def apply_fonts(self):
+        result = subprocess.run(["bash", "-euo", "pipefail", str(FONTS)],
+                                env=self.env, text=True, capture_output=True,
+                                timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return self.actions.read_text() if self.actions.exists() else ""
+
+    def test_real_host_family_enables_substitution(self):
+        self.env["FONT_HOST_FAMILIES"] = "Segoe UI,Segoe UI Semibold"
+        actions = self.apply_fonts()
+        self.assertIn("reg add", actions)
+        self.assertIn("/v Tahoma /t REG_SZ /d Segoe UI /f", actions)
+
+    def test_prefix_font_enables_substitution(self):
+        self.env["FONT_PREFIX_FAMILIES"] = "Segoe UI"
+        self.assertIn("reg add", self.apply_fonts())
+
+    def test_fallback_and_other_segoe_families_do_not_enable_it(self):
+        self.env["FONT_HOST_FAMILIES"] = "Noto Sans\nSegoe UI Symbol\nSegoe UI Variable"
+        self.assertEqual(self.apply_fonts(), "")
+
+    def test_disappearing_font_removes_segoe_substitution(self):
+        self.env["FONT_CURRENT"] = "Segoe UI"
+        self.assertIn("reg delete", self.apply_fonts())
+
+    def test_existing_segoe_substitution_needs_no_write(self):
+        self.env.update(FONT_CURRENT="Segoe UI", FONT_HOST_FAMILIES="Segoe UI")
+        self.assertEqual(self.apply_fonts(), "")
+
+    def test_custom_substitution_is_preserved_with_or_without_segoe(self):
+        self.env["FONT_CURRENT"] = "DejaVu Sans"
+        self.assertEqual(self.apply_fonts(), "")
+        self.env["FONT_HOST_FAMILIES"] = "Segoe UI"
+        self.assertEqual(self.apply_fonts(), "")
 
 
 class RuntimeState(unittest.TestCase):
