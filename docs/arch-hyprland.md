@@ -1143,8 +1143,11 @@ version `20260125-next`:
 4. Windows version `win7` while the installer runs (the verb sets it and
    leaves it; we put the previous value back, `win10`), `fusion=b` in
    `WINEDLLOVERRIDES` for the installer, as the verb runs it.
-5. Run the image's installer with the manifest's parameters, wait for
-   `wineserver -w`, set `mscoree=native` in `DllOverrides`.
+5. Check that `NDP\v4\Full\Release` is gone and no "Wine Mono" entry is
+   left (else stop: the installer would do nothing), `wineserver -k`, run
+   the image's installer with the manifest's parameters, then
+   `wineserver -k` (services the prefix starts never exit) and set
+   `mscoree=native` in `DllOverrides`.
 6. Check the result, not the exit code: `clr.dll` in
    `windows\Microsoft.NET\Framework64\v4.0.30319` and `...\Framework\...`,
    and the `mscoree` override. If it is not there, the install stops with a
