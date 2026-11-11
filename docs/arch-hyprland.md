@@ -901,8 +901,17 @@ after the winum release tests.
   Wine ("system ()", prefix 2026 for a 2027 install, "NOT patched" for
   every DLL), so the report helper needs a look on NixOS too.
 
+**2026-11-11, Arch, Inventor 2027, winum-11.20-1 build (Build Wine run
+43022221734), a prefix with .NET Framework 4.8:** the Property Mapping
+dialog opens and works (no crash), so .NET 4.8 fixes symptom 2. The import
+itself still fails: Load Model reads the STEP file and shows its preview
+and tree (tested with two files, one of them a simple bolt), but OK ends
+with "Data Exchange Import: problems encountered ... Could not Insert
+Object". Next: the same files in Inventor 2027 on Windows, to see whether
+Windows inserts them; then a filtered trace of the insert step.
+
 To do: reproduce on Arch with the same STEP file (2026 and 2027); repeat
-with .NET 4.8 in the prefix; if it still fails, `+seh` and a filtered
+with .NET 4.8 in the prefix (done 2026-11-11, see above); if it still fails, `+seh` and a filtered
 `+relay` around the crash, and the import log from Inventor. Clean room:
 only the crash address and module list of Autodesk's binaries, nothing
 from inside them.
@@ -1077,6 +1086,11 @@ the version the prefix was last updated with, and move forward only.
 with "Could not import object" and Property Mapping crashes in
 `AnyCADPropertyMappingTool.exe` running on Wine Mono (NixOS, Inventor 2027).
 First hypothesis: needs .NET 4.8; to be fixed for the next release.
+
+**2026-11-11 - Issue #10 with .NET 4.8:** Property Mapping no longer
+crashes (fixed by .NET 4.8, which goes into the installer). The STEP import
+still ends with "Could not Insert Object" after a successful Load Model;
+to be compared with Windows.
 
 **2026-11-10 - NixOS font experiment:** with compositor scaling already
 disabled for XWayland, changed Inventor 2027's grayscale smoothing to ClearType
