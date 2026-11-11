@@ -16,6 +16,7 @@
 set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
+echo "Inventor $INV_YEAR in $INV_PREFIX (prefix: $INV_PREFIX_SOURCE; INV_YEAR=... or INV_PREFIX=... chooses another)"
 ADDINS="$P_ADDINS"
 OFF="$P_ADDINS_OFF"
 LIBS="$OFF/libs"
@@ -44,7 +45,7 @@ case "${1:-list}" in
     list)
         echo "enabled:";  find "$ADDINS" -maxdepth 1 -iname '*.addin' -printf '    %f\n' | sort
         echo "disabled:"; find "$OFF" -maxdepth 1 -iname '*.addin' -printf '    %f\n' | sort
-        [ -d "$LIBS" ] && find "$LIBS" -maxdepth 1 -type f -printf '    (moved library) %f\n'
+        if [ -d "$LIBS" ]; then find "$LIBS" -maxdepth 1 -type f -printf '    (moved library) %f\n'; fi
         ;;
     enable)
         f="$(pick "$OFF" "${2:?name}")"; mv "$OFF/$f" "$ADDINS/"; ok "enabled $f"

@@ -37,7 +37,12 @@ done
 unset _cfg _env_inv _env_save
 
 # Inventor release: given (environment, config.env), else the one installed in
-# INV_PREFIX (newest if several), else 2026. INV_YEAR_GIVEN=1 when it was given.
+# INV_PREFIX (newest if several); when INV_PREFIX came only from config.env
+# (or nowhere) and holds no Inventor, the release this installer finds
+# installed (inventor_installs; the newest if several - INV_YEAR or
+# INV_PREFIX chooses another), else 2026. INV_YEAR_GIVEN=1 when it was given;
+# INV_PREFIX_SOURCE says where INV_PREFIX came from (environment,
+# config.env, found, default).
 INV_YEAR_GIVEN=0; [ -z "${INV_YEAR:-}" ] || INV_YEAR_GIVEN=1
 inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
     local d y=""
@@ -48,18 +53,9 @@ inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
 }
 # the prefix from config.env, before it is adjusted below (inventor_installs)
 INV_CONFIG_PREFIX="${INV_PREFIX:-}"
-if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
-    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
-fi
-INV_YEAR="${INV_YEAR:-2026}"
-# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
-# another release: that release's prefix is not this one's - use the default
-# ~/.wine-inventor<year> (one release per prefix).
-if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
-    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
-    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"
-    unset _y
-fi
+if [ "$INV_PREFIX_FROM_ENV" -eq 1 ]; then INV_PREFIX_SOURCE=environment
+elif [ -n "${INV_PREFIX:-}" ]; then INV_PREFIX_SOURCE=config.env
+else INV_PREFIX_SOURCE=default; fi
 # Installed Inventor releases: "YEAR<TAB>PREFIX" lines, oldest release first.
 # Looks at the prefix from config.env and ~/.wine-inventor<year>, plus prefixes
 # this installer made (~/.wine-*/.odis-install-state.json); backups and copies
@@ -77,6 +73,32 @@ inventor_installs() {
         [ -z "$y" ] || printf '%s\t%s\n' "$y" "$p"
     done | sort -n -k1,1 -s
 }
+if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
+    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
+fi
+# Nothing given and config.env's prefix (if any) holds no Inventor, e.g. a
+# test prefix that was emptied: take what is installed rather than 2026 in a
+# prefix without Inventor. A prefix from the environment is kept - it may be
+# the target of a new installation.
+# The installer and uninstaller choose their target themselves
+# (_INV_FOR_INSTALL=1 before sourcing this file).
+if [ -z "${INV_YEAR:-}" ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
+    _inst="$(inventor_installs | tail -1)"
+    if [ -n "$_inst" ]; then
+        INV_YEAR="${_inst%%$'\t'*}" INV_PREFIX="${_inst#*$'\t'}" INV_PREFIX_SOURCE=found
+    fi
+    unset _inst
+fi
+INV_YEAR="${INV_YEAR:-2026}"
+# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
+# another release: that release's prefix is not this one's - use the default
+# ~/.wine-inventor<year> (one release per prefix).
+if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
+    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
+    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || { INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"; INV_PREFIX_SOURCE=default; }
+    unset _y
+fi
+[ -n "${INV_PREFIX:-}" ] || INV_PREFIX_SOURCE=default
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
 INV_REGMAJOR="${INV_REGMAJOR:-$((INV_YEAR - 1996))}"
 WIN_ROOT="${WIN_ROOT:-/mnt/windows}"

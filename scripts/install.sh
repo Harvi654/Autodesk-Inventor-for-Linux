@@ -30,6 +30,7 @@
 # A log of everything is written to logs/install-<date>.log.
 
 set -Eeuo pipefail
+_INV_FOR_INSTALL=1   # chooses its target itself, not the installed release (common.sh)
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 _ORIG_ARGS=("$@")

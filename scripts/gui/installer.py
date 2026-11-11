@@ -56,7 +56,9 @@ def project_settings():
     """INV_PREFIX, INV_DATA_DIR, ... as the scripts see them (config.env included),
     and "installs": the installed Inventor releases [(year, prefix)], oldest first."""
     names = ["INV_PREFIX", "INV_DATA_DIR", "INV_DISTRO", "INV_YEAR", "INV_CONFIG_PREFIX"]
-    script = ('source "$1/lib/common.sh" >/dev/null 2>&1; printf "%s\\n" '
+    # _INV_FOR_INSTALL: the installer's defaults, not the release common.sh
+    # would pick among installed ones
+    script = ('_INV_FOR_INSTALL=1; source "$1/lib/common.sh" >/dev/null 2>&1; printf "%s\\n" '
               + " ".join('"$%s"' % n for n in names) + '; inventor_installs')
     try:
         out = subprocess.run(["bash", "-c", script, "bash", SCRIPTS], capture_output=True,

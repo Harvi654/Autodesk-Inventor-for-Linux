@@ -19,6 +19,7 @@
 # Autodesk's downloads in your Downloads folder are never touched.
 
 set -euo pipefail
+_INV_FOR_INSTALL=1   # chooses its target itself, not the installed release (common.sh)
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 KEEP_PREFIX=0 YES=0
