@@ -1145,12 +1145,17 @@ version `20260125-next`:
    `WINEDLLOVERRIDES` for the installer, as the verb runs it.
 5. Check that `NDP\v4\Full\Release` is gone and no "Wine Mono" entry is
    left (else stop: the installer would do nothing), `wineserver -k`, run
-   the image's installer with the manifest's parameters, then
-   `wineserver -k` (services the prefix starts never exit) and set
-   `mscoree=native` in `DllOverrides`.
+   the image's installer with the manifest's parameters, wait until none of
+   the setup's processes (`Setup.exe`, `SetupUtility.exe`, `msiexec.exe`,
+   `ngen.exe`, `mscorsvw.exe`, the package itself) has run for 20 s (limit
+   one hour), then `wineserver -k` (what is left are the prefix's services,
+   which never exit) and set `mscoree=native` in `DllOverrides`.
 6. Check the result, not the exit code: `clr.dll` in
    `windows\Microsoft.NET\Framework64\v4.0.30319` and `...\Framework\...`,
-   and the `mscoree` override. If it is not there, the install stops with a
+   Microsoft's `mscoree.dll` in `system32` and `syswow64` (there, and not
+   Wine's mono one), the `mscoree` override, and a "Final Result" line with
+   "Success" in the newest `Microsoft .NET Framework 4.8 Setup_*.html` of
+   the prefix's Temp folder. If it is not there, the install stops with a
    message (wine-mono is gone by then, so a prefix without either is not
    left silently).
 
@@ -1182,6 +1187,51 @@ two faults:**
   under `HKLM\System\CurrentControlSet\Services`). Fix: `wineserver -k`
   before the step, and after the installer has exited (`wine` returns with
   it) `wineserver -k` and only then `-w`.
+
+**Second clean installation (2026-11-11, `75712cc`): .NET 4.8 incomplete.**
+`clr.dll` was in both Framework folders, but `mscoree.dll` in neither
+`system32` nor `syswow64`, so with `mscoree=native` no .NET Framework
+program could start. `wine dotNetFx48_Full_x86_x64.exe /q /norestart`
+returned 0 after 41 s - the package is a self-extractor that exits while
+the `Setup.exe` it started goes on - and the `wineserver -k` right after it
+ended the setup half-way: its log
+(`Microsoft .NET Framework 4.8 Setup_<time>.html` in Temp) has no "Final
+Result". The 2027.2 Update's run of the same installer then said "BlockIf:
+.NET Framework 4.8 or a later update is already installed" and "Final
+Result: ... Success" without adding anything. The step's check (clr.dll and
+the override only) passed it. Fixes:
+
+- *Wait for the setup, not for the prefix.* Two ways were possible:
+  stopping and disabling the services that never exit (FlexNet's
+  `FNPLicensingService64`, Edge Update) for the step and restoring them,
+  then `wineserver -w`; or waiting for the setup's own processes. The step
+  waits for the processes (read from `/proc`: `WINEPREFIX` of this prefix
+  in the environment, the Windows image name as the first word of the
+  command line): it does not change services that Autodesk's and
+  WebView2's installers registered, does not depend on their names, which
+  differ between releases, and needs nothing restored if the step stops
+  half-way. The process names are the .NET setup's own and stable; an
+  unknown helper would show as a missing file or a missing "Final Result",
+  not as a silent success.
+- *Check what makes .NET usable:* `mscoree.dll` in `system32` and
+  `syswow64` and the setup's "Final Result" (above), in
+  `dotnet48_missing()`; `dotnet48_present` (launcher, add-ins) checks the
+  files and the override - the setup log can be cleaned from Temp later.
+- *A prefix left like this* repairs itself when the same command runs
+  again: the step sees the missing files, deletes the NDP keys again (the
+  setup's "BlockIf" reads them) and runs the installer again. The failure
+  message says so, and that deleting the prefix and installing again also
+  works.
+- *Anark and Publisher:* in this state the old `dotnet48_present` returned
+  true (no `mscoree.dll` at all, so `! grep -qs` on it was true), so
+  `cfg_disable_addins` did not disable them and, finding nothing in
+  `Addins.disabled`, printed nothing - its `info` lines go to stdout,
+  which `install.sh` writes to its log, but that branch had no line of
+  its own. It now always prints which way it went (".NET Framework 4.8 in
+  the prefix - 3D PDF (Anark, Publisher) on" or "... not in the prefix -
+  ... stays off"). If the two add-ins showed as off in Inventor, the
+  likely reason is that without `mscoree.dll` no .NET add-in can load,
+  not that they were moved (to confirm: `bash scripts/addins.sh list`).
 
 **Wine update:** with winum-11.20-1, after the removal above, a stand-in
 native `mscoree.dll` (a small DLL built with MinGW, not Microsoft's) and
@@ -1321,6 +1371,14 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - .NET Framework 4.8 step, second clean installation:**
+`clr.dll` in place but no `mscoree.dll`: the installer is a self-extractor
+that returned while its setup went on, and the step's `wineserver -k`
+ended the setup. The step now waits for the setup's processes, checks
+`mscoree.dll` and the setup's "Final Result", repairs such a prefix on a
+rerun, and the add-in step always logs its decision. Details: section
+".NET Framework 4.8 in the prefix".
 
 **2026-11-11 - .NET Framework 4.8 step, first clean installation:**
 stopped in the step - wine-mono's uninstall entry was read from stdout

@@ -29,6 +29,7 @@ import argparse
 import glob
 import json
 import os
+import re
 import shlex
 import shutil
 import struct
@@ -615,13 +616,83 @@ class Installer:
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     def dotnet48_missing(self):
-        """What is missing for a working .NET Framework 4.8 (empty: none)."""
+        """What is missing for a working .NET Framework 4.8 (empty: none):
+        clr.dll in both Framework folders, Microsoft's mscoree.dll (present,
+        not Wine's mono-backed one) in system32 and syswow64, and the
+        mscoree=native override."""
         miss = [os.path.join("windows", "Microsoft.NET", fw, "v4.0.30319", "clr.dll")
                 for fw in ("Framework64", "Framework")
                 if not os.path.isfile(os.path.join(self.c, "windows", "Microsoft.NET", fw, "v4.0.30319", "clr.dll"))]
+        for d in ("system32", "syswow64"):
+            p = os.path.join(self.c, "windows", d, "mscoree.dll")
+            try:
+                with open(p, "rb") as f:
+                    if b"WINE_MONO_OVERRIDES" in f.read():
+                        miss.append("windows/%s/mscoree.dll (Wine's mono one)" % d)
+            except OSError:
+                miss.append("windows/%s/mscoree.dll" % d)
         if (self.reg_query(r"HKCU\Software\Wine\DllOverrides", "mscoree") or "").lower() != "native":
             miss.append("DllOverrides mscoree=native")
         return miss
+
+    # The 4.8 package is a self-extractor: `wine` returns when it exits,
+    # while the Setup.exe it started goes on (first clean installation: back
+    # after 41 s, setup still running, no "Final Result" in its log). These
+    # are the processes of the setup and its follow-up work; the step waits
+    # until none of them has run for a while.
+    DOTNET48_PROCS = ("setup.exe", "setuputility.exe", "msiexec.exe", "ngen.exe", "mscorsvw.exe",
+                      "dotnetfx48_full_x86_x64.exe")
+    DOTNET48_TIMEOUT = 3600
+    DOTNET48_QUIET = 20
+
+    def prefix_processes(self):
+        """Windows image names (lower case) of the processes running in this
+        prefix, from /proc: WINEPREFIX in their environment, the Windows
+        path as the first word of their command line."""
+        names, want = [], ("WINEPREFIX=" + self.prefix).encode()
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open("/proc/%s/environ" % pid, "rb") as f:
+                    if want not in f.read().split(b"\0"):
+                        continue
+                with open("/proc/%s/cmdline" % pid, "rb") as f:
+                    first = f.read().split(b"\0")[0].decode("utf-8", "replace")
+            except OSError:
+                continue
+            names.append(first.replace("/", "\\").rsplit("\\", 1)[-1].lower())
+        return names
+
+    def wait_for_dotnet48_setup(self):
+        """Wait until no setup process of the .NET Framework has been seen for
+        DOTNET48_QUIET seconds; False after DOTNET48_TIMEOUT."""
+        t0 = last = time.time()
+        while True:
+            busy = sorted({n for n in self.prefix_processes() if n in self.DOTNET48_PROCS})
+            now = time.time()
+            if busy:
+                last = now
+            elif now - last >= self.DOTNET48_QUIET:
+                self.log("      setup finished after %ds" % (now - t0))
+                return True
+            if now - t0 > self.DOTNET48_TIMEOUT:
+                self.log("      still running after %ds: %s" % (now - t0, ", ".join(busy)))
+                return False
+            time.sleep(5)
+
+    def dotnet48_setup_result(self, since):
+        """The "Final Result" line of the newest .NET Framework 4.8 setup log
+        in the user's Temp folder written after `since`, or None."""
+        temp = self.unix(self.vars["temp"])
+        logs = [p for p in glob.glob(os.path.join(temp, "Microsoft .NET Framework 4.8 Setup_*.html"))
+                if os.path.getmtime(p) >= since - 2]    # file times can be coarser than time.time()
+        if not logs:
+            return None
+        with open(max(logs, key=os.path.getmtime), encoding="utf-8", errors="replace") as f:
+            text = re.sub(r"<[^>]+>", " ", f.read())
+        m = re.search(r"Final Result:[^\n]*", text)
+        return " ".join(m.group(0).split()) if m else None
 
     NDP_KEY = r"HKLM\Software\Microsoft\NET Framework Setup\NDP"
 
@@ -707,16 +778,26 @@ class Installer:
                 self.env["WINEDLLOVERRIDES"] = overrides
             else:
                 self.env.pop("WINEDLLOVERRIDES", None)
+        finished = self.wait_for_dotnet48_setup()
+        # what is left now are the prefix's services (they never end)
         subprocess.call(["wineserver", "-k"], env=self.env)
         subprocess.call(["wineserver", "-w"], env=self.env)
         self.reg("add", r"HKCU\Software\Wine\DllOverrides", "/v", "mscoree", "/t", "REG_SZ", "/d", "native")
         self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", old_ver)
         if rc not in (0, 1641, 3010) and rc not in s.get("successCodes", []):
             self.log("     installer exit code %d (not one of its success codes) - checking the files anyway" % rc)
+        result = self.dotnet48_setup_result(t0)
+        self.log("      setup log: %s" % (result or "no Final Result"))
         miss = self.dotnet48_missing()
+        if not finished:
+            miss.append("setup still running after %ds" % self.DOTNET48_TIMEOUT)
+        if not result or "success" not in result.lower():
+            miss.append("no successful Final Result in the setup log")
         if miss:
-            self.log("     FAILED - .NET Framework 4.8 is not complete: %s (see %s)"
-                     % (", ".join(miss), os.path.join(self.logdir, "dotnet48.log")))
+            self.log("     FAILED - .NET Framework 4.8 is not complete: %s (see %s and the setup log in "
+                     "the prefix's Temp folder). Delete the prefix and install again, or rerun the same "
+                     "command: the step starts over (NDP keys removed, installer run again)."
+                     % ("; ".join(miss), os.path.join(self.logdir, "dotnet48.log")))
             return False
         self.mark_done(key)
         self.log("     done in %ds (clr.dll in Framework64 and Framework, mscoree native)" % (time.time() - t0))

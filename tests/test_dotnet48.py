@@ -12,6 +12,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# install-from-image.py reads USER when it is loaded (the prefix's Temp folder)
+os.environ.setdefault("USER", "test")
 sys.path.insert(0, str(ROOT / "scripts" / "lib"))
 import odis  # noqa: E402
 
@@ -129,6 +131,12 @@ class Dotnet48Present(unittest.TestCase):
         wine.write_text(FAKE_WINE)
         wine.chmod(0o755)
 
+    def mscoree(self, mono=False):
+        for d in ("system32", "syswow64"):
+            p = self.prefix / "drive_c" / "windows" / d
+            p.mkdir(parents=True, exist_ok=True)
+            (p / "mscoree.dll").write_bytes(b"MZ..WINE_MONO_OVERRIDES.." if mono else b"MZ-microsoft")
+
     def clr(self, *frameworks):
         for fw in frameworks:
             d = self.prefix / "drive_c" / "windows" / "Microsoft.NET" / fw / "v4.0.30319"
@@ -149,6 +157,7 @@ class Dotnet48Present(unittest.TestCase):
 
     def test_present_with_clr_and_native_override(self):
         self.clr("Framework64", "Framework")
+        self.mscoree()
         (self.prefix / "override-native").write_bytes(b"")
         state, off = self.run_sh()
         self.assertEqual(state, "PRESENT")
@@ -167,6 +176,21 @@ class Dotnet48Present(unittest.TestCase):
         state, off = self.run_sh()
         self.assertEqual(state, "MISSING")
         self.assertIn("Anark.Core.addin", off)
+
+    def test_missing_without_mscoree(self):
+        # clr.dll in both, override native, no mscoree.dll: the setup was cut short
+        self.clr("Framework64", "Framework")
+        (self.prefix / "override-native").write_bytes(b"")
+        state, off = self.run_sh()
+        self.assertEqual(state, "MISSING")
+        self.assertIn("Anark.Core.addin", off)
+
+    def test_missing_with_mono_mscoree_back(self):
+        self.clr("Framework64", "Framework")
+        self.mscoree(mono=True)
+        (self.prefix / "override-native").write_bytes(b"")
+        state, _ = self.run_sh()
+        self.assertEqual(state, "MISSING")
 
     def test_missing_with_native_override_but_one_clr(self):
         self.clr("Framework64")
@@ -202,11 +226,18 @@ if [ "$1" = reg ]; then
 fi
 case "$1" in
     *.exe|*.EXE)
+        temp="$WINEPREFIX/drive_c/users/$USER/AppData/Local/Temp"; mkdir -p "$temp"
         if ! grep -qi '^hklm\\software\\microsoft\\net framework setup\\ndp\\v4\\full|release|' "$reg"; then
             for fw in Framework64 Framework; do
                 mkdir -p "$WINEPREFIX/drive_c/windows/Microsoft.NET/$fw/v4.0.30319"
                 : > "$WINEPREFIX/drive_c/windows/Microsoft.NET/$fw/v4.0.30319/clr.dll"
             done
+            # "setup-killed": the files of a setup that was ended half-way
+            if [ ! -f "$WINEPREFIX/setup-killed" ]; then
+                for d in system32 syswow64; do echo MZ-microsoft > "$WINEPREFIX/drive_c/windows/$d/mscoree.dll"; done
+                printf '<html><body><b>Final Result:</b> Installation completed successfully with success code: (0x00000000), "Success"\n</body></html>' \
+                    > "$temp/Microsoft .NET Framework 4.8 Setup_20261111_000000000.html"
+            fi
         fi
         exit 0 ;;
 esac
@@ -252,6 +283,7 @@ class InstallDotnet48(unittest.TestCase):
 
     def installer(self):
         import argparse
+        os.environ.setdefault("USER", "test")
         a = argparse.Namespace(image=str(self.img), prefix=str(self.prefix), lang="en-US", dry_run=False,
                                no_dotnet48=False)
         old = os.environ.get("PATH")
@@ -260,6 +292,8 @@ class InstallDotnet48(unittest.TestCase):
         os.environ["INV_LOGDIR"] = str(self.prefix / "logs")
         inst = self.mod.Installer(a)
         inst.env["PATH"] = self.path
+        inst.DOTNET48_QUIET = 0
+        inst.prefix_processes = lambda: []
         return inst
 
     def calls(self):
@@ -299,6 +333,90 @@ class InstallDotnet48(unittest.TestCase):
         wine.write_text(STATE_WINE.replace(': > "$WINEPREFIX', 'true "$WINEPREFIX'))
         self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
         self.assertFalse((self.prefix / ".odis-install-state.json").exists())
+
+
+    def test_setup_cut_short_is_a_failure(self):
+        # clr.dll is there but mscoree.dll and the Final Result are not: the
+        # state the first clean installation of 75712cc left
+        (self.prefix / "setup-killed").write_bytes(b"")
+        inst = self.installer()
+        self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertTrue((self.prefix / "drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll").exists())
+        miss = inst.dotnet48_missing()
+        self.assertIn("windows/system32/mscoree.dll", miss)
+        self.assertIn("windows/syswow64/mscoree.dll", miss)
+        self.assertFalse((self.prefix / ".odis-install-state.json").exists())
+
+    def test_rerun_repairs_a_cut_short_setup(self):
+        # rerunning the same command: NDP keys go again, the installer runs again
+        (self.prefix / "setup-killed").write_bytes(b"")
+        self.assertFalse(self.installer().install_dotnet48(self.mod.odis.Image(str(self.img))))
+        (self.prefix / "setup-killed").unlink()
+        reg = self.prefix / "fake-registry"
+        reg.write_text(reg.read_text() + NDP_FULL.lower() + "|Release|0x80eb1\n")
+        self.assertTrue(self.installer().install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertEqual(self.installer().dotnet48_missing(), [])
+
+    def test_waits_for_the_setup_processes(self):
+        inst = self.installer()
+        seen = [["setup.exe", "services.exe"], ["msiexec.exe"], ["mscorsvw.exe", "fnplicensingservice64.exe"],
+                ["fnplicensingservice64.exe", "microsoftedgeupdate.exe"]]
+        polls = []
+
+        def procs():
+            polls.append(1)
+            return seen[min(len(polls), len(seen)) - 1]
+        inst.prefix_processes = procs
+        clock = [0.0]
+        self.mod.time.sleep = lambda n: clock.__setitem__(0, clock[0] + n)
+        self.addCleanup(lambda: setattr(self.mod.time, "sleep", __import__("time").sleep))
+        real_time = self.mod.time.time
+        self.mod.time.time = lambda: clock[0]
+        self.addCleanup(lambda: setattr(self.mod.time, "time", real_time))
+        inst.DOTNET48_QUIET = 10
+        self.assertTrue(inst.wait_for_dotnet48_setup())
+        # setup, msiexec and mscorsvw seen in polls 1-3; services alone do not count
+        self.assertGreaterEqual(len(polls), 4)
+        self.assertGreaterEqual(clock[0], 10 + 10)
+
+    def test_wait_gives_up(self):
+        inst = self.installer()
+        inst.prefix_processes = lambda: ["setup.exe"]
+        clock = [0.0]
+        real_sleep, real_time = self.mod.time.sleep, self.mod.time.time
+        self.mod.time.sleep = lambda n: clock.__setitem__(0, clock[0] + n)
+        self.mod.time.time = lambda: clock[0]
+        self.addCleanup(lambda: (setattr(self.mod.time, "sleep", real_sleep), setattr(self.mod.time, "time", real_time)))
+        inst.DOTNET48_TIMEOUT = 60
+        self.assertFalse(inst.wait_for_dotnet48_setup())
+
+    def test_prefix_processes_reads_proc(self):
+        inst = self.installer()
+        del inst.prefix_processes
+        env = dict(os.environ, WINEPREFIX=str(self.prefix))
+        p = subprocess.Popen(["bash", "-c", 'exec -a "C:\\\\dotnet48\\\\Setup.exe" sleep 30'], env=env)
+        self.addCleanup(p.kill)
+        other = subprocess.Popen(["bash", "-c", 'exec -a "C:\\\\x\\\\msiexec.exe" sleep 30'],
+                                 env=dict(os.environ, WINEPREFIX="/elsewhere"))
+        self.addCleanup(other.kill)
+        __import__("time").sleep(0.3)
+        names = inst.prefix_processes()
+        self.assertIn("setup.exe", names)
+        self.assertNotIn("msiexec.exe", names)
+
+    def test_final_result_must_be_success(self):
+        inst = self.installer()
+        temp = self.prefix / "drive_c" / "users" / os.environ["USER"] / "AppData" / "Local" / "Temp"
+        temp.mkdir(parents=True)
+        log = temp / "Microsoft .NET Framework 4.8 Setup_20261111_182539591.html"
+        log.write_text("<html><body>Exe (...) succeeded.<br>still going</body></html>")
+        self.assertIsNone(inst.dotnet48_setup_result(0))
+        log.write_text('<html><b>Final Result:</b> Installation failed with error code: (0x80070643)</html>')
+        self.assertNotIn("success", inst.dotnet48_setup_result(0).lower())
+        log.write_text('<html><b>Final Result:</b> Installation completed successfully with success code: '
+                       '(0x00000000), "Success"</html>')
+        self.assertIn("Success", inst.dotnet48_setup_result(0))
+        self.assertIsNone(inst.dotnet48_setup_result(__import__("time").time() + 60))
 
 
 if __name__ == "__main__":
