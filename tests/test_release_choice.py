@@ -58,10 +58,31 @@ class ReleaseChoice(unittest.TestCase):
         self.assertEqual(self.choice(), ("2026", str(c), "config.env"))
         self.assertEqual(self.choice(INV_YEAR="2027"), ("2027", str(p27), "default"))
 
-    def test_no_config_unchanged(self):
-        # without config.env the old rule stays: 2026 and its default prefix
+    def test_no_config_only_2027(self):
+        # a fresh Ubuntu VM: no config.env, only ~/.wine-inventor2027 - not
+        # 2026 in an empty ~/.wine-inventor2026 ("no Inventor in ...2026")
+        p = self.prefix(".wine-inventor2027", 2027)
+        self.assertEqual(self.choice(), ("2027", str(p), "found"))
+
+    def test_migrate_status_without_anything_given(self):
+        # the Ubuntu VM: "ERROR no Inventor in .../.wine-inventor2026" before
+        p = self.prefix(".wine-inventor2027", 2027)
+        out = subprocess.run(["bash", "scripts/migrate-prefix.sh", "--status"], cwd=str(ROOT), env=self.env(),
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Inventor 2027 in %s (prefix: found)" % p, out.stdout)
+
+    def test_no_config_test_prefix_only(self):
+        # an older VM: the only installation in a prefix of another name
+        p = self.prefix(".wine-inventor2027-msitest", 2027)
+        (p / ".odis-install-state.json").write_text("{}")
+        self.assertEqual(self.choice(), ("2027", str(p), "found"))
+
+    def test_no_config_2026_with_inventor_stays(self):
+        # ~/.wine-inventor2026 with Inventor: the default stays 2026
+        p = self.prefix(".wine-inventor2026", 2026)
         self.prefix(".wine-inventor2027", 2027)
-        self.assertEqual(self.choice(), ("2026", str(self.home / ".wine-inventor2026"), "default"))
+        self.assertEqual(self.choice(), ("2026", str(p), "default"))
 
     def test_config_prefix_without_inventor_falls_back_to_the_installed_one(self):
         # the maintainer's case: config.env still named an emptied test prefix
@@ -94,6 +115,33 @@ class ReleaseChoice(unittest.TestCase):
 
     def test_nothing_installed(self):
         self.assertEqual(self.choice(), ("2026", str(self.home / ".wine-inventor2026"), "default"))
+
+    def desktop(self, **extra):
+        env = dict(self.env(), XDG_DATA_HOME=str(self.home / "data"), INV_LOGDIR=str(self.home / "logs"))
+        env.update(extra)
+        out = subprocess.run(["bash", "scripts/install-desktop-integration.sh"], cwd=str(ROOT), env=env,
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        apps = self.home / "data" / "applications"
+        return out, sorted(p.name for p in apps.glob("autodesk-inventor-20*.desktop")) if apps.exists() else []
+
+    def test_desktop_entry_for_the_installed_release_only(self):
+        self.prefix(".wine-inventor2027", 2027)
+        out, entries = self.desktop()
+        self.assertEqual(entries, ["autodesk-inventor-2027.desktop"])
+        # asked for a release that is not installed: no entry, no failure
+        out, entries = self.desktop(INV_YEAR="2026")
+        self.assertIn("no Inventor 2026", out.stderr)
+        self.assertEqual(entries, ["autodesk-inventor-2027.desktop"])
+
+    def test_desktop_entry_maintainers_case(self):
+        self.prefix(".wine-invclean", 2026)
+        self.prefix(".wine-inventor2027", 2027)
+        self.config('INV_PREFIX=$HOME/.wine-invclean\n')
+        out, entries = self.desktop()
+        self.assertEqual(entries, ["autodesk-inventor-2026.desktop"])
+        out, entries = self.desktop(INV_YEAR="2027")
+        self.assertEqual(entries, ["autodesk-inventor-2026.desktop", "autodesk-inventor-2027.desktop"])
 
     def test_installer_keeps_its_own_choice(self):
         self.prefix(".wine-inventor2027", 2027)

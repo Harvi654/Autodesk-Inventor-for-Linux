@@ -75,19 +75,30 @@ inventor_installs() {
 if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
     INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
 fi
-# No INV_YEAR, and the prefix config.env names holds no Inventor (an emptied
-# test prefix): take what is installed rather than 2026 in a prefix without
-# Inventor. A config.env prefix with Inventor is always kept, a prefix from
-# the environment too (it may be a new installation's target), and without
-# config.env nothing changes. The installer and uninstaller choose their
-# target themselves (_INV_FOR_INSTALL=1 before sourcing this file).
-if [ -z "${INV_YEAR:-}" ] && [ "$INV_PREFIX_SOURCE" = config.env ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
+# No INV_YEAR, and the prefix that would be used holds no Inventor - the one
+# config.env names (an emptied test prefix), or, with no prefix given at
+# all, the default ~/.wine-inventor2026 (a machine with only 2027): take
+# what is installed (the newest if several) rather than 2026 in a prefix
+# without Inventor. A config.env prefix with Inventor is always kept (2026
+# in it stays 2026), so is ~/.wine-inventor2026 with Inventor and a prefix
+# from the environment (it may be a new installation's target). The
+# installer and uninstaller choose their target themselves
+# (_INV_FOR_INSTALL=1 before sourcing this file).
+_inv_fallback=0
+if [ -z "${INV_YEAR:-}" ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
+    case "$INV_PREFIX_SOURCE" in
+        config.env) _inv_fallback=1 ;;
+        default) [ -n "$(inventor_year_in_prefix "$HOME/.wine-inventor2026")" ] || _inv_fallback=1 ;;
+    esac
+fi
+if [ "$_inv_fallback" = 1 ]; then
     _inst="$(inventor_installs | tail -1)"
     if [ -n "$_inst" ]; then
         INV_YEAR="${_inst%%$'\t'*}" INV_PREFIX="${_inst#*$'\t'}" INV_PREFIX_SOURCE=found
     fi
     unset _inst
 fi
+unset _inv_fallback
 INV_YEAR="${INV_YEAR:-2026}"
 # INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
 # another release: that release's prefix is not this one's - use the default

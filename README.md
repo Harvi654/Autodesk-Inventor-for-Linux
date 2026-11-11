@@ -10,8 +10,9 @@ with one command. Both releases can be installed side by side.
 > part, assembly, drawing and Content Center work, iLogic and Stress Analysis
 > on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on AMD RX 580
 > and RX 6400, and an Intel UHD 630 + NVIDIA GTX 1050 laptop; testers report
-> on other machines, e.g. an NVIDIA RTX 5080). **Ubuntu 26.04** and **Fedora 44**
-> install and run too (first tests, in a virtual machine). Inventor 2027 is
+> on other machines, e.g. an NVIDIA RTX 5080). **Ubuntu 26.04** installs and
+> runs too (two clean installations in a virtual machine, the second with 3D
+> PDF and Stress Analysis), **Fedora 44** in a first test. Inventor 2027 is
 > newer here and less tested than 2026. NixOS: a declarative flake (see
 > [NixOS](#nixos)).
 >
@@ -120,7 +121,8 @@ Found something that does not work? See [Reporting problems](#reporting-problems
 ## Requirements
 
 - **Arch Linux** (or a derivative with `pacman`), **Ubuntu 26.04 / Debian**
-  (`apt`) or **Fedora 44** (`dnf`) - Ubuntu and Fedora in first tests; Wayland or X11
+  (`apt`) or **Fedora 44** (`dnf`) - Ubuntu tested in two clean VM
+  installations, Fedora in a first test; Wayland or X11
 - tested desktops: **Hyprland**, **KDE Plasma** and **GNOME** (Wayland); others will likely work too
 - a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
 - **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
@@ -417,7 +419,9 @@ Done:
       tests on real Windows for every fix
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
 - [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
-- [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
+- [x] Ubuntu / Debian (Ubuntu 26.04.1: clean installation of Inventor 2027
+      in a VM with the whole current installer - winum, .NET 4.0 + 4.8,
+      3D PDF and Stress Analysis working, 2026-11-11)
 - [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
 - [x] GPU ray tracing works in testing (Inventor 2027, AMD and NVIDIA)
 - [x] 3D PDF works in testing (with .NET Framework 4.8)

@@ -1272,7 +1272,10 @@ translatorfusion, moved at 18:28 by step 8). `addins.sh list` without
 (`~/.wine-invclean`, named in `config.env` on purpose), where Anark and
 Publisher are off by the old default list - correct for that prefix.
 What came out of it: `addins.sh` prints the release, the prefix and where
-the prefix came from on its first line, so it is clear which one it reads;
+the prefix came from on its first line, so it is clear which one it reads
+(the case without `config.env` and an empty `~/.wine-inventor2026` was left
+out then and added back after the Ubuntu VM installation, Result log
+2026-11-11);
 `list` no longer exits 1 without an `Addins.disabled/libs`; and only when
 the prefix `config.env` names holds no Inventor at all does `common.sh`
 take the release it finds installed (a `config.env` prefix with Inventor is
@@ -1564,6 +1567,24 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - Clean installation on Ubuntu 26.04.1 LTS (VM, llvmpipe):**
+Inventor 2027 from `main` at `59cc489` with the whole installer: wine-mono
+removed, .NET Framework 4.0 downloaded and checked against its SHA-256,
+Microsoft's `mscoree.dll` in `system32` and `syswow64`, the 4.8 setup's
+Final Result Success, 3D PDF on. Inventor runs, 3D PDF Publish and Stress
+Analysis work, the app menu entry is 2027. Found: with no `config.env` and
+only `~/.wine-inventor2027`, `migrate-prefix.sh --status` and
+`launch-inventor.sh` (nothing given) chose 2026 and `~/.wine-inventor2026`
+("no Inventor in .../.wine-inventor2026"), and on an older VM
+`install-desktop-integration.sh` (after an update, prefix
+`~/.wine-inventor2027-msitest`) made a menu entry for a 2026 that does not
+exist. Fixed in `common.sh`: with nothing given and an empty (or missing)
+`~/.wine-inventor2026`, the installed release is taken (the newest if
+several), as when `config.env` names a prefix without Inventor; a
+`config.env` prefix with Inventor and `~/.wine-inventor2026` with Inventor
+stay as they are. `install-desktop-integration.sh` makes no entry for a
+release that is not installed.
 
 **2026-11-11 - .NET 4.8 and older installations:** a prefix from before the
 installer's .NET 4.8 step stays on wine-mono (no migration replaces it);
