@@ -155,17 +155,26 @@ inventor
 Or select **Autodesk Inventor 2026** in your application menu. Complete first
 sign-in in your normal browser and allow the Autodesk callback to open Inventor.
 
-The module installs the application and desktop entry, enables NixOS graphics
-and FUSE support, and associates `adskidmgr://` links with the launcher. nix-overlayfs
-forwards callbacks to Identity Manager in the active composed prefix and
-provides browser integration. Sign-in requires your Autodesk account and license.
+The module installs the application and desktop entries, enables NixOS
+graphics and FUSE support, and associates `adskidmgr://` links with one
+hidden handler, `autodesk-inventor-url-handler.desktop`. The handler gives a
+callback to the installed release whose session is running (nix-overlayfs
+forwards it to Identity Manager in that composed prefix) and starts the newest
+release only when none runs. The module's launchers do not register their own
+handlers at runtime, and remove the ones earlier launches wrote. Sign-in
+requires your Autodesk account and license.
 
 If Home Manager already manages your user MIME defaults, set its association
 too; a user default takes precedence over the system default:
 
 ```nix
-xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor.desktop";
+xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor-url-handler.desktop";
 ```
+
+Packages used without the module (`nix run .#inventor`) still register a
+handler for their release at every launch, as before; `lib.mkInventor` accepts
+`registerHostUrlHandlers = false`, and a package made with it has
+`passthru.withArgs` to change such arguments.
 
 ## Install both releases side by side
 
@@ -185,11 +194,10 @@ entry, Wine prefix, licensing database, lock, settings, and logs. The commands
 are `inventor` for 2026 and `inventor-2027` for 2027. From the checkout, use
 `nix run .#inventor-2026` or `nix run .#inventor-2027`; `nix run` defaults to 2027.
 
-The module's browser callback default selects the newest installed release.
-If Home Manager manages MIME defaults and you install 2027, use
-`"autodesk-inventor-2027.desktop"` instead of `"autodesk-inventor.desktop"`.
-The launcher also registers a release-specific callback handler when started;
-complete sign-in for one release at a time when both are open.
+Both releases share the `adskidmgr://` callback. The module's handler gives it
+to the release that is running and asked for it; with neither running it
+starts the newest. With both open, it goes to 2027 first, so complete sign-in
+for one release at a time.
 
 For custom 2027 media, set `programs.autodesk-inventor.packages."2027"` to a
 package made with `inputs.inventor.lib.mkInventor { year = "2027"; ...; }`.
@@ -215,6 +223,19 @@ settings remain in nix-overlayfs's writable state at
 Service logs are under `${XDG_STATE_HOME:-~/.local/state}/autodesk-inventor-<year>`.
 Do not delete existing writable state when testing upgrades. Use temporary XDG
 data/cache/state directories for clean smoke tests.
+
+The writable state is an overlay above the Nix layers, and its files always
+win. nix-overlayfs therefore keeps Wine from updating the prefix at runtime
+(an update would copy Wine's own `d3d11.dll` and friends above DXVK), and
+after a rebuild moves Wine builtin copies that hide a layer file to
+`.nix-overlayfs/shadowed/<time>/`; other hiding files are listed in
+`.nix-overlayfs/shadowed-files`. To check that DXVK is used, start with
+`DXVK_HUD=1`. Directories of sessions that were killed are removed from
+`~/.cache/nix-overlayfs/tmp` on the next launch.
+
+Changes to the launcher alone (environment, DLL overrides, URL handling) no
+longer rebuild the installed layers (since nix-overlayfs `543c070`; moving the
+input past it rebuilt them once).
 
 The launcher prepares each release's writable public `Macros` directory and
 per-user `Addins` directory before startup, preserving existing files.
