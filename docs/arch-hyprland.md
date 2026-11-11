@@ -1391,8 +1391,12 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
 - `0003-x11-driver-inventor`: `UseEGL=N`, `ClientSideWithRender=N` for
   `Inventor.exe` (sections "GPU ray tracing" and "Status bar: old text
   stays after GPU ray tracing").
-- `0004-enable-hydra`: `EnableHydra=1`, `RegistryVersion30.0` (2026) or
-  `31.0` (2027).
+- `0004-enable-hydra` (**optional**, `migrate-prefix.sh --run 0004` only):
+  `EnableHydra=1`, `RegistryVersion30.0` (2026) or `31.0` (2027). Not for
+  every prefix: on a card without ray tracing hardware (RX 580, the
+  maintainer's measurement of 2026-10-21 in PR #3) it switches Inventor to
+  Hydra/USD and ray tracing runs on the CPU at about 1200 % CPU. It becomes a
+  normal step with a GPU check and an L4 on a ray tracing card.
 - Waiting: vkd3d-proton with the ray payload fix (no release from winum
   yet); optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
 
@@ -1400,15 +1404,15 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
 listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
 unlisted step and on prefix changes in `finish-install.sh`.
 
-**Checked:** 12 tests with fake prefixes and a fake Wine whose registry is
-the prefix's `user.reg`/`system.reg` (old prefix gets 0002-0004 and then
-"nothing to do"; a prefix made by winum gets 0003-0004; a prefix with
+**Checked:** 13 tests with fake prefixes and a fake Wine whose registry is
+the prefix's `user.reg`/`system.reg` (old prefix gets 0002-0003 and then
+"nothing to do"; a prefix made by winum gets 0003; 0004 only by name; a prefix with
 everything is untouched; a failing step and a failing `wineboot -u` are put
 back; `--restore`; a busy prefix is left alone; `--status` writes nothing;
 optional steps only by name; `--all`; the runtime check; a failing command
 in the middle of a step), and 2 guard tests. With winum-11.20-1
 on a test prefix whose `ntdll.dll` copies came from Wine 11.21 (as a
-pre-winum prefix): 0002-0004 applied in 15 s, the values readable with
+pre-winum prefix): 0002-0004 applied in 15 s (0004 was not optional yet), the values readable with
 `wine reg query`, a second run "nothing to do", backups 3 MB each. Open:
 the maintainer's copy of `~/.wine-invclean` (Inventor 2026 from before
 winum) and the clean `~/.wine-inventor2027`; Nix (@krokosik): the steps run
@@ -1500,7 +1504,8 @@ palette); the NixOS build of the winum series (@krokosik).
 **2026-11-11 - Prefix migrations (phases 1-3):** numbered steps that update
 an installed prefix with backups and rollback, run by the launcher,
 `migrate-prefix.sh` and the GUI's Update; first steps: winum runtime
-(`wineboot -u`), the X11 driver values for Inventor, `EnableHydra`. Details:
+(`wineboot -u`), the X11 driver values for Inventor; `EnableHydra` only on
+request (it moves ray tracing to the CPU on a card without RT). Details:
 section "Prefix migrations".
 
 **2026-11-11 - .NET Framework 4.8 step: L4 on a clean installation:**

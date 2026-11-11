@@ -109,21 +109,36 @@ class Migrations(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         st = self.state(p)
         self.assertIn("adopted", st["done.0001-base-setup"])
-        for step in ("0002-winum-runtime", "0003-x11-driver-inventor", "0004-enable-hydra"):
+        for step in ("0002-winum-runtime", "0003-x11-driver-inventor"):
             self.assertIn("applied", st["done." + step], out.stdout)
+        # 0004 is optional: never without being asked for
+        self.assertNotIn("done.0004-enable-hydra", st)
         self.assertEqual(st["runtime"], "wine-11.20")
         # wineboot -u ran; isolation off here, so Wine's own updates stay disabled
         self.assertEqual((p / ".update-timestamp").read_text(), "disable\n")
         user = (p / "user.reg").read_text()
         self.assertIn("Inventor.exe\\X11 Driver|UseEGL|N", user)
         self.assertIn("Inventor.exe\\X11 Driver|ClientSideWithRender|N", user)
-        # release 2026 -> RegistryVersion30.0
-        self.assertIn("RegistryVersion30.0\\System\\Preferences\\Driver|EnableHydra|0x1", user)
+        self.assertNotIn("EnableHydra", user)
         self.assertIn("wineboot -u", (p / "calls.log").read_text())
         self.assertTrue((p / ".inventor-on-linux/backup/0002-winum-runtime/files/user.reg").exists())
         # a second run: nothing to do
         again = self.migrate(p, year=2026)
         self.assertIn("nothing to do", again.stdout)
+        self.assertIn("optional  0004-enable-hydra", self.migrate(p, "--status", year=2026).stdout)
+
+    def test_enable_hydra_only_when_asked(self):
+        # on a card without ray tracing hardware EnableHydra=1 sends ray
+        # tracing to the CPU (RX 580, 2026-10-21): only by name
+        p = self.prefix(".wine-invclean", 2026, runtime="winum")
+        self.assertEqual(self.migrate(p, year=2026).returncode, 0)
+        self.assertNotIn("EnableHydra", (p / "user.reg").read_text())
+        out = self.migrate(p, "--run", "0004", year=2026)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        # release 2026 -> RegistryVersion30.0
+        self.assertIn("RegistryVersion30.0\\System\\Preferences\\Driver|EnableHydra|0x1",
+                      (p / "user.reg").read_text())
+        self.assertIn("applied", self.state(p)["done.0004-enable-hydra"])
 
     def test_clean_prefix_from_today(self):
         # made with winum-11.20-1 by today's installer: runtime current, the
@@ -135,14 +150,13 @@ class Migrations(unittest.TestCase):
         self.assertIn("already so", st["done.0002-winum-runtime"])
         self.assertNotIn("wineboot", (p / "calls.log").read_text())
         self.assertIn("applied", st["done.0003-x11-driver-inventor"])
-        self.assertIn("RegistryVersion31.0\\System\\Preferences\\Driver|EnableHydra|0x1", (p / "user.reg").read_text())
+        self.assertNotIn("EnableHydra", (p / "user.reg").read_text())
+        self.assertIn("nothing to do", self.migrate(p).stdout)
 
     def test_prefix_with_everything_has_nothing_to_do(self):
         p = self.prefix(runtime="winum")
         k = "HKCU\\Software\\Wine\\AppDefaults\\Inventor.exe\\X11 Driver"
-        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n"
-                                    "HKCU\\Software\\Autodesk\\Inventor\\RegistryVersion31.0\\System\\Preferences\\"
-                                    "Driver|EnableHydra|0x1\n" % (k, k))
+        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k))
         before = (p / "user.reg").read_text()
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
@@ -153,21 +167,22 @@ class Migrations(unittest.TestCase):
 
     # --- failure and restore ------------------------------------------------
     def test_failing_step_is_restored_and_stops(self):
+        # 0003 writes UseEGL, then fails on ClientSideWithRender
         p = self.prefix(runtime="winum")
-        out = self.migrate(p, FAIL_REG_VALUE="EnableHydra")
+        before = (p / "user.reg").read_text()
+        out = self.migrate(p, FAIL_REG_VALUE="ClientSideWithRender")
         self.assertNotEqual(out.returncode, 0)
-        self.assertIn("0004-enable-hydra failed", out.stderr)
+        self.assertIn("0003-x11-driver-inventor failed", out.stderr)
         st = self.state(p)
-        self.assertIn("done.0003-x11-driver-inventor", st)
-        self.assertNotIn("done.0004-enable-hydra", st)
-        # user.reg is exactly as it was after 0003: 0004's partial work is gone
-        saved = (p / ".inventor-on-linux/backup/0004-enable-hydra/files/user.reg").read_text()
-        self.assertEqual((p / "user.reg").read_text(), saved)
-        self.assertNotIn("EnableHydra", (p / "user.reg").read_text())
-        # the next run (problem gone) does 0004 only
+        self.assertIn("done.0002-winum-runtime", st)
+        self.assertNotIn("done.0003-x11-driver-inventor", st)
+        # user.reg is exactly as before 0003: its UseEGL is gone again
+        self.assertEqual((p / "user.reg").read_text(), before)
+        self.assertNotIn("UseEGL", (p / "user.reg").read_text())
+        # the next run (problem gone) does 0003 only
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
-        self.assertIn("applied", self.state(p)["done.0004-enable-hydra"])
+        self.assertIn("applied", self.state(p)["done.0003-x11-driver-inventor"])
 
     def test_failing_wineboot_is_undone(self):
         p = self.prefix(".wine-invclean", 2026)
@@ -261,8 +276,9 @@ class Migrations(unittest.TestCase):
                              capture_output=True, text=True)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("== Inventor 2026 in %s" % a, out.stdout)
-        self.assertIn("RegistryVersion30.0", (a / "user.reg").read_text())
-        self.assertIn("RegistryVersion31.0", (b / "user.reg").read_text())
+        for x in (a, b):
+            self.assertIn("Inventor.exe\\X11 Driver|UseEGL|N", (x / "user.reg").read_text())
+            self.assertNotIn("EnableHydra", (x / "user.reg").read_text())
 
 
 class MigrationFilesAreNeverEdited(unittest.TestCase):

@@ -18,8 +18,10 @@ What the implementation does differently from the plan below:
   which Wine *made* a prefix, not which one last updated it. The prefix's
   state records the runtime (`runtime=`); step 0002 and the launcher write
   it. `rollback-wine.sh` is not written.
-- concrt140 and optional GPU ray tracing are not steps yet; vkd3d-proton
-  with the ray payload fix waits for a release from winum.
+- concrt140 is not a step yet; vkd3d-proton with the ray payload fix waits
+  for a release from winum; `EnableHydra` (0004) is optional until a GPU
+  check and an L4 on a ray tracing card exist - on a card without ray
+  tracing hardware it moves ray tracing to the CPU.
 
 ## Problem
 
