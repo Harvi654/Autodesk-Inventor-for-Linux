@@ -378,10 +378,12 @@ wine_winum_name() {
 }
 
 # Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
-# both Framework folders and mscoree loaded native.
+# both Framework folders, no mono-backed mscoree.dll (Wine's, which carries
+# WINE_MONO_OVERRIDES) back in system32, and mscoree loaded native.
 dotnet48_present() {
     [ -f "$P_C/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll" ] &&
         [ -f "$P_C/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll" ] &&
+        ! grep -qs WINE_MONO_OVERRIDES "$P_C/windows/system32/mscoree.dll" &&
         WINEDEBUG=-all wine reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>/dev/null | grep -qi 'native'
 }
 

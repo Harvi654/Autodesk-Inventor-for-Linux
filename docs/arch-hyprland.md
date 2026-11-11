@@ -1151,6 +1151,44 @@ version `20260125-next`:
    message (wine-mono is gone by then, so a prefix without either is not
    left silently).
 
+**First clean installation (2026-11-11, `f6a280b`) stopped in this step,
+two faults:**
+
+- *wine-mono was not removed, so the installer did nothing.* The log said
+  "Wine Mono: not installed", but a new winum-11.20-1 prefix has the entry
+  "Wine Mono Windows Support" and `NDP\v4\Full` with `Release` 0x82348
+  (533320), `Version` 4.7.03190, `Install` 1. Cause: `wine uninstaller
+  --list` prints its list on **stderr** (`{GUID}|||Wine Mono Windows
+  Support`) and the step read only stdout (winetricks reads `2>&1`); the
+  NDP keys were deleted only after an uninstall, so they stayed, the
+  package condition `528039 < Release` held, and `dotNetFx48_Full_x86_x64.exe
+  /q /norestart` exited 0 after 23 s with no `clr.dll`. Fix: both streams
+  are read; the `NDP\v3.5` and `NDP\v4` keys are deleted every time; before
+  the installer runs, `NDP\v4\Full\Release` must be gone and no "Wine Mono"
+  entry left, else the step stops with that message. Checked here with
+  winum-11.20-1 in a new prefix: entry found and removed, keys gone, mono
+  `mscoree.dll` deleted from `system32` and `syswow64`.
+- *`wineserver -w` never returned.* After the installer it waited for
+  `MicrosoftEdgeUpdate.exe /c` (WebView2's updater) and
+  `FNPLicensingService64.exe`. These are Windows services that Autodesk's
+  and WebView2's packages register and that Wine's `services.exe` starts by
+  itself whenever a Wine process starts in the prefix; they never exit.
+  `stop_licensing_service()` only ends the `AdskLicensingService.exe` that
+  `install-from-image.py` starts itself as a plain process, so the FlexNet
+  service was still running - most likely (to confirm: its `Start` value
+  under `HKLM\System\CurrentControlSet\Services`). Fix: `wineserver -k`
+  before the step, and after the installer has exited (`wine` returns with
+  it) `wineserver -k` and only then `-w`.
+
+**Wine update:** with winum-11.20-1, after the removal above, a stand-in
+native `mscoree.dll` (a small DLL built with MinGW, not Microsoft's) and
+`mscoree=native`, `wineboot -u` brought back neither the uninstall entry
+nor the NDP keys, left the override and did not touch the DLL. To catch it
+should a later Wine do so, `dotnet48_present` also fails when Wine's
+mono-backed `mscoree.dll` (it contains `WINE_MONO_OVERRIDES`) is back in
+`system32`, and the launcher warns when the prefix's install state records
+the step but `dotnet48_present` fails.
+
 **Not done like the verb:** `dotnet40` (the verb installs .NET 4.0 from
 Microsoft first). .NET 4.8 is a complete installer and replaces 4.x in
 place; of `dotnet40` only `OnlyUseLatestCLR` is kept. The `NDP\v4\Full`
@@ -1280,6 +1318,14 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - .NET Framework 4.8 step, first clean installation:**
+stopped in the step - wine-mono's uninstall entry was read from stdout
+while Wine prints it on stderr, so wine-mono and its NDP keys stayed and the
+installer did nothing; and `wineserver -w` waited for services that never
+end. Fixed (keys always deleted, check before the installer, `wineserver
+-k`); `wineboot -u` does not bring wine-mono back (tested with winum).
+Details: section ".NET Framework 4.8 in the prefix".
 
 **2026-11-11 - .NET Framework 4.8 step in the installer (in testing):**
 `install-from-image.py` replaces wine-mono with the image's own .NET

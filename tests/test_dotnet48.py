@@ -175,5 +175,131 @@ class Dotnet48Present(unittest.TestCase):
         self.assertEqual(state, "MISSING")
 
 
+# A fake wine for install_dotnet48: a registry of "KEY|VALUE|DATA" lines and
+# an uninstall list (printed on stderr, as Wine does) in files of the
+# prefix; running the image's installer creates both clr.dll files unless
+# the registry still has NDP\v4\Full (then, like the real one, it does
+# nothing). Every call is appended to calls.log.
+STATE_WINE = r"""#!/bin/bash
+reg="$WINEPREFIX/fake-registry"; list="$WINEPREFIX/fake-uninstall"
+touch "$reg" "$list"; echo "$*" >> "$WINEPREFIX/calls.log"
+case "$1 $2" in
+    "uninstaller --list") cat "$list" >&2; exit 0 ;;
+    "uninstaller --remove") grep -v "^$3|" "$list" > "$list.n"; mv "$list.n" "$list"; exit 0 ;;
+esac
+if [ "$1" = reg ]; then
+    key="${3,,}"
+    case "$2" in
+        delete) [ -f "$WINEPREFIX/reg-delete-fails" ] && exit 1
+                K="$key" awk -F'|' 'index(tolower($1), ENVIRON["K"]) != 1' "$reg" > "$reg.n"; mv "$reg.n" "$reg"; exit 0 ;;
+        add)    v="$5"; d="${*: -2:1}"
+                K="$key" V="$v" awk -F'|' 'tolower($1) != ENVIRON["K"] || $2 != ENVIRON["V"]' "$reg" > "$reg.n"
+                mv "$reg.n" "$reg"; echo "$key|$v|$d" >> "$reg"; exit 0 ;;
+        query)  line="$(K="$key" V="$5" awk -F'|' 'tolower($1) == ENVIRON["K"] && $2 == ENVIRON["V"]' "$reg" | tail -1)"
+                [ -n "$line" ] || exit 1
+                printf '\n%s\n    %s    REG_SZ    %s\n\n' "$3" "$5" "${line##*|}"; exit 0 ;;
+    esac
+fi
+case "$1" in
+    *.exe|*.EXE)
+        if ! grep -qi '^hklm\\software\\microsoft\\net framework setup\\ndp\\v4\\full|release|' "$reg"; then
+            for fw in Framework64 Framework; do
+                mkdir -p "$WINEPREFIX/drive_c/windows/Microsoft.NET/$fw/v4.0.30319"
+                : > "$WINEPREFIX/drive_c/windows/Microsoft.NET/$fw/v4.0.30319/clr.dll"
+            done
+        fi
+        exit 0 ;;
+esac
+exit 0
+"""
+
+NDP_FULL = r"HKLM\Software\Microsoft\NET Framework Setup\NDP\v4\Full"
+
+
+def load_installer():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("install_from_image", ROOT / "scripts" / "install-from-image.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+class InstallDotnet48(unittest.TestCase):
+    """install_dotnet48 against the fake wine: removal of wine-mono, the
+    NDP keys, the check before the installer, the result check."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="inventor-dotnet-run-")
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.img = root / "image"
+        image(self.img)
+        self.prefix = root / "prefix"
+        (self.prefix / "drive_c" / "windows" / "system32").mkdir(parents=True)
+        (self.prefix / "drive_c" / "windows" / "syswow64").mkdir(parents=True)
+        for d in ("system32", "syswow64"):
+            (self.prefix / "drive_c" / "windows" / d / "mscoree.dll").write_bytes(b"MZ..WINE_MONO_OVERRIDES..")
+        b = root / "bin"
+        b.mkdir()
+        for name, text in (("wine", STATE_WINE), ("wineserver", "#!/bin/sh\nexit 0\n")):
+            (b / name).write_text(text)
+            (b / name).chmod(0o755)
+        self.path = "%s:%s" % (b, os.environ.get("PATH", "/usr/bin:/bin"))
+        # wine-mono's keys, as winum-11.20-1 writes them into a new prefix
+        (self.prefix / "fake-registry").write_text(
+            NDP_FULL.lower() + "|Release|0x82348\n" + NDP_FULL.lower() + "|Version|4.7.03190\n")
+        self.mod = load_installer()
+
+    def installer(self):
+        import argparse
+        a = argparse.Namespace(image=str(self.img), prefix=str(self.prefix), lang="en-US", dry_run=False,
+                               no_dotnet48=False)
+        old = os.environ.get("PATH")
+        os.environ["PATH"] = self.path
+        self.addCleanup(lambda: os.environ.__setitem__("PATH", old))
+        os.environ["INV_LOGDIR"] = str(self.prefix / "logs")
+        inst = self.mod.Installer(a)
+        inst.env["PATH"] = self.path
+        return inst
+
+    def calls(self):
+        return (self.prefix / "calls.log").read_text()
+
+    def test_mono_entry_on_stderr_is_removed(self):
+        (self.prefix / "fake-uninstall").write_text("{844FFFE4-801E-5614-B230-1A47C6191569}|||Wine Mono Windows Support\n")
+        inst = self.installer()
+        self.assertTrue(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertIn("uninstaller --remove {844FFFE4-801E-5614-B230-1A47C6191569}", self.calls())
+        self.assertNotIn("WINE_MONO", (self.prefix / "drive_c/windows/system32/mscoree.dll").read_text()
+                         if (self.prefix / "drive_c/windows/system32/mscoree.dll").exists() else "")
+
+    def test_built_in_mono_nothing_to_uninstall_keys_deleted(self):
+        # winum carries wine-mono (share/wine/mono): no uninstall entry, but
+        # NDP\v4\Full is there - it must go anyway, or the installer does nothing
+        inst = self.installer()
+        self.assertTrue(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertNotIn("uninstaller --remove", self.calls())
+        self.assertNotIn("ndp\\v4\\full|release", (self.prefix / "fake-registry").read_text())
+        self.assertTrue((self.prefix / "drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll").exists())
+        self.assertIn("native", (self.prefix / "fake-registry").read_text())
+        state = (self.prefix / ".odis-install-state.json").read_text()
+        self.assertIn("prerequisite:dotnet48", state)
+
+    def test_keys_left_stop_before_the_installer(self):
+        (self.prefix / "reg-delete-fails").write_bytes(b"")
+        inst = self.installer()
+        self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertNotIn("netfx_full.exe", self.calls())
+
+    def test_no_files_after_installer_is_a_failure(self):
+        # the installer "succeeds" (exit 0) but leaves no clr.dll: not done
+        inst = self.installer()
+        (self.prefix / "fake-registry").write_text("")
+        wine = Path(self.path.split(":")[0]) / "wine"
+        wine.write_text(STATE_WINE.replace(': > "$WINEPREFIX', 'true "$WINEPREFIX'))
+        self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
+        self.assertFalse((self.prefix / ".odis-install-state.json").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

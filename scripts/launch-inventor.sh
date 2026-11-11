@@ -77,6 +77,13 @@ if [ "$INV_WINE_ACTIVE" = system ] && [ -z "$INV_WINUM" ]; then
 elif [ -n "$INV_WINUM" ] && [ "$INV_WINUM" != "$INV_WINE_NAME" ]; then
     info "Wine in use is $INV_WINUM; this project is tested with $INV_WINE_NAME"
 fi
+# .NET Framework 4.8 from the install image (install-from-image.py): if a
+# Wine update or anything else put wine-mono back, 3D PDF and Import CAD's
+# property mapping run on it again - say so.
+if grep -qs '"prerequisite:dotnet48"' "$WINEPREFIX/.odis-install-state.json" && ! dotnet48_present; then
+    warn ".NET Framework 4.8 is no longer complete in this prefix (wine-mono back?) - 3D PDF needs it"
+    warn "run the product image again: python3 $SCRIPTS_DIR/install-from-image.py <image> --prefix $WINEPREFIX"
+fi
 
 # The adskidmgr:// login callback (adskidmgr-callback.sh, started by the
 # browser) must reach THIS prefix - tell it which one is running.

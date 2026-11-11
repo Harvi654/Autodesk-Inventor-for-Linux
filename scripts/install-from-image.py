@@ -623,17 +623,29 @@ class Installer:
             miss.append("DllOverrides mscoree=native")
         return miss
 
+    NDP_KEY = r"HKLM\Software\Microsoft\NET Framework Setup\NDP"
+
+    def wine_mono_entries(self):
+        """GUIDs of the "Wine Mono ..." entries of `wine uninstaller --list`.
+        The list goes to stderr ("{GUID}|||Wine Mono Windows Support"), so
+        both streams are read."""
+        out = subprocess.run(["wine", "uninstaller", "--list"], env=dict(self.env, WINEDEBUG="-all"),
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, errors="replace").stdout
+        return [l.split("|", 1)[0].strip() for l in out.splitlines()
+                if "|" in l and "Wine Mono" in l.split("|", 1)[1]]
+
     def remove_wine_mono(self):
         """winetricks' remove_mono: uninstall every Wine Mono entry, drop the
-        NDP v3.5/v4 keys it wrote, and delete Wine's mono-backed mscoree.dll."""
-        out = subprocess.run(["wine", "uninstaller", "--list"], env=dict(self.env, WINEDEBUG="-all"),
-                             capture_output=True, text=True, errors="replace").stdout
-        found = [l.split("|", 1)[0] for l in out.splitlines() if "|" in l and "Wine Mono" in l.split("|", 1)[1]]
+        NDP v3.5/v4 keys, and delete Wine's mono-backed mscoree.dll. The
+        keys go always, not only after an uninstall: wine-mono's
+        NDP\\v4\\Full (Release 533320, "4.7.03190") left behind makes the
+        image's installer see 4.8 as installed and do nothing."""
+        found = self.wine_mono_entries()
         for guid in found:
             self.run(["wine", "uninstaller", "--remove", guid], "dotnet48-remove-mono.log")
-        if found:
-            self.reg("delete", r"HKLM\Software\Microsoft\NET Framework Setup\NDP\v3.5")
-            self.reg("delete", r"HKLM\Software\Microsoft\NET Framework Setup\NDP\v4")
+        for k in ("v3.5", "v4"):
+            self.reg("delete", self.NDP_KEY + "\\" + k)
         for d in ("system32", "syswow64"):
             p = os.path.join(self.c, "windows", d, "mscoree.dll")
             try:
@@ -643,7 +655,8 @@ class Installer:
                         self.log("      removed Wine's mono mscoree.dll from %s" % d)
             except OSError:
                 pass
-        self.log("      Wine Mono: %s" % ("removed (%d entries)" % len(found) if found else "not installed"))
+        self.log("      Wine Mono: %s; NDP v3.5/v4 keys deleted"
+                 % ("removed (%d entries)" % len(found) if found else "no uninstall entry"))
 
     def install_dotnet48(self, img):
         key = "prerequisite:dotnet48"
@@ -670,6 +683,18 @@ class Installer:
         # selection popup on prefix updates
         for k in (r"HKLM\Software\Microsoft\.NETFramework", r"HKLM\Software\Wow6432Node\.NETFramework"):
             self.reg("add", k, "/v", "OnlyUseLatestCLR", "/t", "REG_DWORD", "/d", "1")
+        # The installer skips itself when this says 4.8 is there (its condition
+        # in the manifest), exiting 0 after installing nothing.
+        rel = self.reg_query(self.NDP_KEY + r"\v4\Full", "Release")
+        if rel is not None or self.wine_mono_entries():
+            self.log("     FAILED - wine-mono is still registered (NDP\\v4\\Full Release %s, uninstall entries %s); "
+                     "the installer would do nothing" % (rel, self.wine_mono_entries() or "none"))
+            return False
+        # Services the prefix starts by itself (FlexNet licensing, Edge
+        # update, ...) keep wineserver busy: stop everything before, and after
+        # the installer has exited end what it left running, instead of
+        # waiting for an idle wineserver that never comes.
+        subprocess.call(["wineserver", "-k"], env=self.env)
         old_ver = self.reg_query(r"HKCU\Software\Wine", "Version") or "win10"
         self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", "win7")
         overrides = self.env.get("WINEDLLOVERRIDES", "")
@@ -682,6 +707,7 @@ class Installer:
                 self.env["WINEDLLOVERRIDES"] = overrides
             else:
                 self.env.pop("WINEDLLOVERRIDES", None)
+        subprocess.call(["wineserver", "-k"], env=self.env)
         subprocess.call(["wineserver", "-w"], env=self.env)
         self.reg("add", r"HKCU\Software\Wine\DllOverrides", "/v", "mscoree", "/t", "REG_SZ", "/d", "native")
         self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", old_ver)
