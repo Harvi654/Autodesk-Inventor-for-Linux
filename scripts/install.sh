@@ -10,9 +10,9 @@
 #
 # Steps (each can be rerun - finished work is skipped):
 #   1. system packages (pacman / apt / dnf)                 phase0-setup.sh
-#   2. this project's Wine (vanilla Wine + patches/,          get-wine.sh
+#   2. winum (vanilla Wine + winum's patches, a release      get-wine.sh
 #      downloaded to ~/.local/share/inventor-on-linux;
-#      INV_WINE=system: fixes built into the system's Wine    build-wine-dll.sh)
+#      INV_WINE=system: the Wine in PATH is used as it is)
 #   3. unpack the downloads
 #   4. install Inventor + Content Center libraries          install-from-image.py
 #   5. install the updates
@@ -167,7 +167,6 @@ step "Checking..."
 case "$INV_DISTRO" in
     arch) ;;
     debian|fedora)
-        [ "$INV_WINE" != system ] || die "INV_WINE=system (fixes built into the system's Wine) is only supported on Arch"
         ;;
     *) die "unsupported distribution (supported: Arch, Debian/Ubuntu, Fedora)" ;;
 esac
@@ -189,20 +188,15 @@ step "System packages..."
 if [ "$SKIP_PKG" -eq 1 ]; then info "skipped (--skip-packages)"
 else bash "$SCRIPTS_DIR/phase0-setup.sh"; fi
 
-step "Wine with this project's fixes..."
+step "Wine (winum)..."
 if [ "$SKIP_WINE" -eq 1 ]; then info "skipped (--skip-wine)"
 elif [ "$INV_WINE" = system ]; then
-    info "INV_WINE=system: building the fixes into the system's Wine ($(wine --version 2>/dev/null))"
-    info "built from Wine's source the first time (10-30 minutes), later only checked"
-    wineserver -k 2>/dev/null || true
-    for p in "${WINE_FIX_PARTS[@]}"; do
-        info "-- $p"
-        bash "$SCRIPTS_DIR/build-wine-dll.sh" "$p" --install --hook
-    done
+    if [ -n "$(wine_winum_name)" ]; then ok "INV_WINE=system: $(wine_winum_name) in PATH"
+    else warn "INV_WINE=system: $(wine --version 2>/dev/null) is not winum - Inventor's fixes are only in winum (bash $SCRIPTS_DIR/get-wine.sh)"; fi
 else
     bash "$SCRIPTS_DIR/get-wine.sh"
     select_wine
-    [ "$INV_WINE_ACTIVE" = bundled ] || die "this project's Wine is not usable - see above"
+    [ "$INV_WINE_ACTIVE" = bundled ] || die "winum is not usable - see above"
     ok "$(wine --version) from $INV_WINE_DIR"
 fi
 

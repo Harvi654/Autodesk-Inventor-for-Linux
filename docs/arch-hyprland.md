@@ -24,7 +24,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping crash in 2027 (issue #10, open)](#import-cad-step-and-property-mapping-crash-in-2027-issue-10-open)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing)
-- **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02)
+- **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
@@ -1115,6 +1115,55 @@ behind a KDE title bar, and only part of the window was drawn. With the 11.20
 build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
 the version the prefix was last updated with, and move forward only.
 
+## winum as the Wine for Inventor (winum-11.20-1)
+
+**What changed for the user:** Inventor runs on
+[winum](https://github.com/Harvi654/winum) `winum-11.20-1` instead of this
+project's own `wine-inventor-11.20-6`. `scripts/get-wine.sh` downloads
+`winum-11.20-1-x86_64.tar.xz` from winum's releases, checks it against
+`wine/SHA256SUMS` and unpacks it to `~/.local/share/inventor-on-linux/`; an
+installed older `wine-inventor-*` build keeps working until then (the
+launcher says a newer one is named). NixOS builds the same series from the
+flake input `winum` (`nix/wine.nix`).
+
+**Why:** winum carries the same fixes, now each with a Wine test that passed
+on real Windows 10 (or a recorded reason why there cannot be one), paired L2
+runs against vanilla Wine, cross review by a second assistant and L4 in
+Inventor; the series is shared with the SOLIDWORKS project. All 27 patches
+of `wine-inventor-11.20-6` are in winum's series of 62; 15 of them in a
+revised version, the other 12 with the same code (for
+example the toolbar `TB_SETROWS` fix, which now gives the symbol palette
+Windows' 40x24 buttons); winum also has fixes from the SOLIDWORKS work and
+the two oleaut32/opengl32 fixes that were drafts here. Record:
+`docs/release/winum-11.20-1.md` in winum.
+
+**False "Wine fixes not installed" warning:** with winum in `PATH`
+(`INV_WINE=system`, `PATH=<winum>/bin:$PATH`) the launcher warned that the
+fixes were missing and asked for `rebuild-wine-fixes.sh`. It compared the
+per-DLL backups of the v0.1 way (`build-wine-dll.sh --install`, `*.orig-<wine
+version>` next to the system's DLLs), which a winum never has. The check and
+the per-DLL builds are retired; the launcher reads the `BUILDINFO` next to the
+Wine in `PATH` (`wine_winum_name` in `common.sh`): a winum is named in the
+start line, any other Wine gets one line that the fixes are only in winum.
+
+**Archived:** `patches/*.patch` (with `debug/`, `drafts/`), `build-wine.sh`,
+`make-wine-source.sh`, `lib/wine-patches.sh`, the "Build Wine" workflow and
+the per-DLL scripts (`build-wine-dll.sh`, `build-wbemprox.sh`,
+`rebuild-wine-fixes.sh`) are in `docs/archive/own-wine-build/`, unchanged.
+`patches/libgsf/` stays (the flake's libgsf overlay).
+
+**Checks:** `bash -n` on all scripts, `python3 -m unittest discover -s
+tests`; the launcher's Wine detection with a fake winum and a fake plain Wine
+in `PATH` (commands in the commit). Nix: `flake.lock` gains only the input
+`winum` (narHash equal to `nix hash path` of `git archive winum-11.20-1`);
+`nix flake check` with the new check `winum-pin` (version.env and the flake
+input name the same release) runs in this repository's CI and with
+@krokosik.
+
+**Open:** L4 of the downloaded winum-11.20-1 release in Inventor 2026 and
+2027 (start, part, assembly, drawing, save/reopen, restart, plus the symbol
+palette); the NixOS build of the winum series (@krokosik).
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
@@ -1125,6 +1174,12 @@ the version the prefix was last updated with, and move forward only.
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - winum-11.20-1:** the installer, launcher and Nix packaging
+switch from this project's own Wine build to winum-11.20-1; the own build,
+its patches and the per-DLL fixes for the system's Wine are archived; the
+false "Wine fixes not installed" warning with winum in `PATH` is gone.
+Details: section "winum as the Wine for Inventor".
 
 **2026-11-10 - Issue #10 recorded (open):** Import CAD of a STEP file fails
 with "Could not import object" and Property Mapping crashes in

@@ -19,8 +19,12 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
 - `scripts/launch-inventor.sh` - starts Identity Manager, licensing service,
   then Inventor. `scripts/lib/common.sh` - shared settings, release/prefix
   detection (`INV_YEAR`, `INV_PREFIX`, `inventor_installs`).
-- `patches/*.patch` - Wine patches; `wine/version.env` + `wine/SHA256SUMS`;
-  `.github/workflows/build-wine.yml` builds and publishes `wine-<ver>-<build>`.
+- Wine: [winum](https://github.com/Harvi654/winum) since winum-11.20-1 -
+  `wine/version.env` names the release, `wine/SHA256SUMS` its checksum,
+  `scripts/get-wine.sh` installs it, the flake input `winum` (`nix/wine.nix`)
+  builds the same `patches/series`. The former own build (`patches/*.patch`,
+  `build-wine.yml`, `build-wine-dll.sh`, `wine-inventor-<ver>-<build>`) is in
+  `docs/archive/own-wine-build/`. `patches/libgsf/` is the flake's libgsf fix.
 - `notes/`, `docs/` - findings (disabled add-ins, Hyprland, NixOS).
 
 ## Rules
@@ -56,6 +60,14 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
   full and what was only skimmed.
 
 ## Wine changes
+Since winum-11.20-1 Wine fixes are made in winum and follow winum's
+AGENTS.md (patch series, markers, validation, release from a signed tag).
+Here a new winum release means: `wine/version.env`, its SHA-256 in
+`wine/SHA256SUMS` from the published release, and the flake input `winum`
+(rev of the tag, `flake.lock`) - in one commit, after the release exists.
+The rules below are kept as they were written for this repository's former
+own build (`docs/archive/own-wine-build/`) and still describe how winum works.
+
 - A fix is a `patches/<dll>-<what>.patch` against the Wine version in
   `wine/version.env`, with a test in Wine's test suite where possible.
 - Raise `WINE_BUILD` when patches change; the workflow publishes the release;

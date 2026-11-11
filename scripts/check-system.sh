@@ -49,10 +49,10 @@ if have wine; then
     info "wine --version: $WV"
     PE="$(wine_pe_dir)"
     info "PE DLL dir:     ${PE:-<not found>}"
-    if [ -n "$PE" ] && strings -el "$PE/wbemprox.dll" 2>/dev/null | grep -cx Win32_TimeZone >/dev/null; then
-        ok "wbemprox.dll already has Win32_TimeZone"
+    if [ -n "$(wine_winum_name)" ]; then
+        ok "winum: $(wine_winum_name) (pinned: $INV_WINE_NAME)"
     else
-        warn "wbemprox.dll is unpatched (run scripts/build-wbemprox.sh later)"
+        warn "this Wine is not winum - Inventor's fixes are only in winum (bash scripts/get-wine.sh)"
     fi
     for d in /usr/share/wine/mono "$P_C/windows/mono"; do
         [ -d "$d" ] && info "wine-mono at:   $d ($(ls "$d" 2>/dev/null | tr '\n' ' '))"

@@ -7,6 +7,12 @@
       url = "github:krokosik/nix-overlayfs/64e1ea8c42a281831bdb362b6078f61721c3e527";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    # winum-11.20-1 (signed tag), the Wine release wine/version.env names.
+    # Only its patches/series and the patches it lists are used.
+    winum = {
+      url = "github:Harvi654/winum/6d437d1e992e152eeec58b93ba85dce9c5f6a23d";
+      flake = false;
+    };
   };
 
   outputs =
@@ -27,7 +33,7 @@
           inputs.nix-overlayfs.overlays.default
         ];
       };
-      wine = pkgs.callPackage ./nix/wine.nix { };
+      wine = pkgs.callPackage ./nix/wine.nix { inherit (inputs) winum; };
       overlayfsLib = pkgs.nix-overlayfs.lib;
       scope = pkgs.nix-overlayfs;
       modules = scope.moduleScopes.makeNativeModules {
@@ -78,6 +84,23 @@
         };
       };
       checks.${system} = {
+        # wine/version.env (get-wine.sh) and the flake input (nix/wine.nix)
+        # must name the same winum release.
+        winum-pin =
+          let
+            env = builtins.readFile ./wine/version.env;
+            value =
+              key:
+              let
+                m = builtins.match ".*\n${key}=([^\n]*)\n.*" ("\n" + env + "\n");
+              in
+              if m == null then throw "wine/version.env has no ${key}" else builtins.head m;
+          in
+          assert value "WINUM_VERSION" == wine.wineVersion;
+          assert value "WINUM_BUILD" == wine.winumBuild;
+          pkgs.runCommand "inventor-winum-pin" { } ''
+            touch "$out"
+          '';
         module-empty-versions =
           let
             moduleConfig =

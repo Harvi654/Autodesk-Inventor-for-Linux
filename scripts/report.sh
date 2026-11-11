@@ -60,18 +60,16 @@ collect() {
     section "Wine"
     echo "wine: $(wine --version 2>/dev/null) - $INV_WINE_ACTIVE${INV_WINE_DIR:+ ($(basename "$INV_WINE_DIR"))}${INV_WINE_OUTDATED:+, outdated=$INV_WINE_OUTDATED} (INV_WINE=$INV_WINE)"
     echo "system wine: $(/usr/bin/wine --version 2>/dev/null) ($(pacman -Qo /usr/bin/wine 2>/dev/null | awk '{print $(NF-1), $NF}'))"
-    local wv f sys
+    local wv root
     wv="$(wine_version)"
-    if [ "$INV_WINE_ACTIVE" = bundled ]; then
-        echo "fixes: built into this project's Wine"
-        sed -n '/^patches/,/^$/p' "$INV_WINE_DIR/BUILDINFO" 2>/dev/null
+    root="$(dirname "$(dirname "$(readlink -f "$(command -v wine)")")")"
+    if [ -n "$(wine_winum_name)" ]; then
+        echo "fixes: in $(wine_winum_name) (pinned: $INV_WINE_NAME)"
+        sed -n '/^patches/,/^$/p' "$root/BUILDINFO" 2>/dev/null
+    elif [ -f "$root/BUILDINFO" ]; then
+        echo "fixes: in this project's former build $(sed -n 's/^name: *//p' "$root/BUILDINFO" | head -1) (pinned now: $INV_WINE_NAME)"
     else
-    for f in "${WINE_FIX_PARTS[@]}"; do
-        sys="$(wine_fix_file "$f")"
-        if [ ! -f "$sys.orig-$wv" ]; then echo "  $f: NOT patched for Wine $wv"
-        elif cmp -s "$sys" "$sys.orig-$wv"; then echo "  $f: original (patch removed?)"
-        else echo "  $f: patched"; fi
-    done
+        echo "fixes: none - Wine $wv is not winum"
     fi
 
     section "Prefix"

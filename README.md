@@ -271,14 +271,20 @@ If it is the integrated one, add part of the name of the GPU you want to
 ### Keeping it working
 
 - Update this project: `cd ~/inventor-on-linux && git pull`
-- Inventor runs on this project's own Wine in `~/.local/share/inventor-on-linux`,
-  so Arch's Wine updates don't affect it, and other Wine programs don't use it.
-  When a `git pull` brings a newer build, the launcher tells you; then run
+- Inventor runs on [winum](https://github.com/Harvi654/winum), a Wine with the
+  fixes for Inventor and other engineering programs, installed in
+  `~/.local/share/inventor-on-linux`, so Arch's Wine updates don't affect it,
+  and other Wine programs don't use it. When a `git pull` names a newer winum
+  release, the launcher tells you; then run
   `bash ~/inventor-on-linux/scripts/get-wine.sh`.
-- Installed with v0.1 (fixes copied into the system's Wine)? Run
-  `bash scripts/get-wine.sh` once to switch; `sudo pacman -S wine` puts Arch's
-  original Wine back. `INV_WINE=system` in `config.env` keeps the old way
-  (then `scripts/rebuild-wine-fixes.sh` after every Wine update).
+- Coming from this project's own Wine (`wine-inventor-11.20-6` and older)?
+  `bash scripts/get-wine.sh` installs winum; the old build is used only until
+  then and can be removed (`get-wine.sh` prints the folder).
+- Your own Wine instead (`INV_WINE=system` in `config.env`): the Wine in
+  `PATH` is used as it is. A winum in `PATH` is recognised (its `BUILDINFO`);
+  any other Wine has none of the fixes, and the launcher says so. Fixes
+  copied into Arch's Wine by v0.1 are no longer built or checked;
+  `sudo pacman -S wine` puts Arch's original files back.
 
 ### Uninstall
 
@@ -286,8 +292,9 @@ If it is the integrated one, add part of the name of the GPU you want to
 bash ~/inventor-on-linux/scripts/uninstall.sh
 ```
 
-Removes the launcher entry, this project's Wine (and fixes copied into the
-system's Wine by v0.1, by reinstalling Arch's `wine` package) and, after
+Removes the launcher entry, winum and older builds of this project's Wine
+(and fixes copied into the system's Wine by v0.1, by reinstalling Arch's
+`wine` package) and, after
 asking, the Wine prefix. Your Inventor files in
 `~/Inventor` are kept.
 
@@ -318,15 +325,16 @@ Python, no compiled programs are in this repository. What they do:
 
 - `sudo` is used only for `pacman` (packages from the official Arch
   repositories). Nothing outside your home folder is changed otherwise.
-- Downloads: this project's Wine from its GitHub releases - built in public
-  by the [Build Wine](.github/workflows/build-wine.yml) workflow from Wine's
-  source and `patches/`, checked against the SHA-256 in `wine/SHA256SUMS`
-  (you can build it yourself instead: `scripts/get-wine.sh --build`), DXVK
+- Downloads: winum from [its GitHub releases](https://github.com/Harvi654/winum/releases) -
+  built in public by winum's "Build Wine" workflow from Wine's source and
+  winum's `patches/series`, published from a signed tag, checked against the
+  SHA-256 in `wine/SHA256SUMS` (`scripts/get-wine.sh --build` says how to
+  build it yourself), DXVK
   2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked)
   and Microsoft's WebView2
   runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
-  (`~/.wine-inventor2026`), this project's Wine, the launcher entry.
+  (`~/.wine-inventor2026`), winum, the launcher entry.
   Telemetry add-ins are switched off.
 - `scripts/uninstall.sh` undoes it.
 
@@ -337,18 +345,21 @@ problems here.
 
 Inventor itself is not modified. The work is in three places:
 
-- **Wine fixes** (`patches/`): small patches for Wine bugs Inventor runs into -
-  a missing WMI class, the file dialog's folder view, type libraries, MSI
-  transforms and delta patches, COM details Stress Analysis needs, a sketch
-  that only redrew on mouse movement, a home page that lagged behind the mouse,
-  black boxes behind sketch inputs under Xwayland, a crash with some mouse
-  devices. They are applied to vanilla Wine (version in `wine/version.env`)
-  and built into this project's Wine by a public GitHub workflow
-  (`scripts/build-wine.sh`); the result is installed in your home folder, next
-  to - not over - the system's Wine.
+- **Wine fixes** ([winum](https://github.com/Harvi654/winum)): small patches
+  for Wine bugs Inventor runs into - a missing WMI class, the file dialog's
+  folder view, type libraries, MSI transforms and delta patches, COM details
+  Stress Analysis needs, a sketch that only redrew on mouse movement, a home
+  page that lagged behind the mouse, black boxes behind sketch inputs under
+  Xwayland, a crash with some mouse devices, the symbol palette's layout.
+  Since winum-11.20-1 they live in winum, shared with other engineering
+  programs; every one has a Wine test that passed on real Windows 10 or a
+  recorded reason why it cannot. `wine/version.env` names the release; it is
+  installed in your home folder, next to - not over - the system's Wine.
   They were written with AI help, so they are not sent to Wine itself (Wine
   does not accept AI-generated code); Wine gets bug reports with test cases
-  instead. New patches come with a test that is checked on real Windows.
+  instead. This project's former Wine build and its patches (up to
+  `wine-inventor-11.20-6`) are kept in
+  [docs/archive/own-wine-build/](docs/archive/own-wine-build/README.md).
 - **Installation** (`scripts/install-from-image.py`, `scripts/lib/odis.py`):
   reads Autodesk's install image and runs its packages in the right order
   under Wine, in place of Autodesk's Windows installer front end.
@@ -365,6 +376,9 @@ Details, background and every problem found on the way:
 Done:
 
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
+- [x] [winum](https://github.com/Harvi654/winum) as the Wine for Inventor
+      (winum-11.20-1): one Wine shared with other engineering programs, with
+      tests on real Windows for every fix
 - [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
 - [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
 - [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
@@ -374,9 +388,6 @@ Done:
 
 Next release (in progress):
 
-- [ ] [winum](https://github.com/Harvi654/winum) as the Wine for Inventor: one
-      Wine shared with other engineering programs, with tests on real Windows
-      for every fix
 - [ ] .NET Framework 4.8 in the prefix (3D PDF and other .NET parts)
 - [ ] GPU ray tracing set up by the installer, with a check whether the card
       and driver support it
@@ -450,26 +461,29 @@ Thank you all.
 This project started as a fork of
 [cakelesscoder/inventor-on-linux](https://github.com/cakelesscoder/inventor-on-linux),
 which first got Inventor 2026 running under Wine and found the
-`Win32_TimeZone` fix (`patches/wbemprox-timezone.patch`).
+`Win32_TimeZone` fix (now winum's `wbemprox-timezone.patch`).
 
 Most of the code and the Wine patches in this fork were written with the help
 of AI (Claude, by Anthropic) and tested by people on real machines.
 
 ## License
 
-[MIT](LICENSE), like the original project - except the Wine patches in
-`patches/`: they change Wine's code and are therefore under Wine's license,
-the LGPL 2.1 or later. The Wine this project builds and publishes is LGPL 2.1
-or later too. See [the patch layout](patches/README.md).
-
-Every Wine release carries its complete source next to the binary:
-`wine-inventor-<version>-<build>-source.tar.xz` is vanilla Wine with the
-patches applied exactly as built, `PATCHES.txt` (each patch, its date and the
-files it changes; the changed files also say so in a comment at their end) and
-the build files (`scripts/make-wine-source.sh` makes it, reproducibly). The
-binary's `BUILDINFO` lists the versions of the bundled wine-mono and
-wine-gecko - unchanged builds from the Wine project, whose sources are at
+[MIT](LICENSE), like the original project. Wine itself and the Wine patches
+are under Wine's license, the LGPL 2.1 or later: since winum-11.20-1 the Wine
+Inventor runs on comes from [winum](https://github.com/Harvi654/winum), whose
+every release carries its complete source next to the binary
+(`winum-<version>-<build>-source.tar.xz`: vanilla Wine with the patches applied
+exactly as built, `PATCHES.txt` and the build files). The binary's `BUILDINFO`
+lists the patches and the versions of the bundled wine-mono and wine-gecko -
+unchanged builds from the Wine project, whose sources are at
 `dl.winehq.org/wine/wine-mono/` and `dl.winehq.org/wine/wine-gecko/`.
+
+This project's former Wine releases (`wine-inventor-<version>-<build>`, up to
+11.20-6) stay published with their `-source.tar.xz`; their patches and build
+files (LGPL 2.1 or later) are in
+[docs/archive/own-wine-build/](docs/archive/own-wine-build/README.md).
+`patches/libgsf/` holds a patch for libgsf used by the Nix packaging (LGPL as
+libgsf).
 
 Autodesk Inventor and Microsoft WebView2 remain proprietary. The Nix packages
 and installer sources are marked unfree; this repository's license does not

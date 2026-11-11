@@ -102,29 +102,36 @@ detect_distro() {
 INV_DISTRO="${INV_DISTRO:-$(detect_distro)}"
 
 # --- which Wine --------------------------------------------------------------
-# This project's own Wine (vanilla Wine + patches/, built in public by the
-# "Build Wine" workflow, downloaded by get-wine.sh) or the system's Wine with
-# the fixes copied into it (build-wine-dll.sh, the v0.1 way).
-#   INV_WINE=auto     own Wine when it is installed, else the system's (default)
-#   INV_WINE=bundled  own Wine only
-#   INV_WINE=system   the system's Wine
+# winum (https://github.com/Harvi654/winum): vanilla Wine with the fixes for
+# Inventor and other engineering software, built and published there. The
+# release named in wine/version.env is downloaded by get-wine.sh and checked
+# against wine/SHA256SUMS. Until winum-11.20-1 this project built its own
+# Wine; that build is in docs/archive/own-wine-build/.
+#   INV_WINE=auto     winum when it is installed, else the system's Wine (default)
+#   INV_WINE=bundled  winum only
+#   INV_WINE=system   the Wine in PATH (a winum in PATH is recognised by its
+#                     BUILDINFO; the system's own Wine has none of the fixes)
 INV_WINE="${INV_WINE:-auto}"
 INV_WINE_HOME="${INV_WINE_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/inventor-on-linux}"
-INV_WINE_VER="$(sed -n 's/^WINE_VERSION=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
-INV_WINE_BUILD="$(sed -n 's/^WINE_BUILD=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
-INV_WINE_NAME="wine-inventor-$INV_WINE_VER-$INV_WINE_BUILD-x86_64"
-# checksums of the published builds (added after the "Build Wine" workflow ran)
+INV_WINE_VER="$(sed -n 's/^WINUM_VERSION=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
+INV_WINE_BUILD="$(sed -n 's/^WINUM_BUILD=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
+INV_WINE_TAG="winum-$INV_WINE_VER-$INV_WINE_BUILD"
+INV_WINE_NAME="$INV_WINE_TAG-x86_64"
+# checksums of the winum releases this project has pinned
 INV_WINE_SHA256="$(awk -v f="$INV_WINE_NAME.tar.xz" '$2 == f || $2 == "*" f {print $1}' "$PROJECT_DIR/wine/SHA256SUMS" 2>/dev/null)"
-# Puts this project's Wine first in PATH when it is installed (and wanted).
+# Puts winum first in PATH when it is installed (and wanted).
 # Sets INV_WINE_ACTIVE (bundled|system), INV_WINE_DIR, and INV_WINE_OUTDATED=1
-# when only an older build than wine/version.env names is installed.
+# when only an older build than wine/version.env names is installed (an older
+# winum, or this project's former wine-inventor-* build).
 select_wine() {
     INV_WINE_ACTIVE=system INV_WINE_OUTDATED=0 INV_WINE_DIR=""
     [ "$INV_WINE" = system ] && return 0
     local d="$INV_WINE_HOME/$INV_WINE_NAME" newest
     if [ ! -x "$d/bin/wine" ]; then
-        newest="$(ls -d "$INV_WINE_HOME"/wine-inventor-*-x86_64 2>/dev/null | sort -V | tail -1 || true)"
-        if [ -n "$newest" ] && [ -x "$newest/bin/wine" ]; then d="$newest"; INV_WINE_OUTDATED=1; else return 0; fi
+        newest="$( { ls -d "$INV_WINE_HOME"/winum-*-x86_64 2>/dev/null | sort -V
+                    ls -d "$INV_WINE_HOME"/wine-inventor-*-x86_64 2>/dev/null | sort -V; } \
+                  | while read -r c; do [ -x "$c/bin/wine" ] && echo "$c"; done | head -1 || true)"
+        if [ -n "$newest" ]; then d="$newest"; INV_WINE_OUTDATED=1; else return 0; fi
     fi
     INV_WINE_ACTIVE=bundled INV_WINE_DIR="$d"
     case ":$PATH:" in *":$d/bin:"*) ;; *) PATH="$d/bin:$PATH" ;; esac
@@ -173,8 +180,6 @@ VKD3D_DLLS=(d3d12 d3d12core)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
-# This project's Wine fixes (scripts/build-wine-dll.sh targets), in build order
-WINE_FIX_PARTS=(wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha comctl32 comctl32_v6 ntdll rpcrt4 combase ole32 server winex11)
 # Add-ins rebuild-prefix.sh disables (notes/disabled-addins.md). Some of them
 # are loaded through wine-mono instead of CoreCLR and abort Inventor
 # (SharedViews confirmed: mono assertion -> Environment.Exit).
@@ -358,27 +363,15 @@ wine_pe_dir() {
     done
 }
 
-# System file that a WINE_FIX_PARTS part replaces (build-wine-dll.sh installs it)
-wine_fix_file() {
-    local pe; pe="$(wine_pe_dir)"; [ -n "$pe" ] || return 1
-    case "$1" in
-        server)  readlink -f "$(command -v wineserver)" ;;
-        winex11) echo "$(dirname "$pe")/x86_64-unix/winex11.so" ;;
-        *)       echo "$pe/$1.dll" ;;
-    esac
-}
-
-# Parts of this project's Wine fixes that are NOT active in the installed Wine:
-# no backup for this Wine version (Wine was updated), or the system file is the
-# original again (Wine was reinstalled). Prints the part names, one per line.
-wine_fixes_missing() {
-    # this project's own Wine has them built in
-    [ "$INV_WINE_ACTIVE" = bundled ] && return 0
-    local wv p f; wv="$(wine_version)"; [ -n "$wv" ] || return 0
-    for p in "${WINE_FIX_PARTS[@]}"; do
-        f="$(wine_fix_file "$p")" || { echo "$p"; continue; }
-        if [ ! -f "$f.orig-$wv" ] || cmp -s "$f" "$f.orig-$wv"; then echo "$p"; fi
-    done
+# The winum build the Wine in PATH belongs to ("winum-11.20-1-x86_64"), from
+# the BUILDINFO next to its bin/; empty for any other Wine.
+wine_winum_name() {
+    local bin root
+    bin="$(command -v wine 2>/dev/null)" || return 0
+    root="$(dirname "$(dirname "$(readlink -f "$bin")")")"
+    [ -f "$root/BUILDINFO" ] || return 0
+    head -1 "$root/BUILDINFO" | grep -q '^winum' || return 0
+    sed -n 's/^name: *//p' "$root/BUILDINFO" | head -1
 }
 
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)

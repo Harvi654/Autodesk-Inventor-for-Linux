@@ -636,7 +636,7 @@ class Installer(Gtk.ApplicationWindow):
                           os.path.join(data_home, "applications", "autodesk-inventor-%s.desktop" % s["INV_YEAR"]),
                           True))
         return items + [
-            ("wine", "This project's Wine", os.path.join(data_home, "inventor-on-linux"), True),
+            ("wine", "Wine for Inventor (winum, and older wine-inventor builds)", os.path.join(data_home, "inventor-on-linux"), True),
             ("cache", "Unpacked downloads (Autodesk's files in Downloads stay)", cache, True),
             ("data", "YOUR Inventor files - parts, assemblies, drawings", s["INV_DATA_DIR"], False),
             ("project", "This installer and its scripts (the one-command line brings it back)", REPO, False),

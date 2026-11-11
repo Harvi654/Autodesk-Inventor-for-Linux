@@ -39,8 +39,9 @@ works (study, constraints, loads, Simulate, results). The Robot solver
 `rkernel.exe` writes its results into one compound file from four threads at
 once; Wine's ole32 storage code had no locking and corrupted its block chains
 (assertions `blockIndex != nextBlock` / `depotBlockCount < bigBlockDepotCount`
-in storage32.c). Fixed by `patches/ole32-storage-thread-lock.patch` and
-`patches/ole32-transacted-truncate-dirty.patch` (a stream truncated to zero in
+in storage32.c). Fixed by `ole32-storage-thread-lock.patch` and
+`ole32-transacted-truncate-dirty.patch` (in winum since winum-11.20-1; the
+former copies are in `docs/archive/own-wine-build/patches/`) (a stream truncated to zero in
 a transacted storage was left out of the commit). An existing prefix:
 `bash scripts/addins.sh enable frameanalysis`.
 
