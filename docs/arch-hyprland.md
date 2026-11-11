@@ -1453,10 +1453,26 @@ before `wineboot -u`; `mscoree=d` for the update only with Microsoft's
 tests. With winum-11.20-1
 on a test prefix whose `ntdll.dll` copies came from Wine 11.21 (as a
 pre-winum prefix): 0002-0004 applied in 15 s (0004 was not optional yet), the values readable with
-`wine reg query`, a second run "nothing to do", backups 3 MB each. Open:
-the maintainer's copy of `~/.wine-invclean` (Inventor 2026 from before
-winum) and the clean `~/.wine-inventor2027`; Nix (@krokosik): the steps run
-inside `finish-install.sh` in the build, the launcher part is not wired.
+`wine reg query`, a second run "nothing to do", backups 3 MB each.
+
+**L4 (maintainer, 2026-11-11, reflink copies of their prefixes):**
+- Inventor 2026 from before winum, isolation on: 0001 adopted, 0002 and
+  0003 applied; start, part, assembly, save, reopen and restart OK; the
+  launcher afterwards "up to date - nothing to do". This prefix still runs
+  on wine-mono (no .NET 4.8: it was installed before the installer had
+  that step), so Property Mapping crashes there as in issue #10 - not a
+  migration matter, and `wineboot -u` left its wine-mono as it was.
+- Inventor 2027 with .NET 4.8 (the clean installation of the same day):
+  `--run 0002` forced, at `4f5e980` with no window; wine-mono did not come
+  back (no uninstall entry, `NDP\v4\Full` Release 0x80eb1 / Version
+  4.8.03761, Microsoft's `mscoree.dll` unchanged, `dotnet48_present` true);
+  the launcher applied the pending 0003 by itself; Property Mapping and 3D
+  PDF Publish OK.
+
+**Open:** Nix (@krokosik) - the steps run inside `finish-install.sh` in the
+build, the launcher part is not wired; the phase 4 step (.NET 4.8 for old
+prefixes) is not written - it is done when a user asks for it; until then a
+new installation is the way (section ".NET Framework 4.8 in the prefix").
 
 ## This project's own Wine (v0.2)
 
@@ -1540,6 +1556,13 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - Prefix migrations: L4 and merge:** on reflink copies of the
+maintainer's prefixes - Inventor 2026 from before winum (0002 and 0003
+applied, start, part, assembly, save/reopen, restart OK) and Inventor 2027
+with .NET 4.8 (`--run 0002` without the .NET shim's window and without
+wine-mono coming back, Property Mapping and 3D PDF Publish OK). Merged into
+`main`.
 
 **2026-11-11 - Prefix migrations (phases 1-3):** numbered steps that update
 an installed prefix with backups and rollback, run by the launcher,

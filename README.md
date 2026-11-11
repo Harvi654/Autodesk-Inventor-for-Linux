@@ -276,7 +276,8 @@ If it is the integrated one, add part of the name of the GPU you want to
   numbered steps, each saved first and put back if it fails. By hand, with
   Inventor closed: `bash scripts/migrate-prefix.sh --status`, then
   `bash scripts/migrate-prefix.sh` (`INV_PREFIX=... INV_YEAR=...` for a
-  prefix other than the default).
+  prefix other than the default). Tested on copies of a 2026 prefix from
+  before winum and a 2027 prefix with .NET 4.8 (2026-11-11).
 - Inventor runs on [winum](https://github.com/Harvi654/winum), a Wine with the
   fixes for Inventor and other engineering programs, installed in
   `~/.local/share/inventor-on-linux`, so Arch's Wine updates don't affect it,

@@ -46,6 +46,15 @@ backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
 | 0003-x11-driver-inventor | `UseEGL=N`, `ClientSideWithRender=N` for `Inventor.exe` (GPU ray tracing on GLX; the status bar text) | 2026-11-11 |
 | 0004-enable-hydra | **optional** (`--run 0004` only): `EnableHydra=1` in Inventor's driver preferences (`RegistryVersion30.0` for 2026, `31.0` for 2027) - for a GPU with ray tracing hardware only; on an RX 580 it moved ray tracing to the CPU (~1200 % CPU, 2026-10-21) | 2026-11-11 |
 
+## Tested
+
+L4 on reflink copies of the maintainer's prefixes (2026-11-11): Inventor
+2026 from before winum with isolation (0002, 0003 applied; start, part,
+assembly, save/reopen, restart OK) and Inventor 2027 with .NET 4.8 (0002
+forced: no .NET shim window with `mscoree=d`, wine-mono not back, Property
+Mapping and 3D PDF Publish OK). Details: `docs/arch-hyprland.md`, "Prefix
+migrations".
+
 ## Planned, not written yet
 
 - **0004 as a normal step** - waits for a check of the GPU (ray tracing
