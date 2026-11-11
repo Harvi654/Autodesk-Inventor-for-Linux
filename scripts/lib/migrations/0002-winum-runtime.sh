@@ -16,7 +16,14 @@ mig_needed() { prefix_runtime_differs; }
 mig_apply() {
     local stamp
     stamp="$(cat "$WINEPREFIX/.update-timestamp" 2>/dev/null || true)"
-    info "    wineboot -u with $(wine --version 2>/dev/null)${INV_WINUM:+ ($INV_WINUM)} - up to a minute"
+    info "    wineboot -u with $(wine_runtime_id) - up to a minute"
+    # Isolation: no Z:, so Wine reaches its own share/wine (wine-mono,
+    # wine-gecko) only through the drive sandbox_fs links to it (WINE_DATA_DIR,
+    # among the font drives). Before the update that drive still pointed at
+    # the old Wine, and wineboot -u asked for a wine-mono package (seen on a
+    # copy of a 2026 prefix from before winum) - so the drives first.
+    wine_stop
+    sandbox_fs
     wineboot -u >>"$LOGDIR/setup-wine.log" 2>&1
     # services the prefix starts never exit: end them instead of waiting
     wine_stop

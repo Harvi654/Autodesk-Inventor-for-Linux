@@ -23,6 +23,16 @@ case "$1" in
     wineboot)
         # like Wine: the builtin DLL copies in system32 stay as they are
         echo 1794413159 > "$WINEPREFIX/.update-timestamp"
+        # with isolation (no Z:), Wine finds its wine-mono only through a drive
+        # linked to its own share/wine - else it asks for a mono package
+        if [ -n "${CHECK_SHARE_DRIVE:-}" ]; then
+            root="$(dirname "$(dirname "$(readlink -f "$0")")")"
+            found=""
+            for l in "$WINEPREFIX"/dosdevices/*; do
+                [ "$(readlink -f "$l")" = "$(readlink -f "$root/share/wine")" ] && found=1
+            done
+            [ -n "$found" ] || { echo "Wine Mono Installer: could not find a wine-mono package" >&2; exit 1; }
+        fi
         [ -n "${FAIL_WINEBOOT:-}" ] && exit 1
         exit 0 ;;
     reg)
@@ -63,6 +73,7 @@ class Migrations(unittest.TestCase):
         w = self.rt / "bin" / "wine"
         w.write_text(FAKE_WINE)
         w.chmod(0o755)
+        (self.rt / "share" / "wine" / "mono").mkdir(parents=True)
         ws = self.rt / "bin" / "wineserver"
         ws.write_text("#!/bin/sh\nexit 0\n")
         ws.chmod(0o755)
@@ -183,6 +194,33 @@ class Migrations(unittest.TestCase):
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("applied", self.state(p)["done.0003-x11-driver-inventor"])
+
+    def test_isolated_prefix_links_the_new_wine_before_wineboot(self):
+        # a 2026 prefix from before winum with isolation on: its font/data
+        # drive still points at the old Wine's share/wine
+        p = self.prefix(".wine-invclean", 2026)
+        old_share = Path(self.tmp.name) / "old-wine" / "share" / "wine"
+        old_share.mkdir(parents=True)
+        dd = p / "dosdevices"
+        dd.mkdir()
+        (dd / "c:").symlink_to("../drive_c")
+        (dd / "u:").symlink_to(old_share)
+        (dd / "z:").symlink_to("/")
+        out = self.migrate(p, year=2026, INV_SANDBOX="1", CHECK_SHARE_DRIVE="1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0002-winum-runtime"])
+        links = {l.name: os.path.realpath(l) for l in dd.iterdir()}
+        self.assertIn(os.path.realpath(self.rt / "share" / "wine"), links.values())
+        self.assertNotIn("z:", links)
+        # the header names the runtime as the state records it
+        self.assertIn("wineboot -u with wine-11.20", out.stdout)
+
+    def test_runtime_name_in_header(self):
+        (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-1-x86_64\n")
+        p = self.prefix(".wine-invclean", 2026)
+        out = self.migrate(p, year=2026)
+        self.assertIn("wineboot -u with wine-11.20 winum-11.20-1-x86_64", out.stdout)
+        self.assertEqual(self.state(p)["runtime"], "wine-11.20 winum-11.20-1-x86_64")
 
     def test_failing_wineboot_is_undone(self):
         p = self.prefix(".wine-invclean", 2026)

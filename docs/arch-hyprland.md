@@ -1388,6 +1388,21 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
   record is judged by them only as "made by this Wine" (equal) or not; the
   launcher now also runs `wineboot -u` when the record differs (a new winum
   build of the same Wine version) and writes the record.
+  First test on the maintainer's reflink copy of their 2026 prefix from
+  before winum, isolation on (2026-11-11, `baf523b`): 0001 adopted, 0002 and
+  0003 applied, `runtime=wine-11.20 winum-11.20-1-x86_64`, afterwards only
+  C:, D:, T:, U: (U: -> winum's `share/wine`), `.update-timestamp` still
+  `disable`. But during `wineboot -u` Wine showed "Wine Mono Installer -
+  could not find a wine-mono package": with isolation there is no Z:, Wine
+  reaches its own `share/wine` (wine-mono) only through the drive
+  `sandbox_fs` links to it, and before the step that drive still pointed at
+  the old Wine. Fixed: the step runs `sandbox_fs` before `wineboot -u` (and
+  again after it); a test with a fake `wineboot` that fails without such a
+  drive covers it (without the fix it fails). The step's header printed
+  "wineboot -u with wine-11.20" without the winum build because it used the
+  launcher's `INV_WINUM`, empty in `migrate-prefix.sh`; it now prints
+  `wine_runtime_id`, the same string the state records. Step 0002 had run
+  only on that copy and is not on `main`, so it was changed in place.
 - `0003-x11-driver-inventor`: `UseEGL=N`, `ClientSideWithRender=N` for
   `Inventor.exe` (sections "GPU ray tracing" and "Status bar: old text
   stays after GPU ray tracing").
@@ -1404,13 +1419,15 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
 listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
 unlisted step and on prefix changes in `finish-install.sh`.
 
-**Checked:** 13 tests with fake prefixes and a fake Wine whose registry is
+**Checked:** 15 tests with fake prefixes and a fake Wine whose registry is
 the prefix's `user.reg`/`system.reg` (old prefix gets 0002-0003 and then
 "nothing to do"; a prefix made by winum gets 0003; 0004 only by name; a prefix with
 everything is untouched; a failing step and a failing `wineboot -u` are put
 back; `--restore`; a busy prefix is left alone; `--status` writes nothing;
 optional steps only by name; `--all`; the runtime check; a failing command
-in the middle of a step), and 2 guard tests. With winum-11.20-1
+in the middle of a step; with isolation, the new Wine's `share/wine` linked
+before `wineboot -u`; the runtime name in the step's header), and 2 guard
+tests. With winum-11.20-1
 on a test prefix whose `ntdll.dll` copies came from Wine 11.21 (as a
 pre-winum prefix): 0002-0004 applied in 15 s (0004 was not optional yet), the values readable with
 `wine reg query`, a second run "nothing to do", backups 3 MB each. Open:
