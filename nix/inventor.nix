@@ -11,7 +11,11 @@
   version ? year,
   executableName ? if year == "2026" then "inventor" else "inventor-${year}",
   contentCenter ? true,
-}:
+  # At every launch, make this release the user's adskidmgr:// handler
+  # (~/.local/share/applications, ~/.config/mimeapps.list). The NixOS module
+  # declares one handler for all releases instead and turns this off.
+  registerHostUrlHandlers ? true,
+}@inventorArgs:
 let
   inherit (pkgs) lib;
   inventorMeta = {
@@ -29,6 +33,13 @@ let
         basePackage = package.basePackage.overrideAttrs (base: {
           meta = (base.meta or { }) // inventorMeta;
         });
+        # The same release with other mkInventor arguments, for example
+        # `withArgs { registerHostUrlHandlers = false; }`.
+        withArgs =
+          extra:
+          import ./inventor.nix {
+            inherit pkgs overlayfsLib modules;
+          } (inventorArgs // extra);
       };
     });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
@@ -193,6 +204,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d;mscoree=n";
   };
   urlSchemes = [ "adskidmgr" ];
+  inherit registerHostUrlHandlers;
   entrypointWrapper = entrypoint: ''
     case "''${1:-}" in
       adskidmgr:*) exec ${entrypoint} --nix-overlayfs-open-url "$1" ;;

@@ -25,6 +25,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
+- **NixOS:** [NixOS: writable state hid DXVK; 2026 sign-in opened 2027](#nixos-writable-state-hid-dxvk-2026-sign-in-opened-2027)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
@@ -1551,6 +1552,66 @@ palette); the NixOS build of the winum series (@krokosik).
 - `class {1060954f-...} not registered`: the Fusion interop add-in, disabled by
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
+## NixOS: writable state hid DXVK; 2026 sign-in opened 2027
+
+Two problems of the declarative (nix-overlayfs) install, fixed in
+nix-overlayfs; details for users in `docs/nixos.md`.
+
+**DXVK hidden by Wine's own DLLs.** Symptom: nothing visible at first; the
+2026 writable state (`~/.local/share/autodesk-inventor-2026`) had grown to
+660 MB. Cause: that state is the upper layer of an overlay above the Nix
+layers, and a file in it always wins. Wine's `wineboot` updates a prefix
+(`PreInstall`, `DefaultInstall`, `Wow64Install` from `wine.inf`) when
+`.update-timestamp` is missing or does not match `wine.inf`
+(`programs/wineboot/wineboot.c`, `update_timestamp()`); an older nix-overlayfs
+did not carry that file into the layers, so one launch on 2026-10-22 copied
+about 1,480 builtin DLLs and EXEs into the writable state. Among them
+`system32/d3d11.dll`, `dxgi.dll`, `d3d12.dll`, `d3d12core.dll`: Wine's builtins
+(1 MB, marked `Wine builtin DLL` at offset 0x40) above DXVK's and
+vkd3d-proton's (4.4 MB for `d3d11.dll`), for good - later rebuilds re-merged
+the registry, never the files. With the `native` overrides from
+`install_dxvk`, Wine refuses a file carrying the builtin marker
+(`load_builtin()` in `dlls/ntdll/unix/loader.c` returns `STATUS_DLL_NOT_FOUND`
+for a native-only load order), so Direct3D failed to load. Found with:
+
+```bash
+cd ~/.local/share/autodesk-inventor-2026
+find drive_c/windows -name '*.dll' | wc -l
+dd if=drive_c/windows/system32/d3d11.dll bs=1 skip=64 count=16 status=none; echo
+stat -c '%s %y' drive_c/windows/system32/d3d11.dll .update-timestamp
+```
+
+Fix (nix-overlayfs): the launcher writes `disable` into the writable layer's
+`.update-timestamp` before mounting, which wineboot honours; when the Nix
+layers change it moves Wine builtin copies that hide a layer file to
+`.nix-overlayfs/shadowed/<time>/` and reports other hiding files in
+`.nix-overlayfs/shadowed-files`. Check after a launch: `DXVK_HUD=1 inventor`.
+
+**Sign-in callback of 2026 opened 2027.** With both releases installed, the
+browser's `adskidmgr://` callback for a running 2026 started Inventor 2027.
+Cause: one URL scheme for both; the module made the newest release the
+default, and every launch also made its own nix-overlayfs handler the user's
+default (`~/.local/share/applications/*-nix-overlayfs-url-handler.desktop`,
+`~/.config/mimeapps.list`); a release without a running session starts itself
+with the callback. Fix: the module installs one handler,
+`autodesk-inventor-url-handler.desktop`. It asks each release's launcher to
+forward the callback to its running session
+(`--nix-overlayfs-forward-url`, status 3 = no session) and starts the newest
+release only when none runs; the module's launchers no longer register
+handlers (`registerHostUrlHandlers = false`) and remove the ones they wrote
+earlier. Check: `xdg-mime query default x-scheme-handler/adskidmgr`.
+
+Also in nix-overlayfs: layers' DLL overrides are merged instead of one
+replacing another; directories of killed sessions in
+`~/.cache/nix-overlayfs/tmp` are removed; installations depend on the WebView2
+layer itself rather than its launcher, so launcher-only changes no longer
+reinstall Inventor.
+
+Validation: nix-overlayfs unit and VM tests (fake prefixes and a Wine probe,
+no Autodesk code); the flake's `nixos-module` check. Still open: the
+maintainer's smoke test in Inventor (DXVK HUD in 2026 and 2027, sign-in of
+2026 with 2027 installed). Not a Wine bug.
+
 ## Result log
 
 **2026-11-12 - Issue #10: Import CAD into an assembly (NixOS):** "Could not
@@ -1856,3 +1917,12 @@ by topic, new sections for GPU ray tracing, the status bar workaround, the
 open repaint issues and 3D PDF. The sections of the first setup (copying a
 Windows installation) and the superseded GPU ray tracing notes moved to
 `docs/archive/arch-hyprland-retired-2026-11-08.md`, unchanged.
+
+**2026-11-11 - NixOS: DXVK hidden in the 2026 state, 2026 sign-in opened
+2027:** a runtime prefix update had copied Wine's builtin `d3d11.dll`, `dxgi.dll`
+and `d3d12*.dll` into the writable 2026 state, above DXVK and vkd3d-proton.
+nix-overlayfs now keeps Wine from updating the prefix at runtime and moves such
+copies aside; the NixOS module routes `adskidmgr://` to the release whose
+session is running. Library and module tests pass; Inventor smoke test
+pending. Details: section "NixOS: writable state hid DXVK; 2026 sign-in
+opened 2027".

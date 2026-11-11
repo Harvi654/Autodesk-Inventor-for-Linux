@@ -178,6 +178,66 @@
               python3 tests/test_declarative_installer.py
               touch "$out"
             '';
+        # Evaluates the module with both releases; builds nothing from Autodesk.
+        nixos-module =
+          let
+            inherit (pkgs) lib;
+            config =
+              (nixpkgs.lib.nixosSystem {
+                modules = [
+                  self.nixosModules.default
+                  {
+                    nixpkgs.hostPlatform = system;
+                    system.stateVersion = "26.05";
+                    programs.autodesk-inventor = {
+                      enable = true;
+                      versions = [
+                        "2026"
+                        "2027"
+                      ];
+                    };
+                  }
+                ];
+              }).config;
+            packages = config.environment.systemPackages;
+            named = name: lib.findFirst (package: package.name == name) null packages;
+            handler = named "autodesk-inventor-url-handler.desktop";
+            plain = string: builtins.unsafeDiscardStringContext string;
+            script = plain handler.urlHandler.text;
+            launcher = year: plain (lib.getExe self.packages.${system}."inventor-${year}");
+            moduleLauncher =
+              year:
+              plain (
+                lib.getExe (
+                  self.packages.${system}."inventor-${year}".withArgs { registerHostUrlHandlers = false; }
+                )
+              );
+            position = needle: builtins.stringLength (builtins.head (lib.splitString needle script));
+            checks = {
+              "adskidmgr goes to the dispatcher" =
+                config.xdg.mime.defaultApplications."x-scheme-handler/adskidmgr"
+                == "autodesk-inventor-url-handler.desktop";
+              "the dispatcher entry is installed" = handler != null;
+              "release entries do not claim adskidmgr" =
+                lib.all (name: !(lib.hasInfix "adskidmgr" (plain (named name).text)))
+                  [
+                    "autodesk-inventor.desktop"
+                    "autodesk-inventor-2027.desktop"
+                  ];
+              "the module's launchers do not register handlers at runtime" =
+                moduleLauncher "2026" != launcher "2026" && lib.hasInfix (moduleLauncher "2026") script;
+              "a running 2027 session is tried first" =
+                position "${moduleLauncher "2027"} --nix-overlayfs-forward-url"
+                < position "${moduleLauncher "2026"} --nix-overlayfs-forward-url";
+              "the newest release starts when none runs" =
+                lib.hasInfix "exec ${moduleLauncher "2027"} \"$url\"" script;
+            };
+            failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
+          in
+          assert lib.assertMsg (failed == [ ]) "nixos-module: ${lib.concatStringsSep "; " failed}";
+          pkgs.runCommand "inventor-nixos-module-tests" { } ''
+            touch "$out"
+          '';
       };
       formatter.${system} = pkgs.nixfmt;
       nixosModules.default = import ./nix/nixos-module.nix { inherit self; };

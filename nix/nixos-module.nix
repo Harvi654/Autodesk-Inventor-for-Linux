@@ -19,9 +19,50 @@ let
     "2026" = self.packages.x86_64-linux.inventor-2026;
     "2027" = self.packages.x86_64-linux.inventor-2027;
   };
-  packageFor =
+  configuredPackageFor =
     year: if year == "2026" then cfg.package else cfg.packages.${year} or defaultPackages.${year};
+  # The module declares the adskidmgr:// handler below, so its launchers must
+  # not make themselves the user's handler at every launch.
+  packageFor =
+    year:
+    let
+      package = configuredPackageFor year;
+    in
+    if package ? withArgs then package.withArgs { registerHostUrlHandlers = false; } else package;
   desktopNameFor = year: if year == "2026" then "autodesk-inventor" else "autodesk-inventor-${year}";
+  # adskidmgr:// is one scheme for all releases. Give the callback to the
+  # release whose session is running (each launcher's forward-only mode exits
+  # with status 3 when none is); start the newest release only when none runs.
+  urlHandler = pkgs.writeShellScript "autodesk-inventor-open-url" ''
+    url="''${1:-}"
+    if [ -z "$url" ]; then
+      echo "usage: autodesk-inventor-open-url adskidmgr://..." >&2
+      exit 2
+    fi
+    ${lib.concatMapStrings (year: ''
+      ${lib.getExe (packageFor year)} --nix-overlayfs-forward-url "$url"
+      case $? in
+        0) exit 0 ;;
+        3) ;;
+        *) echo "Autodesk Inventor ${year}: could not hand the callback to its running session" >&2 ;;
+      esac
+    '') (lib.reverseList (lib.sort builtins.lessThan cfg.versions))}
+    exec ${lib.getExe (packageFor newestYear)} "$url"
+  '';
+  urlHandlerDesktop =
+    (pkgs.makeDesktopItem {
+      name = "autodesk-inventor-url-handler";
+      desktopName = "Autodesk Inventor sign-in";
+      exec = "${urlHandler} %u";
+      noDisplay = true;
+      terminal = false;
+      mimeTypes = [ "x-scheme-handler/adskidmgr" ];
+    }).overrideAttrs
+      (old: {
+        passthru = (old.passthru or { }) // {
+          inherit urlHandler;
+        };
+      });
   desktopFor =
     year:
     pkgs.makeDesktopItem {
@@ -34,7 +75,6 @@ let
         "Graphics"
         "Engineering"
       ];
-      mimeTypes = [ "x-scheme-handler/adskidmgr" ];
     };
   newestYear = lib.last (lib.sort builtins.lessThan cfg.versions);
 
@@ -82,6 +122,7 @@ in
       ];
       environment.systemPackages = [
         icons
+        urlHandlerDesktop
       ]
       ++ lib.concatMap (year: [
         (packageFor year)
@@ -90,7 +131,7 @@ in
       hardware.graphics.enable = true;
       programs.fuse.enable = true;
       xdg.mime.enable = true;
-      xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "${desktopNameFor newestYear}.desktop";
+      xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor-url-handler.desktop";
     })
   ];
 }
