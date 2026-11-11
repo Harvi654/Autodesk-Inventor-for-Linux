@@ -83,6 +83,13 @@ let
     url = "https://github.com/doitsujin/dxvk/releases/download/v2.7.1/dxvk-2.7.1.tar.gz";
     hash = "sha256-2Fznx59X7NdlqqG55wB8uHXm/en20zHfeZvOc9UTzoc=";
   };
+  # .NET Framework 4.0 from Microsoft: install-from-image.py runs it before the
+  # image's 4.8, as winetricks' dotnet48 verb does (4.0 brings mscoree.dll).
+  # Same URL and SHA-256 as in scripts/install-from-image.py.
+  dotnet40Installer = pkgs.fetchurl {
+    url = "https://download.microsoft.com/download/9/5/A/95A9616B-7A37-4AF6-BC36-D6EA96C8DAAE/dotNetFx40_Full_x86_x64.exe";
+    hash = "sha256-ZeBkJY8uQYgWswT2Rv+eh68QHkyVUqsGS7dNKBw4ZZ8=";
+  };
   vkd3dArchive = pkgs.fetchurl {
     url = "https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v3.0.1/vkd3d-proton-3.0.1.tar.zst";
     sha256 = "3cf2315522af5e43605ef6d3c41dad91387040bf97199934f3f7ab76caaa2f0c";
@@ -123,6 +130,8 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   src = media;
   overlayDependencies = [ webview2 ];
   # These replace Wine's stock DLLs; keep them when the library prunes duplicates.
+  # mscoree: Microsoft's, from the image's .NET Framework 4.8, which
+  # install-from-image.py installs in place of wine-mono.
   extraPathsToInclude =
     lib.concatMap
       (
@@ -135,6 +144,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
           "d3d12"
           "d3d12core"
           "dxgi"
+          "mscoree"
         ]
       )
       [
@@ -160,6 +170,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
     ln -s ${dxvkArchive} "$DOWNLOAD_DIR/dxvk-2.7.1.tar.gz"
     ln -s ${vkd3dArchive} "$DOWNLOAD_DIR/vkd3d-proton-3.0.1.tar.zst"
+    ln -s ${dotnet40Installer} "$DOWNLOAD_DIR/dotNetFx40_Full_x86_x64.exe"
     python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
       --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 ${
         lib.optionalString (!contentCenter) "--no-content"
@@ -175,6 +186,9 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
     test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
     test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe"
+    # .NET Framework 4.8 from the install image (3D PDF, Import CAD property mapping)
+    test -f "$WINEPREFIX/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll"
+    test -f "$WINEPREFIX/drive_c/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll"
   '';
   runtimeEnvVars = {
     INVENTOR_YEAR = year;

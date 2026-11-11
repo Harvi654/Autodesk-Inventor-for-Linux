@@ -37,7 +37,11 @@ done
 unset _cfg _env_inv _env_save
 
 # Inventor release: given (environment, config.env), else the one installed in
-# INV_PREFIX (newest if several), else 2026. INV_YEAR_GIVEN=1 when it was given.
+# INV_PREFIX (newest if several), else 2026. Only when INV_PREFIX comes from
+# config.env and that prefix holds no Inventor at all is the release this
+# installer finds installed taken instead (inventor_installs, the newest if
+# several). INV_YEAR_GIVEN=1 when it was given; INV_PREFIX_SOURCE says where
+# INV_PREFIX came from (environment, config.env, found, default).
 INV_YEAR_GIVEN=0; [ -z "${INV_YEAR:-}" ] || INV_YEAR_GIVEN=1
 inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
     local d y=""
@@ -48,18 +52,9 @@ inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
 }
 # the prefix from config.env, before it is adjusted below (inventor_installs)
 INV_CONFIG_PREFIX="${INV_PREFIX:-}"
-if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
-    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
-fi
-INV_YEAR="${INV_YEAR:-2026}"
-# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
-# another release: that release's prefix is not this one's - use the default
-# ~/.wine-inventor<year> (one release per prefix).
-if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
-    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
-    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"
-    unset _y
-fi
+if [ "$INV_PREFIX_FROM_ENV" -eq 1 ]; then INV_PREFIX_SOURCE=environment
+elif [ -n "${INV_PREFIX:-}" ]; then INV_PREFIX_SOURCE=config.env
+else INV_PREFIX_SOURCE=default; fi
 # Installed Inventor releases: "YEAR<TAB>PREFIX" lines, oldest release first.
 # Looks at the prefix from config.env and ~/.wine-inventor<year>, plus prefixes
 # this installer made (~/.wine-*/.odis-install-state.json); backups and copies
@@ -77,6 +72,32 @@ inventor_installs() {
         [ -z "$y" ] || printf '%s\t%s\n' "$y" "$p"
     done | sort -n -k1,1 -s
 }
+if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
+    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
+fi
+# No INV_YEAR, and the prefix config.env names holds no Inventor (an emptied
+# test prefix): take what is installed rather than 2026 in a prefix without
+# Inventor. A config.env prefix with Inventor is always kept, a prefix from
+# the environment too (it may be a new installation's target), and without
+# config.env nothing changes. The installer and uninstaller choose their
+# target themselves (_INV_FOR_INSTALL=1 before sourcing this file).
+if [ -z "${INV_YEAR:-}" ] && [ "$INV_PREFIX_SOURCE" = config.env ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
+    _inst="$(inventor_installs | tail -1)"
+    if [ -n "$_inst" ]; then
+        INV_YEAR="${_inst%%$'\t'*}" INV_PREFIX="${_inst#*$'\t'}" INV_PREFIX_SOURCE=found
+    fi
+    unset _inst
+fi
+INV_YEAR="${INV_YEAR:-2026}"
+# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
+# another release: that release's prefix is not this one's - use the default
+# ~/.wine-inventor<year> (one release per prefix).
+if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
+    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
+    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || { INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"; INV_PREFIX_SOURCE=default; }
+    unset _y
+fi
+[ -n "${INV_PREFIX:-}" ] || INV_PREFIX_SOURCE=default
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
 INV_REGMAJOR="${INV_REGMAJOR:-$((INV_YEAR - 1996))}"
 WIN_ROOT="${WIN_ROOT:-/mnt/windows}"
@@ -184,12 +205,15 @@ INV_GPU="${INV_GPU:-}"
 # are loaded through wine-mono instead of CoreCLR and abort Inventor
 # (SharedViews confirmed: mono assertion -> Environment.Exit).
 INV_DEFAULT_DISABLED_ADDINS=(
-    Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
+    Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
     Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
-    Autodesk.Publisher.Inventor.addin
     autodesk.translatorfusion.inventor.addin
     Autodesk.AssistantAddin.Inventor.addin
 )
+# 3D PDF: on with Microsoft's .NET Framework 4.8 in the prefix
+# (install-from-image.py installs the image's own), off without it - on
+# wine-mono Publish crashes Anark's corewrapper.exe.
+INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin)
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
 INV_VDESKTOP="${INV_VDESKTOP:-}"
@@ -372,6 +396,40 @@ wine_winum_name() {
     [ -f "$root/BUILDINFO" ] || return 0
     head -1 "$root/BUILDINFO" | grep -q '^winum' || return 0
     sed -n 's/^name: *//p' "$root/BUILDINFO" | head -1
+}
+
+# Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
+# both Framework folders, Microsoft's mscoree.dll in system32 and syswow64
+# (there, and not Wine's mono-backed one, which carries WINE_MONO_OVERRIDES),
+# and mscoree loaded native. dotnet48_why prints the first condition that
+# fails (nothing when all hold); dotnet48_present is its exit status.
+dotnet48_why() {
+    local d fw out
+    for fw in Framework64 Framework; do
+        [ -f "$P_C/windows/Microsoft.NET/$fw/v4.0.30319/clr.dll" ] \
+            || { echo "no windows/Microsoft.NET/$fw/v4.0.30319/clr.dll in $WINEPREFIX"; return 1; }
+    done
+    for d in system32 syswow64; do
+        [ -f "$P_C/windows/$d/mscoree.dll" ] || { echo "no windows/$d/mscoree.dll in $WINEPREFIX"; return 1; }
+        if grep -qs WINE_MONO_OVERRIDES "$P_C/windows/$d/mscoree.dll"; then
+            echo "windows/$d/mscoree.dll is Wine's mono one"; return 1
+        fi
+    done
+    # the whole output first, then grep: no pipe that pipefail could fail
+    out="$(WINEDEBUG=-all wine reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>&1)" || true
+    if ! printf '%s\n' "$out" | grep -qiE '^[[:space:]]*mscoree[[:space:]]+REG_SZ[[:space:]]+native'; then
+        echo "DllOverrides mscoree is not native (wine: $(command -v wine || echo none), WINEPREFIX=$WINEPREFIX," \
+             "reg query: $(printf '%s' "$out" | tr -d '\r' | tr '\n' ' ' | cut -c1-200))"
+        return 1
+    fi
+}
+dotnet48_present() { dotnet48_why >/dev/null; }
+
+# The add-ins off by default in this prefix: INV_DEFAULT_DISABLED_ADDINS, plus
+# INV_DOTNET48_ADDINS when .NET Framework 4.8 is missing. One name per line.
+inv_default_disabled_addins() {
+    printf '%s\n' "${INV_DEFAULT_DISABLED_ADDINS[@]}"
+    dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
 }
 
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)

@@ -105,7 +105,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
-| 3D PDF (Anark) | 🧪 | current release: off (Publish crashes Anark's `corewrapper.exe` under wine-mono). In testing for the next release, with .NET Framework 4.8 in the prefix and a Wine fix: a part exports in about 15 s, an assembly in about 20 s. Needs testing by others. [Details](docs/arch-hyprland.md#3d-pdf-anark---works-in-testing) |
+| 3D PDF (Anark) | ✅ | the installer puts .NET Framework 4.0 (Microsoft's, pinned) and the install image's 4.8 into the prefix and turns 3D PDF on; with winum's typelib cache fix a part exports in about 15 s, an assembly in about 20 s. Publish confirmed on a clean Inventor 2027.2 installation (2026-11-11). An existing prefix: run the product image through `install-from-image.py` again, then `finish-install.sh`. Off without .NET 4.8 (Publish crashes on wine-mono). Needs testing by others. [Details](docs/arch-hyprland.md#net-framework-48-in-the-prefix-installer-step) |
 | Weldments | 🧪 | a weld is created; not verified in depth |
 | Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |
 | Cable & Harness | 🧪 | wires connect; not verified in depth - testers who use Cable & Harness are welcome |
@@ -330,7 +330,9 @@ Python, no compiled programs are in this repository. What they do:
   winum's `patches/series`, published from a signed tag, checked against the
   SHA-256 in `wine/SHA256SUMS` (`scripts/get-wine.sh --build` says how to
   build it yourself), DXVK
-  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked)
+  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked),
+  Microsoft's .NET Framework 4.0 installer (SHA-256 checked; installed
+  before the .NET Framework 4.8 of Autodesk's image, as winetricks does)
   and Microsoft's WebView2
   runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
@@ -385,16 +387,18 @@ Done:
 - [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
 - [x] GPU ray tracing works in testing (Inventor 2027, AMD and NVIDIA)
 - [x] 3D PDF works in testing (with .NET Framework 4.8)
+- [x] .NET Framework 4.8 in the prefix, set up by the installer (3D PDF,
+      Import CAD's Property Mapping; clean Inventor 2027.2 installation)
 
 Next release (in progress):
 
-- [ ] .NET Framework 4.8 in the prefix (3D PDF and other .NET parts)
 - [ ] GPU ray tracing set up by the installer, with a check whether the card
       and driver support it
 - [ ] updates that reach existing installations: "Update project" also
       updates the Wine prefix (new settings, components), step by step
 - [ ] the status bar workaround by default, until a Wine fix
-- [ ] Import CAD (STEP) and its Property Mapping tool in 2027
+- [ ] Import CAD (STEP) into an assembly in 2027 - Property Mapping and
+      import into a part work with .NET 4.8
       ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10))
 
 Later, roughly in this order:

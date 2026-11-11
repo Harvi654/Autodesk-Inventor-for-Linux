@@ -18,7 +18,7 @@ bash scripts/addins.sh reset             # back to the default set
 | `Autodesk.SharedViews.Inventor.addin` | **crashes Inventor**: loaded through wine-mono, which cannot load its .NET 10 references and ends the process |
 | `Autodesk.Feedback.Inventor.addin`, `Autodesk.PerfFeedbackAddin.Inventor.addin` | usage reporting |
 | `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
-| `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | 3D PDF: the dialog opens, but Publish crashes Anark's `corewrapper.exe` (a .NET Framework program, so it runs on wine-mono): it calls into oleaut32's proxy tables as if they were code - most likely a COM interop gap in wine-mono. Inventor itself keeps running. Not fixed yet |
+| `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | **only without .NET Framework 4.8** (`INV_DOTNET48_ADDINS`): 3D PDF's Publish crashes Anark's `corewrapper.exe` on wine-mono. With the .NET Framework 4.8 that `install-from-image.py` installs from the image, they are on |
 | `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
 | `Autodesk.AssistantAddin.Inventor.addin` | Inventor 2027: the "Ask Autodesk Assistant" panel (an online AI assistant). The add-in was already in `Bin\Addins` before the 2027.2 Update, its panel shows up since 2027.2 - drawn wrongly under Wine, and it is not needed. The 2027.2 Update also puts a copy into `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\<version>\` (the "Inventor MCP Server" package); turning off the one in `Bin\Addins` was enough, the panel did not come back |
 
@@ -28,8 +28,11 @@ Untested means: please try it with `addins.sh enable` and report what happens.
 instead of wine-mono for the .NET Framework parts, `corewrapper.exe` runs,
 and with winum's `oleaut32-typelib-keep-released` the export takes about
 15 s for a part and 20 s for an assembly (in testing). The two add-ins stay
-off in the current release; the next release installs .NET Framework 4.8
-and turns them on. See "3D PDF (Anark)" in `docs/arch-hyprland.md`.
+off without it; since 2026-11-11 `install-from-image.py` installs .NET
+Framework 4.0 and the image's 4.8 and `finish-install.sh` / `addins.sh
+reset` then leave them on. Confirmed on a clean Inventor 2027.2
+installation (2026-11-11): both on, 3D PDF Publish works. See "3D PDF (Anark)" and ".NET Framework 4.8 in the prefix"
+in `docs/arch-hyprland.md`.
 
 iLogic was off by default until 2026-10-18; it works now (rules, parameters
 driving the model) and is on. An existing prefix: `bash scripts/addins.sh enable ilogic`.

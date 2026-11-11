@@ -27,8 +27,10 @@ Logs: logs/odis-install-<time>/
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
+import re
 import shlex
 import shutil
 import struct
@@ -578,7 +580,316 @@ class Installer:
                 self.log("\nStopped at step %d. Fix it and rerun the same command to continue." % i)
                 sys.exit(1)
         self.stop_licensing_service()
+        if kind != "update" and not self.install_dotnet48(img):
+            self.log("\nStopped at the .NET Framework 4.8 step. Fix it and rerun the same command to continue "
+                     "(or --no-dotnet48 to leave it out).")
+            sys.exit(1)
         self.log("\nAll steps finished.")
+
+    # --- .NET Framework 4.8 ---------------------------------------------------
+    # On Windows, Setup installs the image's .NET Framework 4.8 package
+    # (3rdParty/dotNetFramework/48/pkg.dotnet48.xml) as a prerequisite when its
+    # condition says the release in HKLM\...\NDP\v4\Full is older. Only DWG
+    # TrueView's manifest names it (an external dependency), and DWG TrueView
+    # is not in the product's plan, so plan() never sees it, and under Wine
+    # wine-mono already claims 4.8: the installer exits 0 and installs nothing.
+    # Inventor's .NET Framework programs (Anark's 3D PDF corewrapper.exe,
+    # AnyCAD's Property Mapping) then run on wine-mono and crash. So, after the
+    # product's packages, do what winetricks' dotnet48 verb does and run the
+    # image's own installer (docs/arch-hyprland.md, ".NET Framework 4.8").
+    DOTNET48 = ".NET Framework Runtime 4.8"
+
+    def reg_query(self, key, value):
+        """Data of a registry value in the prefix, or None."""
+        try:
+            out = subprocess.run(["wine", "reg", "query", key, "/v", value], env=dict(self.env, WINEDEBUG="-all"),
+                                 capture_output=True, text=True, errors="replace").stdout
+        except OSError:
+            return None
+        for line in out.splitlines():
+            parts = line.split(None, 2)
+            if len(parts) >= 2 and parts[0].lower() == value.lower() and parts[1].startswith("REG_"):
+                return parts[2].strip() if len(parts) > 2 else ""
+        return None
+
+    def reg(self, *args):
+        subprocess.call(["wine", "reg"] + list(args) + ["/f"], env=self.env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def dotnet48_missing(self):
+        """What is missing for a working .NET Framework 4.8 (empty: none):
+        clr.dll in both Framework folders, Microsoft's mscoree.dll (present,
+        not Wine's mono-backed one) in system32 and syswow64, and the
+        mscoree=native override."""
+        miss = [os.path.join("windows", "Microsoft.NET", fw, "v4.0.30319", "clr.dll")
+                for fw in ("Framework64", "Framework")
+                if not os.path.isfile(os.path.join(self.c, "windows", "Microsoft.NET", fw, "v4.0.30319", "clr.dll"))]
+        for d in ("system32", "syswow64"):
+            p = os.path.join(self.c, "windows", d, "mscoree.dll")
+            try:
+                with open(p, "rb") as f:
+                    if b"WINE_MONO_OVERRIDES" in f.read():
+                        miss.append("windows/%s/mscoree.dll (Wine's mono one)" % d)
+            except OSError:
+                miss.append("windows/%s/mscoree.dll" % d)
+        if (self.reg_query(r"HKCU\Software\Wine\DllOverrides", "mscoree") or "").lower() != "native":
+            miss.append("DllOverrides mscoree=native")
+        return miss
+
+    # The 4.8 package is a self-extractor: `wine` returns when it exits,
+    # while the Setup.exe it started goes on (first clean installation: back
+    # after 41 s, setup still running, no "Final Result" in its log). These
+    # are the processes of the setup and its follow-up work; the step waits
+    # until none of them has run for a while.
+    DOTNET48_PROCS = ("setup.exe", "setuputility.exe", "msiexec.exe", "ngen.exe", "mscorsvw.exe",
+                      "dotnetfx48_full_x86_x64.exe")
+    DOTNET48_TIMEOUT = 3600
+    DOTNET48_QUIET = 20
+
+    def prefix_processes(self):
+        """Windows image names (lower case) of the processes running in this
+        prefix, from /proc: WINEPREFIX in their environment, the Windows
+        path as the first word of their command line."""
+        names, want = [], ("WINEPREFIX=" + self.prefix).encode()
+        for pid in os.listdir("/proc"):
+            if not pid.isdigit():
+                continue
+            try:
+                with open("/proc/%s/environ" % pid, "rb") as f:
+                    if want not in f.read().split(b"\0"):
+                        continue
+                with open("/proc/%s/cmdline" % pid, "rb") as f:
+                    first = f.read().split(b"\0")[0].decode("utf-8", "replace")
+            except OSError:
+                continue
+            names.append(first.replace("/", "\\").rsplit("\\", 1)[-1].lower())
+        return names
+
+    def wait_for_dotnet48_setup(self):
+        """Wait until no setup process of the .NET Framework has been seen for
+        DOTNET48_QUIET seconds; False after DOTNET48_TIMEOUT."""
+        t0 = last = time.time()
+        while True:
+            busy = sorted({n for n in self.prefix_processes() if n in self.DOTNET48_PROCS})
+            now = time.time()
+            if busy:
+                last = now
+            elif now - last >= self.DOTNET48_QUIET:
+                self.log("      setup finished after %ds" % (now - t0))
+                return True
+            if now - t0 > self.DOTNET48_TIMEOUT:
+                self.log("      still running after %ds: %s" % (now - t0, ", ".join(busy)))
+                return False
+            time.sleep(5)
+
+    def dotnet48_setup_result(self, since):
+        """The "Final Result" line of the newest .NET Framework 4.8 setup log
+        in the user's Temp folder written after `since`, or None."""
+        temp = self.unix(self.vars["temp"])
+        logs = [p for p in glob.glob(os.path.join(temp, "Microsoft .NET Framework 4.8 Setup_*.html"))
+                if os.path.getmtime(p) >= since - 2]    # file times can be coarser than time.time()
+        if not logs:
+            return None
+        with open(max(logs, key=lambda p: (os.path.getmtime(p), p)), "rb") as f:
+            raw = f.read()
+        # The setup writes its HTML log in UTF-16 (with a byte order mark)
+        if raw[:2] in (b"\xff\xfe", b"\xfe\xff"):
+            data = raw.decode("utf-16", errors="replace")
+        elif b"\x00" in raw[:400]:
+            data = raw.decode("utf-16-le", errors="replace")
+        else:
+            data = raw.decode("utf-8", errors="replace")
+        text = re.sub(r"<[^>]+>", " ", data)
+        m = re.search(r"Final Result:(.*)", text, re.S)
+        if not m:
+            return None
+        # its value can be on the same line or, after the tags are gone, on
+        # the next non-empty one (a table cell)
+        value = next((l.strip() for l in m.group(1).splitlines() if l.strip()), "")
+        return "Final Result: " + " ".join(value.split())
+
+    NDP_KEY = r"HKLM\Software\Microsoft\NET Framework Setup\NDP"
+
+    def wine_mono_entries(self):
+        """GUIDs of the "Wine Mono ..." entries of `wine uninstaller --list`.
+        The list goes to stderr ("{GUID}|||Wine Mono Windows Support"), so
+        both streams are read."""
+        out = subprocess.run(["wine", "uninstaller", "--list"], env=dict(self.env, WINEDEBUG="-all"),
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                             text=True, errors="replace").stdout
+        return [l.split("|", 1)[0].strip() for l in out.splitlines()
+                if "|" in l and "Wine Mono" in l.split("|", 1)[1]]
+
+    def remove_wine_mono(self):
+        """winetricks' remove_mono: uninstall every Wine Mono entry, drop the
+        NDP v3.5/v4 keys, and delete Wine's mono-backed mscoree.dll. The
+        keys go always, not only after an uninstall: wine-mono's
+        NDP\\v4\\Full (Release 533320, "4.7.03190") left behind makes the
+        image's installer see 4.8 as installed and do nothing."""
+        found = self.wine_mono_entries()
+        for guid in found:
+            self.run(["wine", "uninstaller", "--remove", guid], "dotnet48-remove-mono.log")
+        for k in ("v3.5", "v4"):
+            self.reg("delete", self.NDP_KEY + "\\" + k)
+        for d in ("system32", "syswow64"):
+            p = os.path.join(self.c, "windows", d, "mscoree.dll")
+            try:
+                with open(p, "rb") as f:
+                    if b"WINE_MONO_OVERRIDES" in f.read():
+                        os.remove(p)
+                        self.log("      removed Wine's mono mscoree.dll from %s" % d)
+            except OSError:
+                pass
+        self.log("      Wine Mono: %s; NDP v3.5/v4 keys deleted"
+                 % ("removed (%d entries)" % len(found) if found else "no uninstall entry"))
+
+    # .NET Framework 4.0, which winetricks' dotnet48 verb installs first
+    # (its dotnet40 step): it brings mscoree.dll, which the 4.8 installer
+    # does not carry - on Windows 7 and later that is a file of the system.
+    # Not in Autodesk's image, so downloaded from Microsoft, pinned like DXVK
+    # (URL and SHA-256 as in winetricks), cached in DOWNLOAD_DIR; the Nix
+    # build links it there (nix/inventor.nix).
+    DOTNET40_FILE = "dotNetFx40_Full_x86_x64.exe"
+    DOTNET40_URL = ("https://download.microsoft.com/download/9/5/A/95A9616B-7A37-4AF6-BC36-D6EA96C8DAAE/"
+                    + DOTNET40_FILE)
+    DOTNET40_SHA256 = "65e064258f2e418816b304f646ff9e87af101e4c9552ab064bb74d281c38659f"
+
+    def fetch_dotnet40(self):
+        """Path of the checked .NET 4.0 installer (downloaded once), or None."""
+        d = os.environ.get("DOWNLOAD_DIR") or os.path.join(PROJECT, "downloads")
+        os.makedirs(d, exist_ok=True)
+        path = os.path.join(d, self.DOTNET40_FILE)
+        if not os.path.isfile(path):
+            self.log("      downloading %s" % self.DOTNET40_URL)
+            if subprocess.call(["curl", "-fL", "--retry", "3", "-o", path + ".part", self.DOTNET40_URL]) != 0:
+                self.log("     FAILED - download of the .NET Framework 4.0 installer")
+                return None
+            os.replace(path + ".part", path)
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+        if h.hexdigest() != self.DOTNET40_SHA256:
+            os.remove(path)
+            self.log("     FAILED - %s checksum mismatch (file deleted): %s, expected %s"
+                     % (self.DOTNET40_FILE, h.hexdigest(), self.DOTNET40_SHA256))
+            return None
+        self.log("      %s sha256 verified" % self.DOTNET40_FILE)
+        return path
+
+    def run_framework_installer(self, argv, winver, logname):
+        """Run a .NET Framework installer as winetricks does: Windows version
+        `winver` while it runs (the previous one back afterwards),
+        fusion=b, then wait for its setup processes, end the prefix's
+        services and set mscoree=native. Returns (exit code, finished)."""
+        # Services the prefix starts by itself (FlexNet licensing, Edge
+        # update, ...) keep wineserver busy: stop everything before, and after
+        # the setup has finished end what it left running, instead of
+        # waiting for an idle wineserver that never comes.
+        subprocess.call(["wineserver", "-k"], env=self.env)
+        old_ver = self.reg_query(r"HKCU\Software\Wine", "Version") or "win10"
+        self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", winver)
+        overrides = self.env.get("WINEDLLOVERRIDES", "")
+        self.env["WINEDLLOVERRIDES"] = (overrides + ";" if overrides else "") + "fusion=b"
+        try:
+            rc = self.run(argv, logname)
+        finally:
+            if overrides:
+                self.env["WINEDLLOVERRIDES"] = overrides
+            else:
+                self.env.pop("WINEDLLOVERRIDES", None)
+        finished = self.wait_for_dotnet48_setup()
+        # what is left now are the prefix's services (they never end)
+        subprocess.call(["wineserver", "-k"], env=self.env)
+        subprocess.call(["wineserver", "-w"], env=self.env)
+        self.reg("add", r"HKCU\Software\Wine\DllOverrides", "/v", "mscoree", "/t", "REG_SZ", "/d", "native")
+        self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", old_ver)
+        return rc, finished
+
+    def mscoree_missing(self):
+        return [m for m in self.dotnet48_missing() if "mscoree.dll" in m]
+
+    def install_dotnet40(self):
+        """winetricks' dotnet40 step (after remove_mono): winxp while it runs,
+        `/q /c:"install.exe /q"`, mscoree=native, NDP\\v4\\Full Install and
+        Version, OnlyUseLatestCLR. Checked by Microsoft's mscoree.dll in
+        system32 and syswow64."""
+        if not self.mscoree_missing():
+            self.log("      .NET Framework 4.0 - mscoree.dll already there")
+            return True
+        exe = self.fetch_dotnet40()
+        if not exe:
+            return False
+        self.log("      .NET Framework 4.0 (winetricks' dotnet40 step)")
+        rc, finished = self.run_framework_installer(["wine", exe, "/q", "/c:install.exe /q"], "winxp",
+                                                    "dotnet40.log")
+        self.reg("add", self.NDP_KEY + r"\v4\Full", "/v", "Install", "/t", "REG_DWORD", "/d", "1")
+        self.reg("add", self.NDP_KEY + r"\v4\Full", "/v", "Version", "/t", "REG_SZ", "/d", "4.0.30319")
+        # no CLR selection popup on prefix updates
+        for k in (r"HKLM\Software\Microsoft\.NETFramework", r"HKLM\Software\Wow6432Node\.NETFramework"):
+            self.reg("add", k, "/v", "OnlyUseLatestCLR", "/t", "REG_DWORD", "/d", "1")
+        miss = self.mscoree_missing()
+        if not finished:
+            miss.append("setup still running after %ds" % self.DOTNET48_TIMEOUT)
+        if miss:
+            self.log("     FAILED - .NET Framework 4.0 (exit code %d): %s (see %s)"
+                     % (rc, "; ".join(miss), os.path.join(self.logdir, "dotnet40.log")))
+            return False
+        self.log("      .NET Framework 4.0: mscoree.dll in system32 and syswow64")
+        return True
+
+    def install_dotnet48(self, img):
+        key = "prerequisite:dotnet48"
+        if self.a.no_dotnet48:
+            self.log("skip   .NET Framework 4.8 (--no-dotnet48)")
+            return True
+        if not self.a.dry_run and not self.dotnet48_missing():
+            self.mark_done(key)
+            self.log(".NET Framework 4.8 - already installed (clr.dll, mscoree native)")
+            return True
+        s = odis.find_package(img, self.DOTNET48, self.a.lang)
+        if s is None or not s["present"]:
+            self.log("WARN   no %s package in this image - 3D PDF and Import CAD's property mapping "
+                     "stay on wine-mono" % self.DOTNET48)
+            return True
+        self.log(".NET Framework 4.8 (%s, %s, condition %s)" % (s["file"], s["version"], s["condition"] or "-"))
+        if self.a.dry_run:
+            self.log("      remove Wine Mono; .NET Framework 4.0 (%s, winxp while it runs); "
+                     "winver win7 while 4.8 runs: %s %s; mscoree=native; verify clr.dll, mscoree.dll"
+                     % (self.DOTNET40_FILE, s["file"], s["params"]))
+            return True
+        t0 = time.time()
+        self.remove_wine_mono()
+        # The installer skips itself when this says 4.8 is there (its condition
+        # in the manifest), exiting 0 after installing nothing.
+        rel = self.reg_query(self.NDP_KEY + r"\v4\Full", "Release")
+        if rel is not None or self.wine_mono_entries():
+            self.log("     FAILED - wine-mono is still registered (NDP\\v4\\Full Release %s, uninstall entries %s); "
+                     "the installer would do nothing" % (rel, self.wine_mono_entries() or "none"))
+            return False
+        # winetricks' dotnet48 runs dotnet40 first: 4.8 does not bring mscoree.dll
+        if not self.install_dotnet40():
+            return False
+        rc, finished = self.run_framework_installer(
+            ["wine", self.media(s["file"])] + win_split(self.expand(s["params"], step=s)), "win7", "dotnet48.log")
+        if rc not in (0, 1641, 3010) and rc not in s.get("successCodes", []):
+            self.log("     installer exit code %d (not one of its success codes) - checking the files anyway" % rc)
+        result = self.dotnet48_setup_result(t0)
+        self.log("      setup log: %s" % (result or "no Final Result"))
+        miss = self.dotnet48_missing()
+        if not finished:
+            miss.append("setup still running after %ds" % self.DOTNET48_TIMEOUT)
+        if not result or "success" not in result.lower():
+            miss.append("no successful Final Result in the setup log")
+        if miss:
+            self.log("     FAILED - .NET Framework 4.8 is not complete: %s (see %s and the setup log in "
+                     "the prefix's Temp folder). Delete the prefix and install again, or rerun the same "
+                     "command: the step starts over (NDP keys removed, installer run again)."
+                     % ("; ".join(miss), os.path.join(self.logdir, "dotnet48.log")))
+            return False
+        self.mark_done(key)
+        self.log("     done in %ds (clr.dll in Framework64 and Framework, mscoree native)" % (time.time() - t0))
+        return True
 
     def installed_release(self):
         """Newest Inventor release installed in the prefix ('2027'), or None."""
@@ -692,6 +1003,8 @@ def main():
                          "dclibrary = Content Center libraries)")
     ap.add_argument("--no-content", action="store_true",
                     help="leave out the Content Center libraries (~12.7 GB)")
+    ap.add_argument("--no-dotnet48", action="store_true",
+                    help="do not replace wine-mono with the image's .NET Framework 4.8")
     ap.add_argument("--with", dest="extra", action="append", default=[],
                     help="also install this optional package, e.g. Content Center "
                          "libraries (names: scripts/odis-plan.py IMAGE, under skipped)")
