@@ -95,5 +95,85 @@ class FindPackage(unittest.TestCase):
         self.assertNotIn("remove Wine Mono", out.stdout)
 
 
+FAKE_WINE = """#!/bin/sh
+# Answers only the query dotnet48_present makes; the override is "native"
+# when the test put a marker file into the prefix.
+case "$*" in
+    *"reg query"*DllOverrides*mscoree*)
+        if [ -f "$WINEPREFIX/override-native" ]; then
+            printf '\\nHKEY_CURRENT_USER\\\\Software\\\\Wine\\\\DllOverrides\\n    mscoree    REG_SZ    native\\n\\n'
+        else
+            printf '\\nHKEY_CURRENT_USER\\\\Software\\\\Wine\\\\DllOverrides\\n    mscoree    REG_SZ    builtin\\n\\n'
+        fi ;;
+esac
+exit 0
+"""
+
+
+class Dotnet48Present(unittest.TestCase):
+    """The shell side: dotnet48_present and inv_default_disabled_addins from
+    scripts/lib/common.sh, run with a fake wine in a fake prefix."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="inventor-dotnet-sh-")
+        self.addCleanup(self.tmp.cleanup)
+        root = Path(self.tmp.name)
+        self.home = root / "home"
+        self.prefix = self.home / ".wine-inventor2027"
+        inv = self.prefix / "drive_c" / "Program Files" / "Autodesk" / "Inventor 2027" / "Bin"
+        inv.mkdir(parents=True)
+        (inv / "Inventor.exe").write_bytes(b"")
+        self.bin = root / "bin"
+        self.bin.mkdir()
+        wine = self.bin / "wine"
+        wine.write_text(FAKE_WINE)
+        wine.chmod(0o755)
+
+    def clr(self, *frameworks):
+        for fw in frameworks:
+            d = self.prefix / "drive_c" / "windows" / "Microsoft.NET" / fw / "v4.0.30319"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "clr.dll").write_bytes(b"MZ")
+
+    def run_sh(self):
+        env = {"HOME": str(self.home), "USER": "test", "PATH": "%s:/usr/bin:/bin" % self.bin,
+               "INV_YEAR": "2027", "INV_PREFIX": str(self.prefix), "WINEPREFIX": str(self.prefix),
+               "INV_WINE": "system"}
+        script = ('source scripts/lib/common.sh >/dev/null 2>&1; '
+                  'if dotnet48_present; then echo PRESENT; else echo MISSING; fi; '
+                  'inv_default_disabled_addins')
+        out = subprocess.run(["bash", "-c", script], cwd=str(ROOT), env=env, capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        lines = out.stdout.split()
+        return lines[0], set(lines[1:])
+
+    def test_present_with_clr_and_native_override(self):
+        self.clr("Framework64", "Framework")
+        (self.prefix / "override-native").write_bytes(b"")
+        state, off = self.run_sh()
+        self.assertEqual(state, "PRESENT")
+        self.assertNotIn("Anark.Core.addin", off)
+        self.assertNotIn("Autodesk.Publisher.Inventor.addin", off)
+        self.assertIn("Autodesk.SharedViews.Inventor.addin", off)
+
+    def test_missing_without_anything(self):
+        state, off = self.run_sh()
+        self.assertEqual(state, "MISSING")
+        self.assertIn("Anark.Core.addin", off)
+        self.assertIn("Autodesk.Publisher.Inventor.addin", off)
+
+    def test_missing_with_clr_but_builtin_mscoree(self):
+        self.clr("Framework64", "Framework")
+        state, off = self.run_sh()
+        self.assertEqual(state, "MISSING")
+        self.assertIn("Anark.Core.addin", off)
+
+    def test_missing_with_native_override_but_one_clr(self):
+        self.clr("Framework64")
+        (self.prefix / "override-native").write_bytes(b"")
+        state, _ = self.run_sh()
+        self.assertEqual(state, "MISSING")
+
+
 if __name__ == "__main__":
     unittest.main()

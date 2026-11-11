@@ -392,21 +392,6 @@ inv_default_disabled_addins() {
     dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
 }
 
-# Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
-# both Framework folders and mscoree loaded native.
-dotnet48_present() {
-    [ -f "$P_C/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll" ] &&
-        [ -f "$P_C/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll" ] &&
-        wine_q reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>/dev/null | grep -qi 'native'
-}
-
-# The add-ins off by default in this prefix: INV_DEFAULT_DISABLED_ADDINS, plus
-# INV_DOTNET48_ADDINS when .NET Framework 4.8 is missing. One name per line.
-inv_default_disabled_addins() {
-    printf '%s\n' "${INV_DEFAULT_DISABLED_ADDINS[@]}"
-    dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
-}
-
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)
 # to P_ADDINS_OFF. Safe to call any time.
 migrate_disabled_addins() {
