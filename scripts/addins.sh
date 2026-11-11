@@ -7,7 +7,7 @@
 #   bash scripts/addins.sh list
 #   bash scripts/addins.sh enable  <name-or-part>    e.g. enable InteractiveTutorial
 #   bash scripts/addins.sh disable <name-or-part>
-#   bash scripts/addins.sh enable-safe     everything except Anark
+#   bash scripts/addins.sh enable-safe     everything except Anark without .NET 4.8
 #                                          (also restores InteractiveTutorial.dll)
 #                                          WARNING: SharedViews then crashes Inventor
 #                                          (it is loaded by wine-mono) - use reset
@@ -55,15 +55,20 @@ case "${1:-list}" in
         ;;
     enable-safe)
         while IFS= read -r f; do
-            case "$f" in *Anark*) info "kept disabled: $f"; continue ;; esac
+            case "$f" in *Anark*) dotnet48_present || { info "kept disabled: $f (needs .NET Framework 4.8)"; continue; } ;; esac
             mv "$OFF/$f" "$ADDINS/"; ok "enabled $f"
         done < <(find "$OFF" -maxdepth 1 -iname '*.addin' -printf '%f\n' | sort)
         restore_tutorial_libs
         ;;
     reset)
-        for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
+        while IFS= read -r f; do
             if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$OFF/"; ok "disabled $f"; fi
-        done
+        done < <(inv_default_disabled_addins)
+        if dotnet48_present; then
+            for f in "${INV_DOTNET48_ADDINS[@]}"; do
+                if [ -f "$OFF/$f" ]; then mv "$OFF/$f" "$ADDINS/"; ok "enabled $f (.NET Framework 4.8)"; fi
+            done
+        fi
         mkdir -p "$LIBS"
         for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
             if [ -f "$f" ]; then mv "$f" "$LIBS/"; info "moved away $(basename "$f")"; fi

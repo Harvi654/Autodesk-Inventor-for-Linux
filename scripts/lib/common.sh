@@ -184,12 +184,15 @@ INV_GPU="${INV_GPU:-}"
 # are loaded through wine-mono instead of CoreCLR and abort Inventor
 # (SharedViews confirmed: mono assertion -> Environment.Exit).
 INV_DEFAULT_DISABLED_ADDINS=(
-    Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
+    Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
     Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
-    Autodesk.Publisher.Inventor.addin
     autodesk.translatorfusion.inventor.addin
     Autodesk.AssistantAddin.Inventor.addin
 )
+# 3D PDF: on with Microsoft's .NET Framework 4.8 in the prefix
+# (install-from-image.py installs the image's own), off without it - on
+# wine-mono Publish crashes Anark's corewrapper.exe.
+INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin)
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
 INV_VDESKTOP="${INV_VDESKTOP:-}"
@@ -372,6 +375,36 @@ wine_winum_name() {
     [ -f "$root/BUILDINFO" ] || return 0
     head -1 "$root/BUILDINFO" | grep -q '^winum' || return 0
     sed -n 's/^name: *//p' "$root/BUILDINFO" | head -1
+}
+
+# Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
+# both Framework folders and mscoree loaded native.
+dotnet48_present() {
+    [ -f "$P_C/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll" ] &&
+        [ -f "$P_C/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll" ] &&
+        WINEDEBUG=-all wine reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>/dev/null | grep -qi 'native'
+}
+
+# The add-ins off by default in this prefix: INV_DEFAULT_DISABLED_ADDINS, plus
+# INV_DOTNET48_ADDINS when .NET Framework 4.8 is missing. One name per line.
+inv_default_disabled_addins() {
+    printf '%s\n' "${INV_DEFAULT_DISABLED_ADDINS[@]}"
+    dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
+}
+
+# Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
+# both Framework folders and mscoree loaded native.
+dotnet48_present() {
+    [ -f "$P_C/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll" ] &&
+        [ -f "$P_C/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll" ] &&
+        wine_q reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>/dev/null | grep -qi 'native'
+}
+
+# The add-ins off by default in this prefix: INV_DEFAULT_DISABLED_ADDINS, plus
+# INV_DOTNET48_ADDINS when .NET Framework 4.8 is missing. One name per line.
+inv_default_disabled_addins() {
+    printf '%s\n' "${INV_DEFAULT_DISABLED_ADDINS[@]}"
+    dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
 }
 
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)

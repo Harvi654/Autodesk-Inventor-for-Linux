@@ -46,9 +46,17 @@ EOF
 cfg_disable_addins() {
     local f
     mkdir -p "$P_ADDINS_OFF/libs"
-    for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
+    while IFS= read -r f; do
         if [ -f "$P_ADDINS/$f" ]; then mv "$P_ADDINS/$f" "$P_ADDINS_OFF/"; else info "(not present: $f)"; fi
-    done
+    done < <(inv_default_disabled_addins)
+    if dotnet48_present; then
+        # off from a run before .NET Framework 4.8 was installed: on again
+        for f in "${INV_DOTNET48_ADDINS[@]}"; do
+            if [ -f "$P_ADDINS_OFF/$f" ]; then mv "$P_ADDINS_OFF/$f" "$P_ADDINS/"; info "on (.NET Framework 4.8): $f"; fi
+        done
+    else
+        info ".NET Framework 4.8 not in the prefix - 3D PDF (Anark, Publisher) stays off"
+    fi
 }
 
 cfg_crash_sources() {

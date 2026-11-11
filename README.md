@@ -105,7 +105,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
-| 3D PDF (Anark) | 🧪 | current release: off (Publish crashes Anark's `corewrapper.exe` under wine-mono). In testing for the next release, with .NET Framework 4.8 in the prefix and a Wine fix: a part exports in about 15 s, an assembly in about 20 s. Needs testing by others. [Details](docs/arch-hyprland.md#3d-pdf-anark---works-in-testing) |
+| 3D PDF (Anark) | 🧪 | on when the installer has put the install image's .NET Framework 4.8 into the prefix (new installations; an existing prefix: run the product image through `install-from-image.py` again), with winum's typelib cache fix: a part exports in about 15 s, an assembly in about 20 s. Off without .NET 4.8 (Publish crashes on wine-mono). Needs testing by others. [Details](docs/arch-hyprland.md#3d-pdf-anark---works-in-testing) |
 | Weldments | 🧪 | a weld is created; not verified in depth |
 | Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |
 | Cable & Harness | 🧪 | wires connect; not verified in depth - testers who use Cable & Harness are welcome |

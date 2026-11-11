@@ -123,6 +123,8 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   src = media;
   overlayDependencies = [ webview2 ];
   # These replace Wine's stock DLLs; keep them when the library prunes duplicates.
+  # mscoree: Microsoft's, from the image's .NET Framework 4.8, which
+  # install-from-image.py installs in place of wine-mono.
   extraPathsToInclude =
     lib.concatMap
       (
@@ -135,6 +137,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
           "d3d12"
           "d3d12core"
           "dxgi"
+          "mscoree"
         ]
       )
       [
@@ -175,6 +178,9 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
     test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
     test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe"
+    # .NET Framework 4.8 from the install image (3D PDF, Import CAD property mapping)
+    test -f "$WINEPREFIX/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll"
+    test -f "$WINEPREFIX/drive_c/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll"
   '';
   runtimeEnvVars = {
     INVENTOR_YEAR = year;

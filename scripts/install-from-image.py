@@ -578,7 +578,123 @@ class Installer:
                 self.log("\nStopped at step %d. Fix it and rerun the same command to continue." % i)
                 sys.exit(1)
         self.stop_licensing_service()
+        if kind != "update" and not self.install_dotnet48(img):
+            self.log("\nStopped at the .NET Framework 4.8 step. Fix it and rerun the same command to continue "
+                     "(or --no-dotnet48 to leave it out).")
+            sys.exit(1)
         self.log("\nAll steps finished.")
+
+    # --- .NET Framework 4.8 ---------------------------------------------------
+    # On Windows, Setup installs the image's .NET Framework 4.8 package
+    # (3rdParty/dotNetFramework/48/pkg.dotnet48.xml) as a prerequisite when its
+    # condition says the release in HKLM\...\NDP\v4\Full is older. Only DWG
+    # TrueView's manifest names it (an external dependency), and DWG TrueView
+    # is not in the product's plan, so plan() never sees it, and under Wine
+    # wine-mono already claims 4.8: the installer exits 0 and installs nothing.
+    # Inventor's .NET Framework programs (Anark's 3D PDF corewrapper.exe,
+    # AnyCAD's Property Mapping) then run on wine-mono and crash. So, after the
+    # product's packages, do what winetricks' dotnet48 verb does and run the
+    # image's own installer (docs/arch-hyprland.md, ".NET Framework 4.8").
+    DOTNET48 = ".NET Framework Runtime 4.8"
+
+    def reg_query(self, key, value):
+        """Data of a registry value in the prefix, or None."""
+        try:
+            out = subprocess.run(["wine", "reg", "query", key, "/v", value], env=dict(self.env, WINEDEBUG="-all"),
+                                 capture_output=True, text=True, errors="replace").stdout
+        except OSError:
+            return None
+        for line in out.splitlines():
+            parts = line.split(None, 2)
+            if len(parts) >= 2 and parts[0].lower() == value.lower() and parts[1].startswith("REG_"):
+                return parts[2].strip() if len(parts) > 2 else ""
+        return None
+
+    def reg(self, *args):
+        subprocess.call(["wine", "reg"] + list(args) + ["/f"], env=self.env,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def dotnet48_missing(self):
+        """What is missing for a working .NET Framework 4.8 (empty: none)."""
+        miss = [os.path.join("windows", "Microsoft.NET", fw, "v4.0.30319", "clr.dll")
+                for fw in ("Framework64", "Framework")
+                if not os.path.isfile(os.path.join(self.c, "windows", "Microsoft.NET", fw, "v4.0.30319", "clr.dll"))]
+        if (self.reg_query(r"HKCU\Software\Wine\DllOverrides", "mscoree") or "").lower() != "native":
+            miss.append("DllOverrides mscoree=native")
+        return miss
+
+    def remove_wine_mono(self):
+        """winetricks' remove_mono: uninstall every Wine Mono entry, drop the
+        NDP v3.5/v4 keys it wrote, and delete Wine's mono-backed mscoree.dll."""
+        out = subprocess.run(["wine", "uninstaller", "--list"], env=dict(self.env, WINEDEBUG="-all"),
+                             capture_output=True, text=True, errors="replace").stdout
+        found = [l.split("|", 1)[0] for l in out.splitlines() if "|" in l and "Wine Mono" in l.split("|", 1)[1]]
+        for guid in found:
+            self.run(["wine", "uninstaller", "--remove", guid], "dotnet48-remove-mono.log")
+        if found:
+            self.reg("delete", r"HKLM\Software\Microsoft\NET Framework Setup\NDP\v3.5")
+            self.reg("delete", r"HKLM\Software\Microsoft\NET Framework Setup\NDP\v4")
+        for d in ("system32", "syswow64"):
+            p = os.path.join(self.c, "windows", d, "mscoree.dll")
+            try:
+                with open(p, "rb") as f:
+                    if b"WINE_MONO_OVERRIDES" in f.read():
+                        os.remove(p)
+                        self.log("      removed Wine's mono mscoree.dll from %s" % d)
+            except OSError:
+                pass
+        self.log("      Wine Mono: %s" % ("removed (%d entries)" % len(found) if found else "not installed"))
+
+    def install_dotnet48(self, img):
+        key = "prerequisite:dotnet48"
+        if self.a.no_dotnet48:
+            self.log("skip   .NET Framework 4.8 (--no-dotnet48)")
+            return True
+        if not self.a.dry_run and not self.dotnet48_missing():
+            self.mark_done(key)
+            self.log(".NET Framework 4.8 - already installed (clr.dll, mscoree native)")
+            return True
+        s = odis.find_package(img, self.DOTNET48, self.a.lang)
+        if s is None or not s["present"]:
+            self.log("WARN   no %s package in this image - 3D PDF and Import CAD's property mapping "
+                     "stay on wine-mono" % self.DOTNET48)
+            return True
+        self.log(".NET Framework 4.8 (%s, %s, condition %s)" % (s["file"], s["version"], s["condition"] or "-"))
+        if self.a.dry_run:
+            self.log("      remove Wine Mono; OnlyUseLatestCLR=1; winver win7 while it runs; "
+                     "%s %s; mscoree=native; verify clr.dll" % (s["file"], s["params"]))
+            return True
+        t0 = time.time()
+        self.remove_wine_mono()
+        # from winetricks' dotnet40 step, which dotnet48 runs first: no CLR
+        # selection popup on prefix updates
+        for k in (r"HKLM\Software\Microsoft\.NETFramework", r"HKLM\Software\Wow6432Node\.NETFramework"):
+            self.reg("add", k, "/v", "OnlyUseLatestCLR", "/t", "REG_DWORD", "/d", "1")
+        old_ver = self.reg_query(r"HKCU\Software\Wine", "Version") or "win10"
+        self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", "win7")
+        overrides = self.env.get("WINEDLLOVERRIDES", "")
+        self.env["WINEDLLOVERRIDES"] = (overrides + ";" if overrides else "") + "fusion=b"
+        try:
+            rc = self.run(["wine", self.media(s["file"])] + win_split(self.expand(s["params"], step=s)),
+                          "dotnet48.log")
+        finally:
+            if overrides:
+                self.env["WINEDLLOVERRIDES"] = overrides
+            else:
+                self.env.pop("WINEDLLOVERRIDES", None)
+        subprocess.call(["wineserver", "-w"], env=self.env)
+        self.reg("add", r"HKCU\Software\Wine\DllOverrides", "/v", "mscoree", "/t", "REG_SZ", "/d", "native")
+        self.reg("add", r"HKCU\Software\Wine", "/v", "Version", "/d", old_ver)
+        if rc not in (0, 1641, 3010) and rc not in s.get("successCodes", []):
+            self.log("     installer exit code %d (not one of its success codes) - checking the files anyway" % rc)
+        miss = self.dotnet48_missing()
+        if miss:
+            self.log("     FAILED - .NET Framework 4.8 is not complete: %s (see %s)"
+                     % (", ".join(miss), os.path.join(self.logdir, "dotnet48.log")))
+            return False
+        self.mark_done(key)
+        self.log("     done in %ds (clr.dll in Framework64 and Framework, mscoree native)" % (time.time() - t0))
+        return True
 
     def installed_release(self):
         """Newest Inventor release installed in the prefix ('2027'), or None."""
@@ -692,6 +808,8 @@ def main():
                          "dclibrary = Content Center libraries)")
     ap.add_argument("--no-content", action="store_true",
                     help="leave out the Content Center libraries (~12.7 GB)")
+    ap.add_argument("--no-dotnet48", action="store_true",
+                    help="do not replace wine-mono with the image's .NET Framework 4.8")
     ap.add_argument("--with", dest="extra", action="append", default=[],
                     help="also install this optional package, e.g. Content Center "
                          "libraries (names: scripts/odis-plan.py IMAGE, under skipped)")

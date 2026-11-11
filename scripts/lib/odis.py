@@ -201,6 +201,15 @@ class Image:
         self.root = os.path.abspath(root)
         self._index = None
 
+    def index(self):
+        """lower-case file name -> paths of all files of the image"""
+        if self._index is None:
+            self._index = {}
+            for d, _, files in os.walk(self.root):
+                for f in files:
+                    self._index.setdefault(f.lower(), []).append(os.path.join(d, f))
+        return self._index
+
     def find(self, rel):
         """Path of a manifest-relative file, or None."""
         if not rel:
@@ -209,13 +218,8 @@ class Image:
         if os.path.exists(p):
             return p
         # metadata copy: same relative path below one of the {GUID} folders
-        if self._index is None:
-            self._index = {}
-            for d, _, files in os.walk(self.root):
-                for f in files:
-                    self._index.setdefault(f.lower(), []).append(os.path.join(d, f))
         want = rel.replace("\\", "/").lower()
-        for cand in self._index.get(os.path.basename(want), []):
+        for cand in self.index().get(os.path.basename(want), []):
             if cand.replace("\\", "/").lower().endswith("/" + want):
                 return cand
         return None
@@ -260,9 +264,38 @@ def _step(root, name, install_as, rel, img, lang):
         "pathMappings": mappings,
         "actions": actions,
         "ignoreFailure": attrs is not None and attrs.get("ignoreFailure") == "true",
+        "successCodes": [int(c.text) for c in inst.findall("m:InstallSuccessCodes/m:SuccessCode", NS)
+                         if c.text and c.text.strip().lstrip("-").isdigit()],
         "manifest": rel,
         "present": bool(img.find(inst.get("file"))),
     }
+
+
+def find_package(img, display_name, lang="en-US"):
+    """A package that no application manifest of the image names - on
+    Windows a prerequisite such as the .NET Framework 4.8, which Setup
+    installs when its <Conditions> say it is missing. Found by
+    Identity/DisplayName among the image's pkg.*.xml files (so its folder is
+    not hard-coded); returns the same step dict as plan(), plus "condition"
+    (the INSTALLED test), or None."""
+    for name, paths in sorted(img.index().items()):
+        if not (name.startswith("pkg.") and name.endswith(".xml")):
+            continue
+        for path in sorted(paths):
+            try:
+                root = ET.parse(path).getroot()
+            except ET.ParseError:
+                continue
+            if _text(root, "m:Identity/m:DisplayName") != display_name:
+                continue
+            rel = os.path.relpath(path, img.root).replace(os.sep, "/")
+            s = _step(root, os.path.splitext(name)[0][4:], "prerequisite", rel, img, lang)
+            if s is None:
+                continue
+            cond = root.find("m:Configuration/m:Conditions/m:Condition", NS)
+            s["condition"] = cond.text.strip() if cond is not None and cond.text else ""
+            return s
+    return None
 
 
 def plan(img, apps=("inventor",), lang="en-US", include_all=False, extra=()):

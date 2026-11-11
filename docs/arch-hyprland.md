@@ -23,7 +23,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
 - **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping crash in 2027 (issue #10, open)](#import-cad-step-and-property-mapping-crash-in-2027-issue-10-open)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
-- **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing)
+- **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step-in-testing)
 - **Wine:** [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
@@ -1087,10 +1087,116 @@ cache when the last reference went. The winum patch
 `oleaut32-typelib-keep-released` keeps up to 8 released libraries (Windows
 keeps released libraries too, measured): part 15 s, assembly 20 s, the PRC
 model present in the PDF (Inventor 2027.2, 2026-11-03, with a draft of the
-patch). The patch passed cross review and L1. Open: L4 with the final cache
-version (v2.2) on the full winum build, the .NET Framework 4.8 step in the
-installer, and tests by others.
+patch). The patch passed cross review and L1 and is in winum-11.20-1. The
+installer's .NET Framework 4.8 step (section ".NET Framework 4.8 in the
+prefix") turns the two add-ins on. Open: L4 with winum-11.20-1 and a prefix
+from the clean installation, and tests by others.
 Measurements: [wine-repro/oleaut32-typelib-cache](wine-repro/oleaut32-typelib-cache/README.md).
+
+## .NET Framework 4.8 in the prefix (installer step, in testing)
+
+**Why:** Inventor's .NET Framework programs ran on wine-mono and crashed
+there: Anark's `corewrapper.exe` (3D PDF Publish) and AnyCAD's
+`AnyCADPropertyMappingTool.exe` (Import CAD -> Property Mapping, issue #10).
+With Microsoft's .NET Framework 4.8 in the prefix (used as a black box) both
+run. The test prefixes got it with winetricks' `dotnet48` verb.
+
+**Where the installer comes from:** Autodesk's own image, not a download.
+The 2027 image has `3rdParty/dotNetFramework/48/pkg.dotnet48.xml` (".NET
+Framework Runtime 4.8", build 4.8.3928.0): `dotNetFx48_Full_x86_x64.exe` with
+`/q /norestart`, success code 5100 besides 0, `ignoreFailure`, and the
+condition `528039 < %NET_FRAMEWORK_RELEASE%` (the `Release` value under
+`HKLM\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full`) for "already
+installed". For reference only, the file in the maintainer's 2027 image
+(`..._db_002_002`) has SHA-256
+`9b1f71cd1b86bb6ee6303f7be6fbbe71807a51bb913844c85fc235d5978f3a0f`; it is not
+checked, other images (2026, updates) may carry another build. The language
+packs (`dotNetFx48LP_*`, `pkg.dotnet48_<lcid>.xml`) are not needed.
+
+**Why it never ran:** in both images (2026 and 2027, `..._db_002_002`) the
+only manifest that names it is DWG TrueView's (`x64/dwgviewr/pkg.dwgviewr.xml`,
+a `core` dependency with `external="true"`), and DWG TrueView is not part of
+the product's plan - it comes with the 2027.2 Update. `odis.py` plans what
+the application manifests and their `<Dependencies>` reach, so the product
+installation never met the package; on Windows, Setup runs it as a
+prerequisite when its condition says it is missing. And under Wine the
+installer finds wine-mono claiming 4.8: it exits 0 and installs nothing (the
+2027.2 Update runs the same installer with that result, see the Ubuntu VM
+entry in the Result log).
+
+**What the step does** (`install_dotnet48` in `scripts/install-from-image.py`,
+after the product's packages, product images only, skipped when already
+done; `--no-dotnet48` leaves it out). It follows winetricks'
+[`dotnet48` verb](https://github.com/Winetricks/winetricks/blob/master/src/winetricks)
+(`load_dotnet48`, with `load_remove_mono` and `load_dotnet40`), read at
+version `20260125-next`:
+
+1. Find the package by its `Identity/DisplayName` among the image's
+   `pkg.*.xml` (`odis.find_package`), so the folder is not hard-coded; read
+   the file and parameters from it.
+2. Remove wine-mono as `remove_mono` does: every "Wine Mono" entry of
+   `wine uninstaller --list`, then the `NDP\v3.5` and `NDP\v4` keys it wrote,
+   and Wine's mono-backed `mscoree.dll` in `system32`/`syswow64` (the copy
+   that contains `WINE_MONO_OVERRIDES`).
+3. `OnlyUseLatestCLR=1` in `HKLM\Software\(Wow6432Node\).NETFramework`, as
+   `dotnet40` sets it against a CLR popup on prefix updates.
+4. Windows version `win7` while the installer runs (the verb sets it and
+   leaves it; we put the previous value back, `win10`), `fusion=b` in
+   `WINEDLLOVERRIDES` for the installer, as the verb runs it.
+5. Run the image's installer with the manifest's parameters, wait for
+   `wineserver -w`, set `mscoree=native` in `DllOverrides`.
+6. Check the result, not the exit code: `clr.dll` in
+   `windows\Microsoft.NET\Framework64\v4.0.30319` and `...\Framework\...`,
+   and the `mscoree` override. If it is not there, the install stops with a
+   message (wine-mono is gone by then, so a prefix without either is not
+   left silently).
+
+**Not done like the verb:** `dotnet40` (the verb installs .NET 4.0 from
+Microsoft first). .NET 4.8 is a complete installer and replaces 4.x in
+place; of `dotnet40` only `OnlyUseLatestCLR` is kept. The `NDP\v4\Full`
+values `dotnet40` writes are written by the 4.8 installer itself. Whether
+anything else of `dotnet40` matters is what the clean install shows.
+
+**Why after the product's packages, in install-from-image.py:** the test
+prefixes got .NET 4.8 after Inventor was installed (winetricks on a finished
+prefix), so this is the tested order; on Windows Setup installs it first,
+which would run Autodesk's own MSI custom actions on Microsoft's .NET under
+Wine - untested. `install-from-image.py` is the place that has the image;
+`finish-install.sh` only has the prefix. Updates (`--prepared-prefix`, Nix,
+`install.sh`) run after the product image, so they find .NET 4.8 installed.
+An existing prefix gets it by running the product image again:
+`python3 scripts/install-from-image.py IMAGE --prefix ~/.wine-inventor2027`
+(done packages are skipped), then `bash scripts/finish-install.sh`.
+
+**Not planning prerequisites in general:** `odis.py` could plan every
+prerequisite and evaluate its `<Conditions>` like Setup. Under Wine the
+conditions are what is unreliable (wine-mono reports a 4.8 release), the
+step needs work around the installer that a generic one would not do
+(remove wine-mono, overrides, check the files), and other prerequisites
+would start running in the prefix, untested. So only this one package, by
+name.
+
+**Add-ins:** `Anark.Core.addin` and `Autodesk.Publisher.Inventor.addin` are
+off by default only while .NET Framework 4.8 is missing
+(`INV_DOTNET48_ADDINS`, `inv_default_disabled_addins` in `common.sh`);
+`finish-install.sh` and `addins.sh reset` turn them on in a prefix that has
+it.
+
+**Nix:** the installer is part of the image that `requireFile` already
+covers, so there is no new `fetchurl`. `nix/inventor.nix` keeps Microsoft's
+`mscoree.dll` when the library prunes Wine's stock DLLs and checks for both
+`clr.dll` after the installation. Open for @krokosik: how removing wine-mono
+(uninstaller, deleted files and keys) looks in the captured installation
+layer over the base layers.
+
+**Inventor 2026:** its image (`..._db_002_002`) has the same package at the
+same place (`3rdParty/dotNetFramework/48/pkg.dotnet48.xml`, also referenced
+only by DWG TrueView), so the step runs for 2026 too.
+
+**Open:** the clean installation of Inventor 2027 into a new prefix
+(maintainer) - the step's log, `clr.dll`, 3D PDF Publish, Property Mapping,
+start, part, assembly, save/reopen; whether `wineboot -u` (the launcher after
+a Wine update) brings wine-mono back; the same for 2026.
 
 ## This project's own Wine (v0.2)
 
@@ -1174,6 +1280,12 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - .NET Framework 4.8 step in the installer (in testing):**
+`install-from-image.py` replaces wine-mono with the image's own .NET
+Framework 4.8 installer after the product's packages, as winetricks'
+`dotnet48` does, and checks `clr.dll`; 3D PDF's add-ins are on when it is
+there. Details: section ".NET Framework 4.8 in the prefix".
 
 **2026-11-11 - winum-11.20-1:** the installer, launcher and Nix packaging
 switch from this project's own Wine build to winum-11.20-1; the own build,
