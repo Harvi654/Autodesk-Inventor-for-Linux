@@ -1307,9 +1307,17 @@ which would run Autodesk's own MSI custom actions on Microsoft's .NET under
 Wine - untested. `install-from-image.py` is the place that has the image;
 `finish-install.sh` only has the prefix. Updates (`--prepared-prefix`, Nix,
 `install.sh`) run after the product image, so they find .NET 4.8 installed.
-An existing prefix gets it by running the product image again:
-`python3 scripts/install-from-image.py IMAGE --prefix ~/.wine-inventor2027`
-(done packages are skipped), then `bash scripts/finish-install.sh`.
+**A prefix installed before this step (2026-11-11)** runs on wine-mono and
+keeps doing so: no prefix migration adds .NET (it replaces wine-mono, which
+cannot be undone step by step - phase 4 in
+`docs/drafts/prefix-migrations.md`, written when a user asks for it). The
+way is a new installation (README, "3D PDF and Property Mapping in an older
+installation"): the old prefix moved aside, `install.sh` again; the files in
+`~/Inventor` (D:) stay, the user signs in again. The launcher says so once
+per prefix (`dotnet48_notice_once`, `notice.dotnet48` in the prefix's
+state), not at every start. Running the product image through
+`install-from-image.py` on an existing prefix would also run the step, but
+without a backup and untested - not recommended.
 
 **Not planning prerequisites in general:** `odis.py` could plan every
 prerequisite and evaluate its `<Conditions>` like Setup. Under Wine the
@@ -1556,6 +1564,11 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-11 - .NET 4.8 and older installations:** a prefix from before the
+installer's .NET 4.8 step stays on wine-mono (no migration replaces it);
+README describes a new installation, and the launcher says so once per
+prefix. Section ".NET Framework 4.8 in the prefix".
 
 **2026-11-11 - Prefix migrations: L4 and merge:** on reflink copies of the
 maintainer's prefixes - Inventor 2026 from before winum (0002 and 0003

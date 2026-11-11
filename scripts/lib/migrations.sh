@@ -238,3 +238,20 @@ mig_status() {
         else printf '  pending   %s\n' "$id"; fi
     done < <(mig_files)
 }
+
+# A prefix installed before the installer had the .NET Framework 4.8 step
+# (2026-11-11) runs Inventor's .NET Framework programs on wine-mono: 3D PDF
+# (Anark) and Import CAD's Property Mapping do not work there, and no
+# migration adds .NET (it would replace wine-mono: a new installation is the
+# way). Say so once per prefix (notice.dotnet48 in its state), not at every
+# start. A prefix with .NET's clr.dll is left alone (the launcher has its own
+# warning when that .NET is no longer complete).
+dotnet48_notice_once() {
+    [ -f "$P_C/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll" ] && return 0
+    [ -z "$(mig_state_get notice.dotnet48)" ] || return 0
+    info "This prefix has no .NET Framework 4.8 (installed before 2026-11-11): 3D PDF and"
+    info "Import CAD's Property Mapping do not work in it. A new installation adds it - your"
+    info "files in ${INV_DATA_DIR:-~/Inventor} (D:) stay. How: README, \"3D PDF and Property Mapping in an older"
+    info "installation\" ($PROJECT_DIR/README.md). (Shown once.)"
+    mig_state_set notice.dotnet48 "$(date -u +%Y-%m-%dT%H:%M:%SZ) shown"
+}

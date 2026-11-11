@@ -77,6 +77,11 @@ on the maintainer's prefix after a full copy of it.
 
 ## Phase 4 (proposal): .NET Framework 4.8 for an existing prefix
 
+Status (maintainer, 2026-11-11): stays a proposal; it is written when a
+user asks for it. Until then an older prefix gets .NET 4.8 by a new
+installation (README, "3D PDF and Property Mapping in an older
+installation"), and the launcher says so once per prefix.
+
 New installations get .NET 4.0 + the image's 4.8 from `install-from-image.py`
 (since 2026-11-11). An existing prefix with wine-mono gets it only as an
 **optional** step, `0005-dotnet48`, run by name:

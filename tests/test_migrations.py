@@ -272,6 +272,32 @@ class Migrations(unittest.TestCase):
         (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
         self.assertEqual(differs(old), "DIFFERS")
 
+    def notice(self, prefix, year=2027):
+        r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
+                            "source scripts/lib/migrations.sh; dotnet48_notice_once"],
+                           cwd=str(ROOT), env=self.env(prefix, year), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_dotnet48_notice_once_per_prefix(self):
+        # a prefix installed before the installer had the .NET 4.8 step
+        p = self.prefix(".wine-invclean", 2026)
+        first = self.notice(p, 2026)
+        self.assertIn("This prefix has no .NET Framework 4.8", first)
+        self.assertIn("A new installation adds it", first)
+        self.assertIn("README.md", first)
+        self.assertIn("shown", self.state(p)["notice.dotnet48"])
+        self.assertEqual(self.notice(p, 2026), "")
+        self.assertEqual(self.notice(p, 2026), "")
+
+    def test_no_dotnet48_notice_with_dotnet(self):
+        p = self.prefix(runtime="winum")
+        d = p / "drive_c" / "windows" / "Microsoft.NET" / "Framework64" / "v4.0.30319"
+        d.mkdir(parents=True)
+        (d / "clr.dll").write_bytes(b"MZ")
+        self.assertEqual(self.notice(p), "")
+        self.assertNotIn("notice.dotnet48", self.state(p))
+
     def test_restore_by_hand(self):
         p = self.prefix(runtime="winum")
         self.assertEqual(self.migrate(p).returncode, 0)

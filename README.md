@@ -105,7 +105,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
-| 3D PDF (Anark) | ✅ | the installer puts .NET Framework 4.0 (Microsoft's, pinned) and the install image's 4.8 into the prefix and turns 3D PDF on; with winum's typelib cache fix a part exports in about 15 s, an assembly in about 20 s. Publish confirmed on a clean Inventor 2027.2 installation (2026-11-11). An existing prefix: run the product image through `install-from-image.py` again, then `finish-install.sh`. Off without .NET 4.8 (Publish crashes on wine-mono). Needs testing by others. [Details](docs/arch-hyprland.md#net-framework-48-in-the-prefix-installer-step) |
+| 3D PDF (Anark) | ✅ | the installer puts .NET Framework 4.0 (Microsoft's, pinned) and the install image's 4.8 into the prefix and turns 3D PDF on; with winum's typelib cache fix a part exports in about 15 s, an assembly in about 20 s. Publish confirmed on a clean Inventor 2027.2 installation (2026-11-11). An installation from before 2026-11-11 has no .NET 4.8: [reinstall](#3d-pdf-and-property-mapping-in-an-older-installation). Off without .NET 4.8 (Publish crashes on wine-mono). Needs testing by others. [Details](docs/arch-hyprland.md#net-framework-48-in-the-prefix-installer-step) |
 | Weldments | 🧪 | a weld is created; not verified in depth |
 | Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |
 | Cable & Harness | 🧪 | wires connect; not verified in depth - testers who use Cable & Harness are welcome |
@@ -292,6 +292,33 @@ If it is the integrated one, add part of the name of the GPU you want to
   any other Wine has none of the fixes, and the launcher says so. Fixes
   copied into Arch's Wine by v0.1 are no longer built or checked;
   `sudo pacman -S wine` puts Arch's original files back.
+
+### 3D PDF and Property Mapping in an older installation
+
+An installation made before 2026-11-11 has no .NET Framework 4.8 in its
+prefix (the installer got that step then), so 3D PDF (Anark) and Import
+CAD's Property Mapping do not work in it; the launcher says so once. The
+prefix updates (above) do not add it - replacing wine-mono with .NET is
+done by a new installation. Your files in `~/Inventor` (drive `D:`) are not
+in the prefix and stay; you sign in to Autodesk again.
+
+With Inventor closed - the prefix is the one `bash
+~/inventor-on-linux/scripts/migrate-prefix.sh --status` names on its first
+line (`~/.wine-inventor2026` here; for 2027 use 2027 throughout):
+
+```bash
+mv ~/.wine-inventor2026 ~/.wine-inventor2026.old
+```
+
+```bash
+INV_YEAR=2026 bash ~/inventor-on-linux/scripts/install.sh ~/Downloads/Inventor
+```
+
+(`~/Downloads/Inventor` is the folder with Autodesk's download, as for the
+first installation.) The old prefix is kept as `.old` - the scripts ignore
+it - until the new one works; then `rm -rf ~/.wine-inventor2026.old`. If
+`config.env` names the prefix (`INV_PREFIX=...`), move that one and give
+the installer the same path with `--prefix`.
 
 ### Uninstall
 

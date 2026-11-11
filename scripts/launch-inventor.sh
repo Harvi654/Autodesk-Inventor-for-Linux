@@ -124,6 +124,7 @@ if ! run_migrations; then
     notify "Updating the Inventor prefix failed - see the terminal or logs/setup-wine.log"
     exit 1
 fi
+dotnet48_notice_once
 # Update the prefix only when the Wine version changed (auto-update is disabled
 # by the isolation setup), then re-apply isolation in case the update re-created
 # Z: or the $HOME links.
