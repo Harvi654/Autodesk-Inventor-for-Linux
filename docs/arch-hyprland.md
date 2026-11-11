@@ -1233,6 +1233,24 @@ the override only) passed it. Fixes:
   likely reason is that without `mscoree.dll` no .NET add-in can load,
   not that they were moved (to confirm: `bash scripts/addins.sh list`).
 
+**Anark and Publisher off after the second clean installation (follow-up):**
+`addins.sh list` showed exactly `Anark.Core.addin`,
+`Autodesk.Publisher.Inventor.addin` and
+`autodesk.translatorfusion.inventor.addin` in `Addins.disabled`, and the
+install log had neither the ".NET Framework 4.8 ... stays off" nor an "on
+(.NET Framework 4.8)" line - one of the two is printed whenever the
+`topic/dotnet48` code of `75712cc` runs `cfg_disable_addins`. Run here with
+winum-11.20-1 under `set -Eeuo pipefail` (as `finish-install.sh` runs),
+`dotnet48_present` saw the right `wine` and `WINEPREFIX` and returned the
+right answer. Those three add-ins and no .NET line are what `main`'s code
+(Anark and Publisher in the fixed list) does, so the first guess is that
+`finish-install.sh` came from another checkout; open until the log shows
+which code ran. Either way `cfg_disable_addins` now logs the `wine` it uses,
+the prefix, the list it applies and, when .NET 4.8 counts as missing, the
+first condition that failed (`dotnet48_why`); it decides once, so the list
+and the message cannot disagree; and the registry query no longer goes
+through a pipe that `pipefail` could fail.
+
 **Wine update:** with winum-11.20-1, after the removal above, a stand-in
 native `mscoree.dll` (a small DLL built with MinGW, not Microsoft's) and
 `mscoree=native`, `wineboot -u` brought back neither the uninstall entry

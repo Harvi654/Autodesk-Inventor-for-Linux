@@ -380,16 +380,29 @@ wine_winum_name() {
 # Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
 # both Framework folders, Microsoft's mscoree.dll in system32 and syswow64
 # (there, and not Wine's mono-backed one, which carries WINE_MONO_OVERRIDES),
-# and mscoree loaded native.
-dotnet48_present() {
-    local d
-    [ -f "$P_C/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll" ] &&
-        [ -f "$P_C/windows/Microsoft.NET/Framework/v4.0.30319/clr.dll" ] || return 1
-    for d in system32 syswow64; do
-        [ -f "$P_C/windows/$d/mscoree.dll" ] && ! grep -qs WINE_MONO_OVERRIDES "$P_C/windows/$d/mscoree.dll" || return 1
+# and mscoree loaded native. dotnet48_why prints the first condition that
+# fails (nothing when all hold); dotnet48_present is its exit status.
+dotnet48_why() {
+    local d fw out
+    for fw in Framework64 Framework; do
+        [ -f "$P_C/windows/Microsoft.NET/$fw/v4.0.30319/clr.dll" ] \
+            || { echo "no windows/Microsoft.NET/$fw/v4.0.30319/clr.dll in $WINEPREFIX"; return 1; }
     done
-    WINEDEBUG=-all wine reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>/dev/null | grep -qi 'native'
+    for d in system32 syswow64; do
+        [ -f "$P_C/windows/$d/mscoree.dll" ] || { echo "no windows/$d/mscoree.dll in $WINEPREFIX"; return 1; }
+        if grep -qs WINE_MONO_OVERRIDES "$P_C/windows/$d/mscoree.dll"; then
+            echo "windows/$d/mscoree.dll is Wine's mono one"; return 1
+        fi
+    done
+    # the whole output first, then grep: no pipe that pipefail could fail
+    out="$(WINEDEBUG=-all wine reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>&1)" || true
+    if ! printf '%s\n' "$out" | grep -qiE '^[[:space:]]*mscoree[[:space:]]+REG_SZ[[:space:]]+native'; then
+        echo "DllOverrides mscoree is not native (wine: $(command -v wine || echo none), WINEPREFIX=$WINEPREFIX," \
+             "reg query: $(printf '%s' "$out" | tr -d '\r' | tr '\n' ' ' | cut -c1-200))"
+        return 1
+    fi
 }
+dotnet48_present() { dotnet48_why >/dev/null; }
 
 # The add-ins off by default in this prefix: INV_DEFAULT_DISABLED_ADDINS, plus
 # INV_DOTNET48_ADDINS when .NET Framework 4.8 is missing. One name per line.

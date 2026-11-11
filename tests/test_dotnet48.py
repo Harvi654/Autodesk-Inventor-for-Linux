@@ -98,15 +98,18 @@ class FindPackage(unittest.TestCase):
 
 
 FAKE_WINE = """#!/bin/sh
-# Answers only the query dotnet48_present makes; the override is "native"
-# when the test put a marker file into the prefix.
+# Answers only the query dotnet48_present makes, in the form Wine's reg.exe
+# writes it (CRLF, the key first). The override is "native" when the test
+# put a marker file into the prefix; "reg-error" makes it fail the way a
+# wineserver of another version does.
 case "$*" in
     *"reg query"*DllOverrides*mscoree*)
-        if [ -f "$WINEPREFIX/override-native" ]; then
-            printf '\\nHKEY_CURRENT_USER\\\\Software\\\\Wine\\\\DllOverrides\\n    mscoree    REG_SZ    native\\n\\n'
-        else
-            printf '\\nHKEY_CURRENT_USER\\\\Software\\\\Wine\\\\DllOverrides\\n    mscoree    REG_SZ    builtin\\n\\n'
-        fi ;;
+        if [ -f "$WINEPREFIX/reg-error" ]; then
+            echo "wine client error:0: version mismatch 853/854" >&2; exit 1
+        fi
+        v=builtin; [ -f "$WINEPREFIX/override-native" ] && v=native
+        printf '\\r\\nHKEY_CURRENT_USER\\\\Software\\\\Wine\\\\DllOverrides\\r\\n    mscoree    REG_SZ    %s\\r\\n\\r\\n' "$v" ;;
+    --version) echo wine-11.20 ;;
 esac
 exit 0
 """
@@ -142,6 +145,68 @@ class Dotnet48Present(unittest.TestCase):
             d = self.prefix / "drive_c" / "windows" / "Microsoft.NET" / fw / "v4.0.30319"
             d.mkdir(parents=True, exist_ok=True)
             (d / "clr.dll").write_bytes(b"MZ")
+
+    def run_finish(self):
+        """cfg_disable_addins as finish-install.sh runs it: set -Eeuo pipefail,
+        common.sh and configure.sh sourced, output captured."""
+        env = {"HOME": str(self.home), "USER": "test", "PATH": "%s:/usr/bin:/bin" % self.bin,
+               "INV_YEAR": "2027", "INV_PREFIX": str(self.prefix), "INV_WINE": "system"}
+        script = ('set -Eeuo pipefail; source scripts/lib/common.sh; source scripts/lib/configure.sh; '
+                  'cfg_disable_addins')
+        out = subprocess.run(["bash", "-c", script], cwd=str(ROOT), env=env, capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        return out.stdout
+
+    def addin(self, name):
+        p = self.prefix / "drive_c" / "Program Files" / "Autodesk" / "Inventor 2027" / "Bin" / "Addins"
+        p.mkdir(parents=True, exist_ok=True)
+        (p / name).write_text("")
+        return p
+
+    def complete(self):
+        self.clr("Framework64", "Framework")
+        self.mscoree()
+        (self.prefix / "override-native").write_bytes(b"")
+
+    def test_finish_install_keeps_3d_pdf_on_when_complete(self):
+        self.complete()
+        on = self.addin("Anark.Core.addin")
+        self.addin("Autodesk.Publisher.Inventor.addin")
+        self.addin("autodesk.translatorfusion.inventor.addin")
+        out = self.run_finish()
+        self.assertTrue((on / "Anark.Core.addin").exists(), out)
+        self.assertTrue((on / "Autodesk.Publisher.Inventor.addin").exists(), out)
+        self.assertFalse((on / "autodesk.translatorfusion.inventor.addin").exists())
+        self.assertIn(".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher) on", out)
+        self.assertIn("wine: %s/wine" % self.bin, out)
+        self.assertIn("prefix: %s" % self.prefix, out)
+        self.assertNotIn("Anark", out.split("off by default here:")[1].splitlines()[0])
+
+    def test_finish_install_says_why_it_is_off(self):
+        self.clr("Framework64", "Framework")
+        (self.prefix / "override-native").write_bytes(b"")
+        on = self.addin("Anark.Core.addin")
+        out = self.run_finish()
+        self.assertFalse((on / "Anark.Core.addin").exists())
+        self.assertIn("not in the prefix (no windows/system32/mscoree.dll in %s)" % self.prefix, out)
+
+    def test_finish_install_reg_query_failure_is_named(self):
+        self.complete()
+        (self.prefix / "reg-error").write_bytes(b"")
+        self.addin("Anark.Core.addin")
+        out = self.run_finish()
+        self.assertIn("DllOverrides mscoree is not native", out)
+        self.assertIn("version mismatch", out)
+        self.assertIn("wine: %s/wine" % self.bin, out)
+
+    def test_finish_install_moves_them_back_once_complete(self):
+        self.addin("Anark.Core.addin")
+        self.run_finish()
+        self.complete()
+        out = self.run_finish()
+        on = self.prefix / "drive_c" / "Program Files" / "Autodesk" / "Inventor 2027" / "Bin" / "Addins"
+        self.assertTrue((on / "Anark.Core.addin").exists(), out)
+        self.assertIn("on (.NET Framework 4.8): Anark.Core.addin", out)
 
     def run_sh(self):
         env = {"HOME": str(self.home), "USER": "test", "PATH": "%s:/usr/bin:/bin" % self.bin,
