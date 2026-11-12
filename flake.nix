@@ -242,6 +242,54 @@
               python3 tests/test_declarative_installer.py
               touch "$out"
             '';
+        # Runs the adskidmgr dispatcher with stub launchers.
+        url-dispatcher =
+          let
+            inherit (pkgs) lib;
+            stub =
+              name:
+              pkgs.writeShellScript "stub-inventor-${name}" ''
+                printf '%s %s\n' ${name} "$*" >> "$LOG"
+                if [ "''${1:-}" = --nix-overlayfs-forward-url ]; then
+                  exit "''${STATUS_${name}:-3}"
+                fi
+              '';
+            dispatcher = import ./nix/url-dispatcher.nix { inherit (pkgs) lib writeShellScript; } [
+              {
+                name = "2027";
+                exe = stub "2027";
+              }
+              {
+                name = "2026";
+                exe = stub "2026";
+              }
+            ];
+            url = "adskidmgr://login?code=a b&state='x'";
+          in
+          pkgs.runCommand "inventor-url-dispatcher-tests" { } ''
+            set -euo pipefail
+            run() { LOG="$PWD/$1.log"; export LOG; : > "$LOG"; shift; "$@" ${dispatcher} ${lib.escapeShellArg url}; }
+            lib_url=${lib.escapeShellArg url}
+
+            # 2026 runs, 2027 does not: the callback goes to 2026, nothing starts.
+            run forward env STATUS_2027=3 STATUS_2026=0
+            test "$(cat forward.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2026 --nix-overlayfs-forward-url $lib_url"
+
+            # Neither runs: the newest starts with the callback.
+            run start env
+            test "$(tail -1 start.log)" = "2027 $lib_url"
+
+            # 2027 runs but cannot take it: stop, do not try 2026 or start one.
+            status=0
+            run failing env STATUS_2027=1 || status=$?
+            test "$status" -eq 1
+            test "$(cat failing.log)" = "2027 --nix-overlayfs-forward-url $lib_url"
+
+            # No URL.
+            ! LOG=/dev/null ${dispatcher} 2>/dev/null
+            touch "$out"
+          '';
         # Evaluates the module with both releases; builds nothing from Autodesk.
         nixos-module =
           let
@@ -267,7 +315,6 @@
             named = name: lib.findFirst (package: package.name == name) null packages;
             handler = named "autodesk-inventor-url-handler.desktop";
             plain = string: builtins.unsafeDiscardStringContext string;
-            script = plain handler.urlHandler.text;
             launcher = year: plain (lib.getExe self.packages.${system}."inventor-${year}");
             moduleLauncher =
               year:
@@ -276,7 +323,6 @@
                   self.packages.${system}."inventor-${year}".withArgs { registerHostUrlHandlers = false; }
                 )
               );
-            position = needle: builtins.stringLength (builtins.head (lib.splitString needle script));
             checks = {
               "adskidmgr goes to the dispatcher" =
                 config.xdg.mime.defaultApplications."x-scheme-handler/adskidmgr"
@@ -288,13 +334,14 @@
                     "autodesk-inventor.desktop"
                     "autodesk-inventor-2027.desktop"
                   ];
+              # The dispatcher's behaviour is checked by url-dispatcher.
+              "the dispatcher uses the module's launchers, newest first" =
+                map (launcher: plain launcher.exe) handler.urlHandler.launchers == [
+                  (moduleLauncher "2027")
+                  (moduleLauncher "2026")
+                ];
               "the module's launchers do not register handlers at runtime" =
-                moduleLauncher "2026" != launcher "2026" && lib.hasInfix (moduleLauncher "2026") script;
-              "a running 2027 session is tried first" =
-                position "${moduleLauncher "2027"} --nix-overlayfs-forward-url"
-                < position "${moduleLauncher "2026"} --nix-overlayfs-forward-url";
-              "the newest release starts when none runs" =
-                lib.hasInfix "exec ${moduleLauncher "2027"} \"$url\"" script;
+                moduleLauncher "2026" != launcher "2026";
             };
             failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
           in

@@ -30,25 +30,13 @@ let
     in
     if package ? withArgs then package.withArgs { registerHostUrlHandlers = false; } else package;
   desktopNameFor = year: if year == "2026" then "autodesk-inventor" else "autodesk-inventor-${year}";
-  # adskidmgr:// is one scheme for all releases. Give the callback to the
-  # release whose session is running (each launcher's forward-only mode exits
-  # with status 3 when none is); start the newest release only when none runs.
-  urlHandler = pkgs.writeShellScript "autodesk-inventor-open-url" ''
-    url="''${1:-}"
-    if [ -z "$url" ]; then
-      echo "usage: autodesk-inventor-open-url adskidmgr://..." >&2
-      exit 2
-    fi
-    ${lib.concatMapStrings (year: ''
-      ${lib.getExe (packageFor year)} --nix-overlayfs-forward-url "$url"
-      case $? in
-        0) exit 0 ;;
-        3) ;;
-        *) echo "Autodesk Inventor ${year}: could not hand the callback to its running session" >&2 ;;
-      esac
-    '') (lib.reverseList (lib.sort builtins.lessThan cfg.versions))}
-    exec ${lib.getExe (packageFor newestYear)} "$url"
-  '';
+  # adskidmgr:// is one scheme for all releases; see nix/url-dispatcher.nix.
+  urlHandler = import ./url-dispatcher.nix { inherit lib; inherit (pkgs) writeShellScript; } (
+    map (year: {
+      name = year;
+      exe = lib.getExe (packageFor year);
+    }) (lib.reverseList (lib.sort builtins.lessThan cfg.versions))
+  );
   urlHandlerDesktop =
     (pkgs.makeDesktopItem {
       name = "autodesk-inventor-url-handler";
@@ -76,7 +64,6 @@ let
         "Engineering"
       ];
     };
-  newestYear = lib.last (lib.sort builtins.lessThan cfg.versions);
 
 in
 {
