@@ -1,7 +1,11 @@
 {
   pkgs,
   overlayfsLib,
+  # Wine and layers the installation is built with (the winum release).
   modules,
+  # Wine Inventor runs: a build of the same release, possibly with winum
+  # candidates under test. Changing it rebuilds only the launcher.
+  launchModules ? modules,
 }:
 {
   # A fixed-output derivation containing the original Autodesk install image.
@@ -38,24 +42,30 @@ let
         withArgs =
           extra:
           import ./inventor.nix {
-            inherit pkgs overlayfsLib modules;
+            inherit
+              pkgs
+              overlayfsLib
+              modules
+              launchModules
+              ;
           } (inventorArgs // extra);
       };
     });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
   # session when the main process exits so overlayfs can unmount it cleanly.
+  launchTools = launchModules.runtime.toolsPackage;
   launchWine = pkgs.writeShellScript "inventor-wine-session" ''
     set +e
-    ${modules.runtime.toolsPackage}/bin/wine "$@"
+    ${launchTools}/bin/wine "$@"
     status=$?
-    ${modules.runtime.toolsPackage}/bin/wineserver -k
+    ${launchTools}/bin/wineserver -k
     exit "$status"
   '';
-  runtime = modules.runtime // {
+  launchRuntime = launchModules.runtime // {
     mkSession =
       args:
       let
-        session = modules.runtime.mkSession args;
+        session = launchModules.runtime.mkSession args;
       in
       session
       // {
@@ -130,7 +140,9 @@ let
   dotnet48 = modules.dotnet-framework-4-8;
 in
 withInventorMeta (overlayfsLib.mkWindowsPackage {
-  inherit runtime;
+  # The installation is built with the release Wine, the launcher runs launchRuntime.
+  inherit (modules) runtime;
+  inherit launchRuntime;
   inherit version;
   # A base environment without Wine Mono: .NET comes from the dotnet48 layer.
   managedRuntime = "external";
@@ -220,11 +232,11 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     esac
   '';
   urlSchemeOpenCommands = ''
-    exec ${modules.runtime.toolsPackage}/bin/wine \
+    exec ${launchTools}/bin/wine \
       'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
   '';
   extraPreLaunchCommands = ''
-    export PATH=${modules.runtime.toolsPackage}/bin:${
+    export PATH=${launchTools}/bin:${
       lib.makeBinPath (
         tools
         ++ [
@@ -235,7 +247,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     }:$PATH
     ${builtins.readFile ./launch-lock.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
-      inherit (modules) runtime;
+      inherit (launchModules) runtime;
       defaultMode = "system";
     }).extraPreLaunchCommands
     }

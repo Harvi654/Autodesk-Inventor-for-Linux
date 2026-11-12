@@ -932,9 +932,10 @@ are not the cause.
 `patches/candidates/inventor-reference-model` (problem, measurements,
 validation and review in its README; reproducers in winum's
 `docs/wine-repro/ole32-createfromfile-html`). Until a winum release
-carries them, `nix/wine.nix` can build them in: `candidates = [
+carries them, the Nix package can run them: `wineCandidates = [
 "inventor-reference-model" ]` in `flake.nix` and `--override-input winum
-path:<winum checkout>`.
+path:<winum checkout>`. Only the Wine Inventor runs changes; the installation
+layers are not rebuilt (`docs/nixos.md`).
 
 **How it was found.** Wine traces only (`WINEDEBUG=+ole,+storage,+seh`,
 `err+all,warn+ole` from a marker taken just before OK), on NixOS under
@@ -1926,3 +1927,14 @@ copies aside; the NixOS module routes `adskidmgr://` to the release whose
 session is running. Library and module tests pass; Inventor smoke test
 pending. Details: section "NixOS: writable state hid DXVK; 2026 sign-in
 opened 2027".
+
+**2026-11-12 - NixOS: winum candidates without reinstalling:** the Nix package
+builds its layers (base environment, WebView2, .NET 4.8, Inventor) with the
+winum release and runs Inventor on the same release plus `wineCandidates`.
+Wine loads builtin DLLs from its own installation when the prefix holds a
+builtin copy (`load_builtin()` in `dlls/ntdll/unix/loader.c`), and
+nix-overlayfs keeps the prefix from being updated at runtime, so a candidate
+takes effect without the two Microsoft installers and the Inventor install
+running again. Checked by evaluation (`launch-wine-candidates`: same
+installation derivation, launcher on the candidate Wine); Inventor smoke test
+with a candidate pending.

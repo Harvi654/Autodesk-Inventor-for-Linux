@@ -18,9 +18,26 @@ update and Content Center, on x86_64 Linux. Inventor 2026 English with update
 [winum](https://github.com/Harvi654/winum) `winum-11.20-1` (its `patches/series`,
 in order; flake input `winum`, pinned to the tag's commit). Nixpkgs, the
 nix-overlayfs fork and winum are pinned in `flake.lock`; no local checkout is required by the committed input definitions.
-The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
-mapping and sandbox MSI link-action fix, published from the local development
-fork. That base environment builds successfully with the patched Wine runtime.
+The base environment has no Wine Mono (`managedRuntime = "external"`):
+.NET comes from the layer described below.
+
+Two Wines are involved. The winum release builds the base environment and the
+WebView2, .NET and Inventor layers; Inventor runs on a build of the same
+release plus the winum candidates listed in `wineCandidates` in `flake.nix`
+(empty by default, then both are the same Wine). Trying a candidate therefore
+rebuilds Wine and the launcher, not the installations: Wine loads its builtin
+DLLs from its own installation, and the prefix is not updated at runtime. A
+candidate that must be present while installing (for example an msi fix)
+goes into `installWineCandidates`, which rebuilds the layers. To test
+candidates from a winum checkout:
+
+```nix
+wineCandidates = [ "inventor-reference-model" ];
+```
+
+```sh
+nix run .#inventor-2027 --override-input winum path:/path/to/winum
+```
 The pinned library also preserves Wine's registry symbolic-link markers and
 propagates failed installer exit statuses. Microsoft's .NET Framework 4.8
 is a layer below the installation (nix-overlayfs's `dotnet-framework-4-8`,
