@@ -108,6 +108,17 @@ QUIRKS = {
                       "finish_licensing"),
 }
 
+
+def quirk_key(s):
+    """The QUIRKS key of a step: its package name, except that Autodesk's
+    licensing service is known by its installer: Inventor's manifest names
+    the package "AdskLicensing", AutoCAD 2027's names it differently
+    (x86/Licensing/pkg.licensing.xml), and the same exit-84 quirk applies."""
+    if os.path.basename(s.get("file", "")).lower() == "adsklicensing-installer.exe":
+        return "adsklicensing"
+    return s["name"].lower()
+
+
 # A Windows exit code reaches Linux only as its low byte: msiexec's 1603
 # shows up as 67. The usual Windows Installer codes:
 MSI_RC = {
@@ -280,7 +291,7 @@ class Installer:
         extra = {"media_root": media} if media else None
         argv = ["wine", exe] + win_split(self.expand(s["params"], extra, s))
         rc = self.run(argv, logname)
-        if rc == 250 and s["name"].lower() == "adsklicensing":
+        if rc == 250 and quirk_key(s) == "adsklicensing":
             # Some filesystems cannot represent the installer's NTFS junction.
             # Repair only this diagnosed failure, then rerun the vendor installer
             # so its remaining service/registration actions still execute.
@@ -307,7 +318,7 @@ class Installer:
                         return self.finish_licensing()
         if rc in (0, 1641, 3010):
             return True
-        q = QUIRKS.get(s["name"].lower())
+        q = QUIRKS.get(quirk_key(s))
         if q and rc in q[0] and glob.glob(self.unix(q[1])):
             self.log("        known Wine quirk for %s, files are installed - finishing it" % s["name"])
             return getattr(self, q[2])() if len(q) > 2 else True
