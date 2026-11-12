@@ -101,6 +101,8 @@ let
   webview2 =
     (overlayfsLib.mkWindowsPackage {
       inherit (modules) runtime;
+      # Same base environment as the installation (no Wine Mono, see below).
+      managedRuntime = "external";
       pname = "inventor-webview2";
       version = "154.0.4258.62";
       packageName = "inventor-webview2";
@@ -123,12 +125,15 @@ let
       });
   # Microsoft's .NET Framework 4.8 (3D PDF, Import CAD's Property Mapping) as
   # nix-overlayfs's dotnet-framework-4-8 layer below the installation, in
-  # place of Wine Mono; the installer's own .NET step is skipped here.
+  # place of Wine Mono; the installer's own .NET step is skipped here. It
+  # exports mscoree=native (dllOverrides) to the launcher.
   dotnet48 = modules.dotnet-framework-4-8;
 in
 withInventorMeta (overlayfsLib.mkWindowsPackage {
   inherit runtime;
   inherit version;
+  # A base environment without Wine Mono: .NET comes from the dotnet48 layer.
+  managedRuntime = "external";
   portableReparsePoints = true;
   pname = "inventor";
   packageName = "autodesk-inventor-${year}";
@@ -200,8 +205,11 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   runtimeEnvVars = {
     INVENTOR_YEAR = year;
     WINE_LARGE_ADDRESS_AWARE = "1";
-    # mscoree=n: Microsoft's .NET Framework from the dotnet48 layer, not Wine Mono
-    WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d;mscoree=n";
+  };
+  # Merged with the layers' overrides (mscoree=n comes from the dotnet48 layer).
+  dllOverrides = {
+    msquic = "";
+    "winemenubuilder.exe" = "";
   };
   urlSchemes = [ "adskidmgr" ];
   inherit registerHostUrlHandlers;
