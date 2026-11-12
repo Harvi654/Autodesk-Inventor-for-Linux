@@ -33,10 +33,34 @@
           inputs.nix-overlayfs.overlays.default
         ];
       };
-      wine = pkgs.callPackage ./nix/wine.nix { inherit (inputs) winum; };
+      # winum candidates (topics under its patches/candidates/) to test. They go
+      # into the Wine Inventor runs, not the one that builds the layers, so
+      # trying one rebuilds Wine and the launcher only (the WebView2, .NET and
+      # Inventor installations stay). A candidate that must be present while
+      # installing goes into installWineCandidates; that rebuilds the layers.
+      wineCandidates = [ ];
+      installWineCandidates = [ ];
+      # Builds the base environment, WebView2, .NET Framework and Inventor.
+      installWine = pkgs.callPackage ./nix/wine.nix {
+        inherit (inputs) winum;
+        candidates = installWineCandidates;
+      };
+      # Runs Inventor: the same winum release plus the candidates under test.
+      wine =
+        if wineCandidates == installWineCandidates then
+          installWine
+        else
+          pkgs.callPackage ./nix/wine.nix {
+            inherit (inputs) winum;
+            candidates = installWineCandidates ++ wineCandidates;
+          };
       overlayfsLib = pkgs.nix-overlayfs.lib;
       scope = pkgs.nix-overlayfs;
       modules = scope.moduleScopes.makeNativeModules {
+        wine = installWine;
+        windowsArch = "wow64";
+      };
+      launchModules = scope.moduleScopes.makeNativeModules {
         inherit wine;
         windowsArch = "wow64";
       };
@@ -101,6 +125,46 @@
           pkgs.runCommand "inventor-winum-pin" { } ''
             touch "$out"
           '';
+        # A winum candidate changes the Wine Inventor runs, not the installation.
+        launch-wine-candidates =
+          let
+            inherit (pkgs) lib;
+            topics = lib.attrNames (
+              lib.filterAttrs (_: type: type == "directory") (
+                builtins.readDir "${inputs.winum}/patches/candidates"
+              )
+            );
+            candidateModules = scope.moduleScopes.makeNativeModules {
+              wine = pkgs.callPackage ./nix/wine.nix {
+                inherit (inputs) winum;
+                candidates = lib.take 1 topics;
+              };
+              windowsArch = "wow64";
+            };
+            withCandidate =
+              import ./nix/inventor.nix
+                {
+                  inherit pkgs overlayfsLib modules;
+                  launchModules = candidateModules;
+                }
+                {
+                  year = "2027";
+                  inherit (mediaSources2027) media;
+                  updates = [ mediaSources2027.update ];
+                  version = "2027.1";
+                };
+          in
+          if topics == [ ] then
+            builtins.trace "launch-wine-candidates: winum has no candidates; nothing to compare" (
+              pkgs.runCommand "inventor-launch-wine-candidates" { } "touch $out"
+            )
+          else
+            assert withCandidate.basePackage.drvPath == inventor2027.basePackage.drvPath;
+            assert withCandidate.drvPath != inventor2027.drvPath;
+            assert
+              withCandidate.launchRuntime.toolsPackage.drvPath == candidateModules.runtime.toolsPackage.drvPath;
+            assert withCandidate.runtime.toolsPackage.drvPath == modules.runtime.toolsPackage.drvPath;
+            pkgs.runCommand "inventor-launch-wine-candidates" { } "touch $out";
         module-empty-versions =
           let
             moduleConfig =
@@ -256,7 +320,12 @@
       lib.mkInventor =
         args:
         import ./nix/inventor.nix {
-          inherit pkgs overlayfsLib modules;
+          inherit
+            pkgs
+            overlayfsLib
+            modules
+            launchModules
+            ;
         } args;
     };
 }
