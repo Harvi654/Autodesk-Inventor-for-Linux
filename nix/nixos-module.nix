@@ -31,12 +31,18 @@ let
     if package ? withArgs then package.withArgs { registerHostUrlHandlers = false; } else package;
   desktopNameFor = year: if year == "2026" then "autodesk-inventor" else "autodesk-inventor-${year}";
   # adskidmgr:// is one scheme for all releases; see nix/url-dispatcher.nix.
-  urlHandler = import ./url-dispatcher.nix { inherit lib; inherit (pkgs) writeShellScript; } (
-    map (year: {
-      name = year;
-      exe = lib.getExe (packageFor year);
-    }) (lib.reverseList (lib.sort builtins.lessThan cfg.versions))
-  );
+  urlHandler =
+    import ./url-dispatcher.nix
+      {
+        inherit lib;
+        inherit (pkgs) writeShellScript;
+      }
+      (
+        map (year: {
+          name = year;
+          exe = lib.getExe (packageFor year);
+        }) (lib.reverseList (lib.sort builtins.lessThan cfg.versions))
+      );
   urlHandlerDesktop =
     (pkgs.makeDesktopItem {
       name = "autodesk-inventor-url-handler";

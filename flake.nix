@@ -38,32 +38,13 @@
       # trying one rebuilds Wine and the launcher only (the WebView2, .NET and
       # Inventor installations stay). A candidate that must be present while
       # installing goes into installWineCandidates; that rebuilds the layers.
+      # A candidate that changes prefix contents (wine.inf, registration, modules
+      # added or removed; see nix/wine-prefix.nix) must go into
+      # installWineCandidates: the launch Wine is refused otherwise.
       wineCandidates = [ ];
       installWineCandidates = [ ];
-      # Builds the base environment, WebView2, .NET Framework and Inventor.
-      installWine = pkgs.callPackage ./nix/wine.nix {
-        inherit (inputs) winum;
-        candidates = installWineCandidates;
-      };
-      # Runs Inventor: the same winum release plus the candidates under test.
-      wine =
-        if wineCandidates == installWineCandidates then
-          installWine
-        else
-          pkgs.callPackage ./nix/wine.nix {
-            inherit (inputs) winum;
-            candidates = installWineCandidates ++ wineCandidates;
-          };
       overlayfsLib = pkgs.nix-overlayfs.lib;
       scope = pkgs.nix-overlayfs;
-      modules = scope.moduleScopes.makeNativeModules {
-        wine = installWine;
-        windowsArch = "wow64";
-      };
-      launchModules = scope.moduleScopes.makeNativeModules {
-        inherit wine;
-        windowsArch = "wow64";
-      };
       mediaSources2026 = import ./nix/media.nix {
         inherit pkgs;
         year = "2026";
@@ -72,18 +53,78 @@
         inherit pkgs;
         year = "2027";
       };
-      inventor2027 = self.lib.mkInventor {
-        year = "2027";
-        inherit (mediaSources2027) media;
-        updates = [ mediaSources2027.update ];
-        version = "2027.1";
-      };
-      inventor2026 = self.lib.mkInventor {
-        year = "2026";
-        inherit (mediaSources2026) media;
-        updates = [ mediaSources2026.update ];
-        version = "2026.4";
-      };
+      # Wines, module scopes and the Inventor packages for a choice of winum
+      # candidates; the outputs below and the checks are built with it.
+      mkReleases =
+        {
+          wineCandidates ? [ ],
+          installWineCandidates ? [ ],
+          winum ? inputs.winum,
+        }:
+        let
+          inherit (pkgs) lib;
+          launchCandidates = lib.unique (installWineCandidates ++ wineCandidates);
+          # Builds the base environment, WebView2, .NET Framework and Inventor.
+          installWine = pkgs.callPackage ./nix/wine.nix {
+            inherit winum;
+            candidates = lib.unique installWineCandidates;
+          };
+          # Runs Inventor: the same winum release plus the candidates under test.
+          wine =
+            if launchCandidates == lib.unique installWineCandidates then
+              installWine
+            else
+              pkgs.callPackage ./nix/wine.nix {
+                inherit winum;
+                candidates = launchCandidates;
+              };
+          modules = scope.moduleScopes.makeNativeModules {
+            wine = installWine;
+            windowsArch = "wow64";
+          };
+          launchModules = scope.moduleScopes.makeNativeModules {
+            inherit wine;
+            windowsArch = "wow64";
+          };
+          mkInventor =
+            args:
+            import ./nix/inventor.nix {
+              inherit
+                pkgs
+                overlayfsLib
+                modules
+                launchModules
+                ;
+            } args;
+        in
+        {
+          inherit
+            installWine
+            wine
+            modules
+            launchModules
+            mkInventor
+            ;
+          inventor2027 = mkInventor {
+            year = "2027";
+            inherit (mediaSources2027) media;
+            updates = [ mediaSources2027.update ];
+            version = "2027.1";
+          };
+          inventor2026 = mkInventor {
+            year = "2026";
+            inherit (mediaSources2026) media;
+            updates = [ mediaSources2026.update ];
+            version = "2026.4";
+          };
+        };
+      releases = mkReleases { inherit wineCandidates installWineCandidates; };
+      inherit (releases)
+        wine
+        modules
+        inventor2026
+        inventor2027
+        ;
     in
     {
       packages.${system} = {
@@ -125,46 +166,82 @@
           pkgs.runCommand "inventor-winum-pin" { } ''
             touch "$out"
           '';
-        # A winum candidate changes the Wine Inventor runs, not the installation.
+        # A winum candidate changes the Wine Inventor runs, not the installation;
+        # checked on the same mkReleases the packages come from. Evaluation only.
         launch-wine-candidates =
           let
             inherit (pkgs) lib;
-            topics = lib.attrNames (
-              lib.filterAttrs (_: type: type == "directory") (
-                builtins.readDir "${inputs.winum}/patches/candidates"
-              )
-            );
-            candidateModules = scope.moduleScopes.makeNativeModules {
-              wine = pkgs.callPackage ./nix/wine.nix {
-                inherit (inputs) winum;
-                candidates = lib.take 1 topics;
-              };
-              windowsArch = "wow64";
+            plain = builtins.unsafeDiscardStringContext;
+            drv = package: package.drvPath;
+            launchTools = package: drv package.launchRuntime.toolsPackage;
+            # A code-only and a wine.inf candidate of the same release.
+            fixture = ./tests/fixtures/fake-winum;
+            codeOnly = mkReleases {
+              winum = fixture;
+              wineCandidates = [ "code-only" ];
             };
-            withCandidate =
-              import ./nix/inventor.nix
-                {
-                  inherit pkgs overlayfsLib modules;
-                  launchModules = candidateModules;
-                }
-                {
-                  year = "2027";
-                  inherit (mediaSources2027) media;
-                  updates = [ mediaSources2027.update ];
-                  version = "2027.1";
-                };
+            fixtureRelease = mkReleases { winum = fixture; };
+            infChange = mkReleases {
+              winum = fixture;
+              wineCandidates = [ "inf-change" ];
+            };
+            infAtInstall = mkReleases {
+              winum = fixture;
+              installWineCandidates = [ "inf-change" ];
+              wineCandidates = [
+                "inf-change"
+                "code-only"
+              ];
+            };
+            evaluates = package: (builtins.tryEval (builtins.deepSeq package.drvPath true)).success;
+            prefixChange = import ./nix/wine-prefix.nix { inherit lib; };
+            checks = {
+              # The production packages run on the flake's launch Wine.
+              "packages use the launch Wine" =
+                launchTools inventor2027 == drv releases.launchModules.runtime.toolsPackage;
+              "a code-only candidate leaves the installation as it is" =
+                drv codeOnly.inventor2027.basePackage == drv fixtureRelease.inventor2027.basePackage;
+              "a code-only candidate changes the launcher" =
+                drv codeOnly.inventor2027 != drv fixtureRelease.inventor2027;
+              "the launcher runs the candidate Wine" =
+                launchTools codeOnly.inventor2027 == drv codeOnly.launchModules.runtime.toolsPackage
+                && launchTools codeOnly.inventor2027 != launchTools fixtureRelease.inventor2027;
+              "the generated wrapper runs the candidate Wine" =
+                lib.hasInfix (plain "${codeOnly.launchModules.runtime.toolsPackage}/bin/wine") (
+                  plain codeOnly.inventor2027.launchWine.text
+                );
+              "the installation is built with the release Wine" =
+                drv codeOnly.inventor2027.runtime.toolsPackage == drv fixtureRelease.modules.runtime.toolsPackage;
+              "a wine.inf candidate is refused at launch" = !(evaluates infChange.inventor2027);
+              "a wine.inf candidate is accepted at installation" = evaluates infAtInstall.inventor2027;
+              "candidates in both lists are applied once" =
+                infAtInstall.wine.candidates == [
+                  "inf-change"
+                  "code-only"
+                ];
+              "the same candidates reuse the install Wine" =
+                drv
+                  (mkReleases {
+                    winum = fixture;
+                    installWineCandidates = [ "code-only" ];
+                    wineCandidates = [ "code-only" ];
+                  }).wine == drv
+                  (mkReleases {
+                    winum = fixture;
+                    installWineCandidates = [ "code-only" ];
+                  }).installWine;
+              "prefix changes are detected" =
+                prefixChange.changesPrefix "--- a/loader/wine.inf.in\n+++ b/loader/wine.inf.in\n"
+                && prefixChange.changesPrefix "--- a/dlls/x/x.rgs\n+++ b/dlls/x/x.rgs\n"
+                && prefixChange.changesPrefix "--- /dev/null\n+++ b/dlls/newdll/Makefile.in\n"
+                && prefixChange.changesPrefix "--- a/programs/old/Makefile.in\n+++ /dev/null\n"
+                && !(prefixChange.changesPrefix "--- a/dlls/ole32/storage32.c\n+++ b/dlls/ole32/storage32.c\n")
+                && !(prefixChange.changesPrefix "--- a/dlls/ole32/Makefile.in\n+++ b/dlls/ole32/Makefile.in\n");
+            };
+            failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
           in
-          if topics == [ ] then
-            builtins.trace "launch-wine-candidates: winum has no candidates; nothing to compare" (
-              pkgs.runCommand "inventor-launch-wine-candidates" { } "touch $out"
-            )
-          else
-            assert withCandidate.basePackage.drvPath == inventor2027.basePackage.drvPath;
-            assert withCandidate.drvPath != inventor2027.drvPath;
-            assert
-              withCandidate.launchRuntime.toolsPackage.drvPath == candidateModules.runtime.toolsPackage.drvPath;
-            assert withCandidate.runtime.toolsPackage.drvPath == modules.runtime.toolsPackage.drvPath;
-            pkgs.runCommand "inventor-launch-wine-candidates" { } "touch $out";
+          assert lib.assertMsg (failed == [ ]) "launch-wine-candidates: ${lib.concatStringsSep "; " failed}";
+          pkgs.runCommand "inventor-launch-wine-candidates" { } "touch $out";
         module-empty-versions =
           let
             moduleConfig =
@@ -364,15 +441,6 @@
         ];
       };
       # Consumers supply hash-pinned original installation media, never a personal prefix.
-      lib.mkInventor =
-        args:
-        import ./nix/inventor.nix {
-          inherit
-            pkgs
-            overlayfsLib
-            modules
-            launchModules
-            ;
-        } args;
+      lib.mkInventor = releases.mkInventor;
     };
 }

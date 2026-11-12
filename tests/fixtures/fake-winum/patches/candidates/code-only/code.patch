@@ -1,0 +1,6 @@
+Test fixture: a candidate that changes only code.
+--- a/dlls/ole32/storage32.c
++++ b/dlls/ole32/storage32.c
+@@ -1 +1 @@
+-old
++new

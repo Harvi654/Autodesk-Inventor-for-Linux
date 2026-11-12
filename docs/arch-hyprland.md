@@ -1933,8 +1933,11 @@ builds its layers (base environment, WebView2, .NET 4.8, Inventor) with the
 winum release and runs Inventor on the same release plus `wineCandidates`.
 Wine loads builtin DLLs from its own installation when the prefix holds a
 builtin copy (`load_builtin()` in `dlls/ntdll/unix/loader.c`), and
-nix-overlayfs keeps the prefix from being updated at runtime, so a candidate
-takes effect without the two Microsoft installers and the Inventor install
-running again. Checked by evaluation (`launch-wine-candidates`: same
-installation derivation, launcher on the candidate Wine); Inventor smoke test
-with a candidate pending.
+nix-overlayfs keeps wineboot from updating the prefix automatically, so a
+candidate that changes only code takes effect without the two Microsoft
+installers and the Inventor install running again. Candidates that change the
+prefix itself (`wine.inf`, registration, modules added or removed; detected
+from the patch text) are refused there and belong in
+`installWineCandidates`. Checked by evaluation (`launch-wine-candidates`,
+including a fixture winum with a code-only and a `wine.inf` candidate);
+Inventor smoke test with a candidate pending.
