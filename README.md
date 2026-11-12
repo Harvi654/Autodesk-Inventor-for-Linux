@@ -80,7 +80,7 @@ development setup and coming with the next release · ⚠️ works with a known
 issue · ❌ does not work yet. Nothing here is guaranteed; see
 [Disclaimer](#disclaimer).
 
-| | Status | Notes |
+| Feature | Status | Notes |
 |---|---|---|
 | Installation from Autodesk's download | ✅ | Autodesk's own installers run under Wine; no Windows needed |
 | Updates (e.g. 2026.4) | ✅ | |
