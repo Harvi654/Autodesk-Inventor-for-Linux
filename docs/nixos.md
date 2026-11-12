@@ -24,11 +24,18 @@ The base environment has no Wine Mono (`managedRuntime = "external"`):
 Two Wines are involved. The winum release builds the base environment and the
 WebView2, .NET and Inventor layers; Inventor runs on a build of the same
 release plus the winum candidates listed in `wineCandidates` in `flake.nix`
-(empty by default, then both are the same Wine). Trying a candidate therefore
-rebuilds Wine and the launcher, not the installations: Wine loads its builtin
-DLLs from its own installation, and the prefix is not updated at runtime. A
-candidate that must be present while installing (for example an msi fix)
-goes into `installWineCandidates`, which rebuilds the layers. To test
+(empty by default, then both are the same Wine). Trying a candidate that
+changes only code therefore rebuilds Wine and the launcher, not the
+installations: Wine loads a builtin DLL from its own installation when the
+prefix holds Wine's copy of it, and the prefix is not updated automatically
+at runtime. What a candidate changes in the prefix itself - `wine.inf`
+(registry, files), COM registration, modules added or removed - would not
+reach the layers, so `nix/wine-prefix.nix` looks for such changes in the
+candidate patches and evaluation refuses them in `wineCandidates`. Those,
+and candidates needed while installing (for example an msi fix), go into
+`installWineCandidates`, which rebuilds the layers. The detection is a
+heuristic over the patch text; a candidate that changes the prefix in
+another way has to be put into `installWineCandidates` by hand. To test
 candidates from a winum checkout:
 
 ```nix

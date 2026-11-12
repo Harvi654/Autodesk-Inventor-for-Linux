@@ -49,6 +49,8 @@ let
               launchModules
               ;
           } (inventorArgs // extra);
+        # The wrapper the launcher runs Wine through (checked by the flake).
+        inherit launchWine;
       };
     });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
