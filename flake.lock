@@ -234,17 +234,17 @@
     "winum": {
       "flake": false,
       "locked": {
-        "lastModified": 1794410965,
-        "narHash": "sha256-C6b2Fa/SmIVTCWvqBvvCNUWm1N/7T+afTI2SGGf1XVA=",
+        "lastModified": 1794502212,
+        "narHash": "sha256-K+jZcFdBcg4gqD38Y/d6o5NSv/6afSwgqi7goSt/4hU=",
         "owner": "Harvi654",
         "repo": "winum",
-        "rev": "6d437d1e992e152eeec58b93ba85dce9c5f6a23d",
+        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
         "type": "github"
       },
       "original": {
         "owner": "Harvi654",
         "repo": "winum",
-        "rev": "6d437d1e992e152eeec58b93ba85dce9c5f6a23d",
+        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
         "type": "github"
       }
     }

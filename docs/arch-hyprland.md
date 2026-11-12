@@ -1575,6 +1575,20 @@ palette); the NixOS build of the winum series (@krokosik).
 
 ## Result log
 
+**2026-11-12 - winum-11.20-2: Import CAD into an assembly (#10):** the
+project now uses winum-11.20-2, winum-11.20-1 plus four ole32/packager
+patches contributed by @krokosik (winum PR #1): `OleCreateFromFileEx`
+wraps a file without an embedding server in an OLE Package as Windows
+does (Inventor embeds its import report that way - the "Could not Insert
+Object"), storage error codes and `STGM_SIMPLE` sub-storages, NULL string
+properties, and the Package object's save/view/advise. L1 in the
+maintainer's Windows 10 VM (0 failures, both architectures), L2 in winum
+CI (0 regressions), L4 on Arch with Inventor 2027.2: Reference and Convert
+Model into an assembly, save, restart, reopen, File -> Open of a STEP
+without the error. Details: winum `docs/release/winum-11.20-2.md`. Existing
+prefixes switch at the next start (the launcher runs `wineboot -u` for a
+new winum build).
+
 **2026-11-12 - GPU ray tracing on an RX 9060 XT (RDNA 4):** on a reflink
 copy of the maintainer's Inventor 2027 prefix, with winum-11.20-1, the
 patched vkd3d-proton 3.0.1 copied in by hand and `EnableHydra` from

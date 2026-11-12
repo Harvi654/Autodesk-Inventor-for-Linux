@@ -7,10 +7,10 @@
       url = "github:krokosik/nix-overlayfs/64e1ea8c42a281831bdb362b6078f61721c3e527";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # winum-11.20-1 (signed tag), the Wine release wine/version.env names.
+    # winum-11.20-2 (signed tag), the Wine release wine/version.env names.
     # Only its patches/series and the patches it lists are used.
     winum = {
-      url = "github:Harvi654/winum/6d437d1e992e152eeec58b93ba85dce9c5f6a23d";
+      url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
       flake = false;
     };
   };

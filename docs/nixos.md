@@ -15,7 +15,7 @@ Broader application compatibility has not been validated.
 The default flake target is Inventor Professional 2027 English with the 2027.1
 update and Content Center, on x86_64 Linux. Inventor 2026 English with update
 2026.4 is also available as a separate package. The runtime builds Wine 11.20 with the patches of
-[winum](https://github.com/Harvi654/winum) `winum-11.20-1` (its `patches/series`,
+[winum](https://github.com/Harvi654/winum) `winum-11.20-2` (its `patches/series`,
 in order; flake input `winum`, pinned to the tag's commit). Nixpkgs, the
 nix-overlayfs fork and winum are pinned in `flake.lock`; no local checkout is required by the committed input definitions.
 The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
