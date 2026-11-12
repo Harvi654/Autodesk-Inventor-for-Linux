@@ -177,7 +177,9 @@ graphics and FUSE support, and associates `adskidmgr://` links with one
 hidden handler, `autodesk-inventor-url-handler.desktop`. The handler gives a
 callback to the installed release whose session is running (nix-overlayfs
 forwards it to Identity Manager in that composed prefix) and starts the newest
-release only when none runs. The module's launchers do not register their own
+release only when no release runs. If a running release cannot take the
+callback, the handler reports that and stops rather than trying another
+release. The module's launchers do not register their own
 handlers at runtime, and remove the ones earlier launches wrote. Sign-in
 requires your Autodesk account and license.
 
