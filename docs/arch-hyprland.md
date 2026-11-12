@@ -25,6 +25,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
+- **Other programs:** [AutoCAD 2027 experiment](#autocad-2027-experiment-2026-11-12-stops-at-licensing)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
@@ -1564,6 +1565,62 @@ input name the same release) runs in this repository's CI and with
 2027 (start, part, assembly, drawing, save/reopen, restart, plus the symbol
 palette); the NixOS build of the winum series (@krokosik).
 
+## AutoCAD 2027 experiment (2026-11-12, stops at licensing)
+
+A quick test of how far the installer and winum get with another Autodesk
+program, on a 2012 MacBook running Arch Linux (x86_64, Intel HD 4000, 7.7 GB
+RAM), winum-11.20-2, a separate prefix `~/.wine-autocad2027`. Not supported;
+recorded so the next attempt starts here.
+
+**Installation works.** The downloaded `ACD_2027_..._001_002.exe` holds only
+the bootstrapper; the install image is in `..._002_002.7z` (extract it with
+7z, `manifest/app.acad.en-US.xml`). Then:
+
+```bash
+python3 scripts/install-from-image.py "$IMG" --prefix ~/.wine-autocad2027 --app acad.en-US
+```
+
+All 30 package steps finish, and so does the .NET Framework 4.8 step
+(about 30 minutes on this machine, most of it native image generation).
+AutoCAD's manifest names the licensing package differently from Inventor's
+(`x86/Licensing/pkg.licensing.xml`), so the known exit-84 quirk of
+`AdskLicensing-installer.exe` is now matched by the installer file
+(`quirk_key()`, commit 2695dd9). The MSI log shows the product registered
+with the licensing service (`licIsSvcUpgraded`, `licRegister` return 1; the
+service log: `Feature Register done for 001S1 2027.0.0.F`).
+
+**Start: main window, then "License Error".** `finish-install.sh` was not
+run (it is Inventor-specific), so the prefix has no DXVK and Wine draws with
+OpenGL (wined3d). Started by hand like `launch-inventor.sh` does: Identity
+Manager, `AdskLicensingService.exe` as a process, then `acad.exe`. AutoCAD
+opens its main window with `Drawing1.dwg` (ribbon, grid, status bar), then
+shows "The License manager is not functioning or is improperly installed.
+AutoCAD will shut down now." - before any sign-in prompt.
+
+What was seen:
+- the service log shows a licensing agent (`AdskLicensingAgent.exe -i
+  securesite-...`) launched, registered and shut down normally within
+  about 0.1 s, no error lines;
+- `sc query AdskLicensingService`: `STOPPED`, exit code 1077 - the service
+  manager does not know about the service running as a plain process;
+- `CurrentSDK` is missing: expected, licensing 16.x has no
+  `AdskLicensingSDK` folder;
+- adding the licensing agent's SSO plugin and
+  `IDSDKVersionCompatibility.config` (what `cfg_sso_plugin` does for
+  Inventor) did not change the error.
+
+**Best hypothesis (unconfirmed):** unlike Inventor, AutoCAD checks the
+licensing service through the Windows service manager. Under Wine the
+service starts but does not report "running" (1053/1077, the same cause as
+the installer's exit 84), so AutoCAD sees it as stopped. Next step for
+whoever continues: `wine net start AdskLicensingService` and see whether the
+process stays and what `sc query` and AutoCAD report; if it does not, the
+fix belongs in winum (why the service never reports running).
+
+Also to fix in the installer before AutoCAD is attempted again: a dry run
+creates an empty prefix that blocks the real run, and the skip list does not
+know AutoCAD's names for the ODIS installer and Autodesk Access packages.
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
@@ -1574,6 +1631,15 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-12 - AutoCAD 2027 experiment:** on a 2012 MacBook (Arch, Intel
+HD 4000) with winum-11.20-2, `install-from-image.py --app acad.en-US`
+installs AutoCAD 2027 completely, including .NET Framework 4.8, after the
+licensing quirk was matched by installer file (2695dd9). AutoCAD opens its
+main window and a drawing, then stops with "License manager is not
+functioning" before sign-in. Best hypothesis: it checks the service through
+the service manager, where Wine shows it stopped. Stopped there as planned.
+Section "AutoCAD 2027 experiment".
 
 **2026-11-12 - winum-11.20-2: Import CAD into an assembly (#10):** the
 project now uses winum-11.20-2, winum-11.20-1 plus four ole32/packager

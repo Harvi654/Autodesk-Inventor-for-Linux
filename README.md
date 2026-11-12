@@ -449,7 +449,8 @@ Later, roughly in this order:
 - [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
 - [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests -
       Hyprland-specific parts are only window rules
-- [ ] AutoCAD (experiments)
+- [ ] AutoCAD (experiments: 2027 installs and opens, stops at licensing -
+      see docs/arch-hyprland.md)
 - [ ] native Wayland, when Wine's Wayland driver can run Inventor's
       WebView2 pages and dialogs
 
