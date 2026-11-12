@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/587ec313b81dc1937f127c887bd2c45f79ebd365";
+      url = "github:krokosik/nix-overlayfs/88c97654324774668686510dcd66b778c3482ceb";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # winum-11.20-1 (signed tag), the Wine release wine/version.env names.
