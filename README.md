@@ -436,7 +436,8 @@ Next release (in progress):
       updates the Wine prefix (new settings, components), step by step
 - [ ] the status bar workaround by default, until a Wine fix
 - [ ] Import CAD (STEP) into an assembly in 2027 - Property Mapping and
-      import into a part work with .NET 4.8
+      import into a part work with .NET 4.8; into an assembly it needs the
+      winum candidate `inventor-reference-model`
       ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10))
 
 Later, roughly in this order:
