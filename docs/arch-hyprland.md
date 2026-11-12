@@ -1610,12 +1610,37 @@ What was seen:
   Inventor) did not change the error.
 
 **Best hypothesis (unconfirmed):** unlike Inventor, AutoCAD checks the
-licensing service through the Windows service manager. Under Wine the
-service starts but does not report "running" (1053/1077, the same cause as
-the installer's exit 84), so AutoCAD sees it as stopped. Next step for
-whoever continues: `wine net start AdskLicensingService` and see whether the
-process stays and what `sc query` and AutoCAD report; if it does not, the
-fix belongs in winum (why the service never reports running).
+licensing service through the Windows service manager, where the service
+shows as stopped. Started as a real service it does not get there under
+Wine - measured the same night:
+
+- `wine net start AdskLicensingService` ends with "Service request
+  timeout"; `sc query`: `STOPPED`, 1077, no process left. The service is
+  auto-start, so the same failure also shows at every prefix start
+  (`scmdatabase_autostart_services ... failed to start: 1053`) - the same
+  cause as the installer's exit 84.
+- `WINEDEBUG=+service`: no `StartServiceCtrlDispatcher` call from
+  `AdskLicensingService.exe` (the 32-bit process that reports RUNNING in the
+  trace is `clr_optimization_v4.0.30319_32`, the .NET ngen service).
+  `services.exe` gives up in `process_send_start_message` ("failed to
+  start", 1053) when the control pipe is not connected within
+  `service_pipe_timeout` (10 s by default in Wine; read from
+  `HKLM\System\CurrentControlSet\Control\ServicesPipeTimeout`, as REG_SZ).
+  The service's own log meanwhile shows it running ("HTTP server running",
+  agent launched).
+- `ServicesPipeTimeout` = 60000: still the timeout.
+- While the service starts, `RpcSs` and `SamSs` fail to start
+  (`err:ole:start_rpcss`, `err:secur32:start_samss`): Wine starts services
+  one at a time (`scmdatabase_lock_startup`), and a start request waits
+  only 3 s for that lock. The service uses COM/WMI at start-up. But with
+  `wineserver -p`, `RpcSs` and `SamSs` started first (both `RUNNING`), the
+  licensing service still timed out - so this is not the whole cause.
+
+Next step for whoever continues: a `+service,+timestamp` trace of only
+`net start AdskLicensingService` with RpcSs and SamSs already running,
+looking for when (or whether) the service calls
+`StartServiceCtrlDispatcher`, and a MEASURE program on Windows 10 for the
+service-start timing Wine should match. The fix, if any, belongs in winum.
 
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
@@ -1638,7 +1663,10 @@ installs AutoCAD 2027 completely, including .NET Framework 4.8, after the
 licensing quirk was matched by installer file (2695dd9). AutoCAD opens its
 main window and a drawing, then stops with "License manager is not
 functioning" before sign-in. Best hypothesis: it checks the service through
-the service manager, where Wine shows it stopped. Stopped there as planned.
+the service manager, where Wine shows it stopped; started as a real service
+under Wine it times out (no `StartServiceCtrlDispatcher` call seen; not
+fixed by a longer `ServicesPipeTimeout` or by starting RpcSs and SamSs
+first). Stopped there as planned.
 Section "AutoCAD 2027 experiment".
 
 **2026-11-12 - winum-11.20-2: Import CAD into an assembly (#10):** the
