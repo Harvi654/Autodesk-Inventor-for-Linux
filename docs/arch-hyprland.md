@@ -1015,7 +1015,14 @@ review (Codex); vkd3d-proton port cross review (Codex, 2026-11-07; one CI
 check fixed after it, an inherited `float2x2` payload limitation of
 vkd3d-proton 3.0.1 open). L4: Inventor 2027 on an RX 6400 (maintainer,
 part, assembly, drawing, PDF, save/reopen) and on an RTX 5080 (tester in
-PR #3). Not a guarantee for other cards or drivers - reports welcome.
+PR #3); 2026-11-12 also on an RX 9060 XT (RDNA 4, RADV, Mesa 26.2.6) with
+winum-11.20-1, the same patched vkd3d-proton 3.0.1 (artifact of winum run
+42339679557) and `EnableHydra` set with `migrate-prefix.sh --run 0004`:
+the option is available, the panel says GPU, Low/Draft/High, orbiting
+while rendering, an assembly and the status bar are fine; Restore Down and
+maximising again can still leave white lines in the UI until the window is
+minimised and restored. Not a guarantee for other cards or drivers -
+reports welcome.
 Details: winum `docs/patches/opengl32-window-format-color-bits.md`,
 `docs/wine-repro/opengl32-pixel-format-alpha/`, `gpu/vkd3d-proton/`.
 
@@ -1567,6 +1574,16 @@ palette); the NixOS build of the winum series (@krokosik).
   default (`scripts/addins.sh enable translatorfusion` to try it).
 
 ## Result log
+
+**2026-11-12 - GPU ray tracing on an RX 9060 XT (RDNA 4):** on a reflink
+copy of the maintainer's Inventor 2027 prefix, with winum-11.20-1, the
+patched vkd3d-proton 3.0.1 copied in by hand and `EnableHydra` from
+`migrate-prefix.sh --run 0004` (0002 and 0003 run by the launcher): GPU ray
+tracing works - panel GPU, Low/Draft/High, orbiting, an assembly, status
+bar clean. Still open: white lines after Restore Down and maximising
+again (minimise and restore clears them). Next: publish the patched
+vkd3d-proton from winum and install it through a migration. Section "GPU
+ray tracing".
 
 **2026-11-11 - Clean installation on Ubuntu 26.04.1 LTS (VM, llvmpipe):**
 Inventor 2027 from `main` at `59cc489` with the whole installer: wine-mono
