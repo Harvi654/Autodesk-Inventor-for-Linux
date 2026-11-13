@@ -1614,9 +1614,10 @@ layer itself rather than its launcher, so launcher-only changes no longer
 reinstall Inventor.
 
 Validation: nix-overlayfs unit and VM tests (fake prefixes and a Wine probe,
-no Autodesk code); the flake's `nixos-module` check. Still open: the
-maintainer's smoke test in Inventor (DXVK HUD in 2026 and 2027, sign-in of
-2026 with 2027 installed). Not a Wine bug.
+no Autodesk code); the flake's `nixos-module` and `url-dispatcher` checks;
+smoke test in Inventor 2026 and 2027 on 2026-11-13 (result log). Still open:
+a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
+with a test callback). Not a Wine bug.
 
 ## Result log
 
@@ -1973,3 +1974,30 @@ from the patch text) are refused there and belong in
 `installWineCandidates`. Checked by evaluation (`launch-wine-candidates`,
 including a fixture winum with a code-only and a `wine.inf` candidate);
 Inventor smoke test with a candidate pending.
+
+**2026-11-13 - NixOS: smoke test of the runtime guards, the sign-in
+dispatcher and a launch-only candidate (winum-11.20-2):** in an isolated X11
+desktop (Xvfb at 60 Hz, llvmpipe), on copies of the user's 2026 and 2027
+state, with the packages of the rebased branch (installation derivations the
+same as #11's):
+- 2027 starts signed in, Direct3D through DXVK 2.7.1 and vkd3d-proton 3.0.1
+  (log); `.update-timestamp` is `disable`; the hidden-file check ran for the
+  new layers and found nothing to move. New part, Save As, restart, reopen
+  from Recent: OK. Quitting leaves no session directory and no mount.
+- Candidate: a test topic that only adds a `MESSAGE()` to kernel32's
+  `DllMain`, taken through `--override-input winum-candidates
+  path:<copy of winum>`. The dry run builds one Wine and the launcher, the
+  installation stays `inventor-2027.1` as without it. Every Wine process
+  prints the marker, and Inventor maps `kernel32.dll` from the candidate
+  Wine's own `lib/wine`, not the copy in the layers. Restart and reopen of
+  the saved part on it: OK.
+- Dispatcher (the module's `autodesk-inventor-url-handler`, the module's
+  launchers): with 2026 running (at its sign-in page) and 2027 not, a test
+  `adskidmgr://` callback goes to 2026 (exit 0, request queue emptied, no
+  2027 started); with neither running it starts 2027. The module's
+  launchers write no handler into `~/.local/share/applications`.
+- Crashed sessions: after SIGKILL of a 2027 launcher's process group, 17 of
+  its processes (fuse-overlayfs, wineserver, services) kept running in their
+  namespace and held `session.lock`; a 2026 launch kept that directory. Once
+  they were gone, the next launch removed it and a second crashed session's.
+- Not done here: a real Autodesk sign-in (the 2026 copy was not signed in).
