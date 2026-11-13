@@ -284,3 +284,8 @@ as if AutoCAD had decided earlier that licensing failed and uses the SDK only
 to report it. Where to look next: what AutoCAD does before it loads the SDK
 (the early failed `upi2.dll` delay-load, the missing `ADLMInfoPath` folder),
 and the same `ADLSDK_LOG_LEVEL=T` log of AutoCAD on Windows for comparison.
+
+Tried the same evening, no change (SDK log still 3 lines, same error): the
+`ADLMInfoPath` folder created empty, then with `AutoCADConfig.pit` from the
+image (`x64/acadprivate/`) in it, both with `upi2.dll` reachable through
+`WINEPATH` (`Common Files\Autodesk\AdpDesktopSDK\bin`). Stopped here.
