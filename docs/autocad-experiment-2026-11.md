@@ -1,5 +1,9 @@
 # AutoCAD 2027 / 2026 experiment, 2026-11-12/13
 
+> **Moved (2026-11-13):** the AutoCAD work continues in
+> [Harvi654/Autodesk-AutoCAD-for-Linux](https://github.com/Harvi654/Autodesk-AutoCAD-for-Linux).
+> This copy is kept as it was.
+
 Moved here from `docs/arch-hyprland.md` on `main` (2026-11-13), so the
 AutoCAD work stays on this branch. Commits on `main` that wrote it:
 a1df42f .. 1fb74f3, the last part 54d3fca (not on main). Installer and
