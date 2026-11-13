@@ -313,3 +313,94 @@ image (`x64/acadprivate/`) in it, both with `upi2.dll` reachable through
   code-signing root that the Linux (TLS-oriented) CA bundle Wine imports
   does not contain. Not pursued; this project's own installer unpacks ADIX
   packages itself.
+
+## 2026-11-13 evening: native Windows 10 first run compared with Wine
+
+AutoCAD 2027 installed on the MacBook's own Windows 10 (dual boot) from the
+same image, first start recorded with Process Monitor; the capture, registry
+exports (`HKLM\SOFTWARE\Autodesk`, its WOW6432Node, `HKCU\Software\Autodesk`),
+file lists and logs were copied to Linux and stay local (never committed:
+they hold user names, the machine's SID and a sign-in callback). Read with
+the open `procmon-parser` library and the three scripts in
+[autocad-tools/](autocad-tools/) (output masks user names and SIDs):
+
+```
+python -m venv venv; venv/bin/pip install procmon-parser
+venv/bin/python -I pml-summary.py first-run.PML out     # process tree, acad.exe around the SDK load, licensing paths
+venv/bin/python -I pml-sdk-window.py first-run.PML <index of the SDK Load_Image> > sdk.txt
+python3 -I regdiff.py hklm-autodesk.reg PREFIX/system.reg   # key/value NAMES Windows has and the prefix lacks
+```
+
+What Windows does (the AdlSdk log with `ADLSDK_LOG_LEVEL=T`: 157 lines,
+`AdlSdkSession.cpp` right after the logger, where Wine goes to
+`AdlSdkWinUI.cpp:158/168`):
+
+- **In the same thread, right after its own log, the SDK opens a second
+  log, `C:\ProgramData\Autodesk\Adlm\AdlSdk-ACD2027EN-<pid>.log`** - it
+  already knows the product (`ACD2027EN`) before any other I/O. Then it
+  finds `Common Files (x86)`, opens
+  `ProgramData\Autodesk\AdskLicensingService\AdskLicensingService.data`,
+  reads `MachineGuid`, runs a signature check (WinTrust policy keys, maps
+  its own DLL several times), connects to a local port, and AutoCAD later
+  starts `AdskLicensingAgent.exe -i <guid> -c 2` (the licence window) and
+  several `--no-gui` analytics agents. Under Wine `AdlSdk-ACD2027EN-*.log`
+  is never created: the product is not known at the SDK's first call, so
+  the decision is in what AutoCAD passes, not in anything the SDK reads.
+- Long before the SDK, `acad.exe` uses Autodesk Access / ODIS: reads
+  `HKLM\SOFTWARE\Autodesk\ODIS\ODISSDKLocation`, loads
+  `AdODIS\V1\Setup\ODISSDK.dll`, talks over `\\.\pipe\adsk_odis_sdk`
+  (served by `AdskAccessServiceHost.exe`, a session-0 service) and writes
+  `AppData\Local\Autodesk\ODIS\ODIS_APIWrapper.log`. Just before the SDK
+  it opens two ADP (analytics) pipes, `adsk_adp_ipm_ipc_channel_<SID>` and
+  `adsk_adp_sdk_ipc_channel_<SID>`, and runs `CER\upi.exe
+  --cmd=get-device-id`.
+- Genuine Autodesk Service runs on its own (not a child of `acad.exe`) and
+  only calls `AdskLicensingInstHelper list` - not involved.
+
+Tried on a copy of the prefix (`~/.wine-autocad2027-odis`), each with the
+same result (SDK log 3 lines, "License manager is not functioning"):
+
+1. **ODIS and Access installed.** The AutoCAD prefix had neither: the plan
+   lists them (steps 31/32, `ODIS/AdODIS-installer.exe`,
+   `x64/Access/AdAccess-installer.exe`, `--mode unattended`), but the run
+   on 2026-11-12 never executed them (the log goes from step 30 to .NET 4.8;
+   cause not found yet). Both are VMware InstallBuilder installers; started
+   from the image drive they fail with "Installer payload initialization
+   failed" (InstallBuilder's Tcl VFS gets confused by the path - known from
+   Wine bug 38803's discussion); copied to `C:\` they install (exit 0,
+   `--useService` left out, it is not in `--help`). `ODISSDK.dll` and the
+   `ODIS` registry key then match Windows, and `ODIS_APIWrapper.log` under
+   Wine shows the same sessions as on Windows (ASC 2027, DVPTS 2.0 twice,
+   each with a session id). ODIS works and is not the cause.
+2. **UPI2 registrations added.** `regdiff.py` found, besides
+   `HKLM\SOFTWARE\Autodesk\AdskLicensing` (only `Version`; Inventor's
+   working prefix has no such key either) and three extra
+   `HKLM\SOFTWARE\Autodesk\UPI` upiconfig entries (`acaoe`,
+   `en-US\acadlp`, `globupi`), 13 keys under `HKLM\SOFTWARE\Autodesk\UPI2`
+   that the prefix lacks - the ADIX packages ("AutoCAD 2027", "Autodesk
+   AutoCAD 2027 - English", "AutoCAD Shared 2027", ...: on Windows ODIS
+   writes them, this project's installer unpacks ADIX itself and does not;
+   MSI packages write their own). Values: build, category, GUID, INSTALLDIR,
+   versions, product code/line, release, unit type, upgrade code - no serial
+   or personal data. The 11 that are not CER or Genuine Service imported
+   with `regedit` (verified in `system.reg` before the start). No change.
+
+Same for both: the files in `ProgramData\Autodesk\Adlm\ASR` (six `.asr`)
+and the rest of the `HKLM\SOFTWARE\Autodesk` values match Windows.
+
+**State (three-rounds rule reached, stopped):** AutoCAD under Wine reaches
+the SDK without a product, Windows with `ACD2027EN`. Not the cause: the
+service-vs-process question, `upiconfig.xml`, `ADLMInfoPath`, `upi2.dll`,
+`/product` arguments, ODIS/Access, UPI2 registry, ASR files. Best
+hypothesis: something `acad.exe` reads or calls earlier fails silently
+under Wine (or returns a different value), and AutoCAD then calls only the
+SDK's UI part to report the failure. Next step if resumed: a list of
+`acad.exe`'s registry and file operations before the SDK load on Windows
+(unique path + result from the PML, about 217,000 events) against a
+`+reg,+file` trace of the same window under Wine, looking for what Windows
+finds and Wine does not.
+
+For the installer (when AutoCAD is picked up again): steps 31/32 not run;
+InstallBuilder installers must run from `C:\`, not from the image drive;
+UPI2 keys of ADIX packages are not written (the `upi2` GUID is in each
+package's manifest line).
