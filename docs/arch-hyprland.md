@@ -1642,6 +1642,34 @@ looking for when (or whether) the service calls
 `StartServiceCtrlDispatcher`, and a MEASURE program on Windows 10 for the
 service-start timing Wine should match. The fix, if any, belongs in winum.
 
+**2026-11-13, continued: the service-manager hypothesis was wrong.** With
+the prefix prepared by the non-Inventor parts of `finish-install.sh`
+(`cfg_wine_mode`, licensing service on manual start, the `adskidmgr://`
+handler, `cfg_sso_plugin`, `webview2_reg`, `linux-fonts.sh`,
+`cfg_isolation`) and started like `launch-inventor.sh`, AutoCAD shows its
+full ribbon but the same error. A `+service` trace of `acad.exe` shows no
+service-manager calls at all. The licensing agent seen in the service log is
+started by the service itself at its own start-up ("silent mode"), not by
+AutoCAD; AutoCAD never contacts the service.
+
+What was found instead: AutoCAD's sign-in component (`IdSDKPlugin`) could not
+create a socket to Identity Manager (`IdServices.log`: `Failed to connect
+to server at port 45321 ... system_error:10093`, WSANOTINITIALISED). A
+`+pid,+winsock` trace and a `+relay` trace limited to
+`ws2_32.WSAStartup;ws2_32.WSACleanup` showed AutoCAD loading and unloading
+`wldap32.dll` eight times, and Wine's wldap32 (the bundled OpenLDAP) calling
+`WSACleanup()` at every unload without ever calling `WSAStartup()`, so the
+process's WinSock count reached 0. Fix: winum candidate
+`wldap32-winsock-cleanup` (branch `topic/wldap32-winsock-cleanup`, page
+`docs/patches/wldap32-winsock-cleanup.md` there). With its test build the
+10093 errors are gone and AutoCAD completes `Handshake` and `IsLoggedIn`
+(false) with Identity Manager - but it still stops with "License manager
+is not functioning", and its licensing SDK (`AdskLicensingSDK_10.dll` in the
+AutoCAD folder) still never contacts the licensing service. A `+relay`
+trace from that DLL was far too large (12 GB before reaching the error);
+next time try the lighter `+reg` and `+file` channels to see what it looks
+for and does not find.
+
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
 know AutoCAD's names for the ODIS installer and Autodesk Access packages.
@@ -1667,6 +1695,10 @@ the service manager, where Wine shows it stopped; started as a real service
 under Wine it times out (no `StartServiceCtrlDispatcher` call seen; not
 fixed by a longer `ServicesPipeTimeout` or by starting RpcSs and SamSs
 first). Stopped there as planned.
+Continued 2026-11-13: the real first blocker was a Wine defect - wldap32
+releases WinSock references it never took (winum candidate
+`wldap32-winsock-cleanup`; with it AutoCAD's sign-in reaches Identity
+Manager). AutoCAD still stops at licensing for a reason not yet found.
 Section "AutoCAD 2027 experiment".
 
 **2026-11-12 - winum-11.20-2: Import CAD into an assembly (#10):** the
