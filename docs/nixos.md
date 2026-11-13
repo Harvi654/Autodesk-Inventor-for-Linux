@@ -35,7 +35,9 @@ candidate patches and evaluation refuses them in `wineCandidates`. Those,
 and candidates needed while installing (for example an msi fix), go into
 `installWineCandidates`, which rebuilds the layers. The detection is a
 heuristic over the patch text; a candidate that changes the prefix in
-another way has to be put into `installWineCandidates` by hand. To test
+another way has to be put into `installWineCandidates` by hand. Candidates
+come from the flake input `winum-candidates` (the same commit as `winum`
+unless overridden); the release patches always come from `winum`. To test
 candidates from a winum checkout:
 
 ```nix
@@ -43,8 +45,11 @@ wineCandidates = [ "inventor-reference-model" ];
 ```
 
 ```sh
-nix run .#inventor-2027 --override-input winum path:/path/to/winum
+nix run .#inventor-2027 --override-input winum-candidates path:/path/to/winum
 ```
+
+(Overriding `winum` itself changes the release patches, and so rebuilds the
+installations.)
 The pinned library also preserves Wine's registry symbolic-link markers and
 propagates failed installer exit statuses. Microsoft's .NET Framework 4.8
 is a layer below the installation (nix-overlayfs's `dotnet-framework-4-8`,

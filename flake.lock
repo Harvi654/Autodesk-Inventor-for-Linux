@@ -228,10 +228,28 @@
       "inputs": {
         "nix-overlayfs": "nix-overlayfs",
         "nixpkgs": "nixpkgs_3",
-        "winum": "winum"
+        "winum": "winum",
+        "winum-candidates": "winum-candidates"
       }
     },
     "winum": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794502212,
+        "narHash": "sha256-K+jZcFdBcg4gqD38Y/d6o5NSv/6afSwgqi7goSt/4hU=",
+        "owner": "Harvi654",
+        "repo": "winum",
+        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Harvi654",
+        "repo": "winum",
+        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
+        "type": "github"
+      }
+    },
+    "winum-candidates": {
       "flake": false,
       "locked": {
         "lastModified": 1794502212,

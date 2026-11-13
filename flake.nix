@@ -13,6 +13,14 @@
       url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
       flake = false;
     };
+    # Where wineCandidates come from; the same commit unless overridden, for
+    # example `--override-input winum-candidates path:/path/to/winum`. The
+    # release patches always come from `winum`, so taking candidates from a
+    # checkout does not rebuild the installations.
+    winum-candidates = {
+      url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
+      flake = false;
+    };
   };
 
   outputs =
@@ -60,13 +68,14 @@
           wineCandidates ? [ ],
           installWineCandidates ? [ ],
           winum ? inputs.winum,
+          candidatesSource ? inputs.winum-candidates,
         }:
         let
           inherit (pkgs) lib;
           launchCandidates = lib.unique (installWineCandidates ++ wineCandidates);
           # Builds the base environment, WebView2, .NET Framework and Inventor.
           installWine = pkgs.callPackage ./nix/wine.nix {
-            inherit winum;
+            inherit winum candidatesSource;
             candidates = lib.unique installWineCandidates;
           };
           # Runs Inventor: the same winum release plus the candidates under test.
@@ -75,7 +84,7 @@
               installWine
             else
               pkgs.callPackage ./nix/wine.nix {
-                inherit winum;
+                inherit winum candidatesSource;
                 candidates = launchCandidates;
               };
           modules = scope.moduleScopes.makeNativeModules {
@@ -161,8 +170,14 @@
               in
               if m == null then throw "wine/version.env has no ${key}" else builtins.head m;
           in
+          let
+            # The committed pins (not any --override-input): candidates are
+            # taken from the same winum commit as the release.
+            locked = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes;
+          in
           assert value "WINUM_VERSION" == wine.wineVersion;
           assert value "WINUM_BUILD" == wine.winumBuild;
+          assert locked.winum.locked.rev == locked.winum-candidates.locked.rev;
           pkgs.runCommand "inventor-winum-pin" { } ''
             touch "$out"
           '';
@@ -176,17 +191,13 @@
             launchTools = package: drv package.launchRuntime.toolsPackage;
             # A code-only and a wine.inf candidate of the same release.
             fixture = ./tests/fixtures/fake-winum;
-            codeOnly = mkReleases {
-              winum = fixture;
-              wineCandidates = [ "code-only" ];
-            };
-            fixtureRelease = mkReleases { winum = fixture; };
-            infChange = mkReleases {
-              winum = fixture;
-              wineCandidates = [ "inf-change" ];
-            };
-            infAtInstall = mkReleases {
-              winum = fixture;
+            # The documented workflow: candidates from another source than the
+            # pinned release (here a fixture with a code-only and a wine.inf
+            # candidate), compared with the production packages.
+            fromFixture = args: mkReleases ({ candidatesSource = fixture; } // args);
+            codeOnly = fromFixture { wineCandidates = [ "code-only" ]; };
+            infChange = fromFixture { wineCandidates = [ "inf-change" ]; };
+            infAtInstall = fromFixture {
               installWineCandidates = [ "inf-change" ];
               wineCandidates = [
                 "inf-change"
@@ -199,19 +210,19 @@
               # The production packages run on the flake's launch Wine.
               "packages use the launch Wine" =
                 launchTools inventor2027 == drv releases.launchModules.runtime.toolsPackage;
-              "a code-only candidate leaves the installation as it is" =
-                drv codeOnly.inventor2027.basePackage == drv fixtureRelease.inventor2027.basePackage;
-              "a code-only candidate changes the launcher" =
-                drv codeOnly.inventor2027 != drv fixtureRelease.inventor2027;
+              "a code-only candidate from another source leaves the installation as it is" =
+                drv codeOnly.inventor2027.basePackage == drv inventor2027.basePackage
+                && drv codeOnly.installWine == drv releases.installWine;
+              "a code-only candidate changes the launcher" = drv codeOnly.inventor2027 != drv inventor2027;
               "the launcher runs the candidate Wine" =
                 launchTools codeOnly.inventor2027 == drv codeOnly.launchModules.runtime.toolsPackage
-                && launchTools codeOnly.inventor2027 != launchTools fixtureRelease.inventor2027;
+                && launchTools codeOnly.inventor2027 != launchTools inventor2027;
               "the generated wrapper runs the candidate Wine" =
                 lib.hasInfix (plain "${codeOnly.launchModules.runtime.toolsPackage}/bin/wine") (
                   plain codeOnly.inventor2027.launchWine.text
                 );
               "the installation is built with the release Wine" =
-                drv codeOnly.inventor2027.runtime.toolsPackage == drv fixtureRelease.modules.runtime.toolsPackage;
+                drv codeOnly.inventor2027.runtime.toolsPackage == drv releases.modules.runtime.toolsPackage;
               "a wine.inf candidate is refused at launch" = !(evaluates infChange.inventor2027);
               "a wine.inf candidate is accepted at installation" = evaluates infAtInstall.inventor2027;
               "candidates in both lists are applied once" =
@@ -222,12 +233,12 @@
               "the same candidates reuse the install Wine" =
                 drv
                   (mkReleases {
-                    winum = fixture;
+                    candidatesSource = fixture;
                     installWineCandidates = [ "code-only" ];
                     wineCandidates = [ "code-only" ];
                   }).wine == drv
                   (mkReleases {
-                    winum = fixture;
+                    candidatesSource = fixture;
                     installWineCandidates = [ "code-only" ];
                   }).installWine;
               "prefix changes are detected" =

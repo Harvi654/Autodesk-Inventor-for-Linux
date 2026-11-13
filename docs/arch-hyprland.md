@@ -930,8 +930,9 @@ their pages are in winum's `docs/patches/`, the reproducers and Windows
 measurements in winum's `docs/wine-repro/ole32-createfromfile-html`).
 The Nix package can also run winum candidates for testing before a
 release: `wineCandidates = [ "<topic>" ]` in `flake.nix` and
-`--override-input winum path:<winum checkout>`. Only the Wine Inventor runs
-changes; the installation layers are not rebuilt (`docs/nixos.md`).
+`--override-input winum-candidates path:<winum checkout>`. Only the Wine
+Inventor runs changes; the installation layers are not rebuilt
+(`docs/nixos.md`).
 
 **How it was found.** Wine traces only (`WINEDEBUG=+ole,+storage,+seh`,
 `err+all,warn+ole` from a marker taken just before OK), on NixOS under

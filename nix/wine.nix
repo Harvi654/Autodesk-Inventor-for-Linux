@@ -8,6 +8,11 @@
   # (each applied in the order of its own series file). Empty for a normal
   # build: candidates are never part of a release.
   candidates ? [ ],
+  # Where the candidates come from (flake input "winum-candidates", for example
+  # a winum checkout). Separate from `winum`, so that taking candidates from
+  # elsewhere leaves the release patches - and the Wine built from them - as
+  # they are.
+  candidatesSource ? winum,
 }:
 let
   # Release this project uses; wine/version.env names the same one and the
@@ -33,8 +38,8 @@ let
     );
   candidatePatches = lib.concatMap (
     topic:
-    map (name: "${winum}/patches/candidates/${topic}/${name}") (
-      readSeries "${winum}/patches/candidates/${topic}/series"
+    map (name: "${candidatesSource}/patches/candidates/${topic}/${name}") (
+      readSeries "${candidatesSource}/patches/candidates/${topic}/series"
     )
   ) candidates;
   # Which prefixes this Wine runs as built (nix-overlayfs compares it between
