@@ -1696,6 +1696,16 @@ from outside: Process Monitor on the Windows VM with AutoCAD 2027 installed
 on the main PC with the same `+winsock` filter (whether Inventor's licensing
 SDK connects to 127.0.0.1:44447 when it works).
 
+**2026-11-13, AutoCAD 2026 for comparison:** same machine, own prefix
+`~/.wine-autocad2026`, the wldap32 test build. Installs the same way (steps
+1-30; licensing service 15.1.0.12339 finished by the exit-84 quirk). New in
+2026: the `Autodesk CER Service` MSI fails because Wine cannot start the
+service (`ITERATE_StartService ... (1053)`, MSI returns 1627, rolled back);
+skipped, it is only crash reporting. Result: the same "License manager is
+not functioning" error after the main window. A second Autodesk service
+(after the licensing service) that times out with 1053 when started as a
+real Windows service under Wine - worth one look in winum some day.
+
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
 know AutoCAD's names for the ODIS installer and Autodesk Access packages.
