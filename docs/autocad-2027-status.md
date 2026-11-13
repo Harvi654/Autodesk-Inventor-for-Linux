@@ -1,5 +1,12 @@
 # AutoCAD 2027 – status (experimental, `autocad` branch)
 
+**2026-11-12/13:** a new round with winum-11.20-2 on a second machine (MacBook
+2012, Intel HD 4000), AutoCAD 2027 and 2026: the same licensing error. Found
+and fixed on the way: Wine's wldap32 releasing WinSock references
+(winum candidate `wldap32-winsock-cleanup`); ruled out: the service
+manager, registry, files, network, FlexNet, `upi2.dll`, the licence type.
+Full notes: [autocad-experiment-2026-11.md](autocad-experiment-2026-11.md).
+
 Tested 2026-10-21 on Arch / KDE Wayland, RX 580, Wine 11.20 (this project's build).
 
 ## Works
