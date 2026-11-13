@@ -1706,6 +1706,27 @@ not functioning" error after the main window. A second Autodesk service
 (after the licensing service) that times out with 1053 when started as a
 real Windows service under Wine - worth one look in winum some day.
 
+**2026-11-13, afternoon - more ruled out (AutoCAD 2027, wldap32 build):**
+- the licensing service itself works under Wine: Autodesk's admin tool
+  `AdskLicensingInstHelper.exe list` (in the licensing `helper` folder)
+  connects to 127.0.0.1:44447 and lists AutoCAD (`ACD`, `001S1`,
+  `2027.0.0.F`); `change -pk 001S1 -pv 2027.0.0.F -lm USER` sets the
+  licence type (`lic_method` 4) - AutoCAD still shows the same error;
+- early in start-up AutoCAD tries `upi2.dll` by name, fails (c0000135,
+  delay-load exception c06d007e); the DLL is in
+  `Common Files\Autodesk\AdpDesktopSDK\bin`. With that folder in
+  `WINEPATH` it loads (and unloads) - same error, so not the cause. No
+  `App Paths\acad.exe` key exists in the prefix;
+- the rest of the start-up `fixme`/`warn` lines are the usual ones (.NET
+  probing the program folder, ETW, themes, `WNetGetUniversalNameW`).
+How the sign-in window comes about (as seen with Inventor): the program's
+licensing SDK asks the licensing service; the service starts the Licensing
+Agent (licence-type choice, WebView2) and asks Identity Manager, which opens
+the Autodesk sign-in in the browser; `adskidmgr://` returns to Identity
+Manager. With AutoCAD the first step never happens, so nothing asks for a
+sign-in. Left: compare with a working system (Inventor's licensing SDK on
+the main PC under `+winsock`; AutoCAD on Windows under Process Monitor).
+
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
 know AutoCAD's names for the ODIS installer and Autodesk Access packages.
