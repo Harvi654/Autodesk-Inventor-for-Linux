@@ -1670,6 +1670,32 @@ trace from that DLL was far too large (12 GB before reaching the error);
 next time try the lighter `+reg` and `+file` channels to see what it looks
 for and does not find.
 
+**2026-11-13, the second blocker (with the wldap32 fix), not solved.**
+Ruled out with Wine's own channels, each filtered while running:
+- registry and files (`+reg`, `+file`, all threads of `acad.exe`): nothing
+  missing; AutoCAD reads its `*LICENSETYPE`, `*LICENSEUSAGE`,
+  `*LICENSEUSAGESUBMODEL`, `*LICENSEMODEL` variables (all `UNKNOWN`, written
+  by the installer), then the licensing SDK writes its own log
+  (`AppData\Local\Autodesk\Logs\AdlSdk-<pid>.log`, two lines, encoded -
+  not decoded, an `[E]` line one millisecond after the first) and the error
+  box follows. AutoCAD never opens anything of the licensing service
+  (`...\Autodesk Shared\AdskLicensing\...`,
+  `ProgramData\Autodesk\AdskLicensingService`) and makes no connection to
+  its port 44447 (`+winsock`, `+winhttp`, `+wininet`); it only talks to
+  Identity Manager, which now works;
+- network adapters: Wine reports the wired adapter with its MAC address
+  (Wi-Fi as "Unknown adapter"); with Wi-Fi off and `virbr0` down, the same
+  error;
+- modules (`+module`, `+loaddll`, `warn+seh`): `AdskLicensingSDK_10.dll`
+  (AutoCAD's folder) is loaded on the line right before the error box, with
+  no failed load, missing export, stub or exception in between.
+So the decision is made inside the licensing SDK without any call that Wine
+logs as failing. What is left needs a comparison with a working system, all
+from outside: Process Monitor on the Windows VM with AutoCAD 2027 installed
+(what the SDK opens and connects to right after it is loaded), and Inventor
+on the main PC with the same `+winsock` filter (whether Inventor's licensing
+SDK connects to 127.0.0.1:44447 when it works).
+
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
 know AutoCAD's names for the ODIS installer and Autodesk Access packages.
