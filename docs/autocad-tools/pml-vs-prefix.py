@@ -31,12 +31,14 @@ a = ap.parse_args()
 USER_RE = re.compile(r'(?i)(\\Users\\)[^\\]+')
 SID_RE = re.compile(r'S-1-5-21-[0-9-]+')
 HOST_RE = re.compile(r'(?i)DESKTOP-[A-Z0-9]+')
+IDSDK_RE = re.compile(r'(?i)(\\IDSDK\\)[0-9A-F]+')   # hex-encoded user name
 SECRET = re.compile(r'(?i)serial|token|passw|mail|secret|licensekey|\bsn\b')
 INTEREST = re.compile(r'(?i)autodesk|acad|adsk|adlm|odis|upi|licens|identity|\.pit\b')
 
 
 def mask(s):
-    return HOST_RE.sub('HOST', SID_RE.sub('SID', USER_RE.sub(r'\1USER', s)))
+    s = IDSDK_RE.sub(r'\1USERHEX', USER_RE.sub(r'\1USER', s))
+    return HOST_RE.sub('HOST', SID_RE.sub('SID', s))
 
 
 # --- Wine registry files ----------------------------------------------------
@@ -182,7 +184,7 @@ with open(a.pml, 'rb') as f:
             res = get_error_message(e.result)
         except Exception:
             res = str(e.result)
-        path = e.path or ''
+        path = re.sub(r'\\+', r'\\', e.path or '').rstrip('\\')
         found = {'SUCCESS': True, 'BUFFER OVERFLOW': True,
                  'NAME NOT FOUND': False, 'PATH NOT FOUND': False}.get(res)
         if found is None:

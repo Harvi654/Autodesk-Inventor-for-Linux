@@ -404,3 +404,60 @@ For the installer (when AutoCAD is picked up again): steps 31/32 not run;
 InstallBuilder installers must run from `C:\`, not from the image drive;
 UPI2 keys of ADIX packages are not written (the `upi2` GUID is in each
 package's manifest line).
+
+## 2026-11-13 late evening: AutoCAD 2027 licensed and running under Wine
+
+Resumed after the stop above at the maintainer's request, with the next step
+written there: [autocad-tools/pml-vs-prefix.py](autocad-tools/pml-vs-prefix.py)
+compares every registry key, value and file `acad.exe` opened on Windows
+before the SDK load (event 857729) with the prefix's `system.reg`,
+`user.reg` and `drive_c` - no Wine trace needed:
+
+```
+venv/bin/python -I pml-vs-prefix.py first-run.PML ~/.wine-autocad2027-odis --until 857729 > report.txt
+```
+
+Result: 1129 found on Windows and missing in the prefix (39 Autodesk-related),
+160 the other way round (almost all HKCU profile values from earlier Wine
+runs), 7 differing values (time zone names, Geo nation, host name, UBR,
+BootId - not related). Of the Autodesk-related ones: CER (skipped on
+purpose), Identity SDK interprocess files (same mechanism, the folder is the
+boot id: `0E000000` = BootId 14 on Windows, `01000000` under Wine), ADP
+config, temp files, and **`C:\Program Files\Autodesk\AutoCAD 2027\AcJab.dll`**.
+
+`AcJab.dll` is in the image's `x64/acadprivate/PF/Root/`: the "ACAD Private"
+package (`acadprivate.msi`, `contents="Folder"`), step 17 of this project's
+plan. Its `INSTALLDIR` (`Autodesk\AutoCAD 2027` under `ProgramFiles64Folder`
+in the MSI) comes from the package's `installLocation="%ACAD_INSTALL_PATH%"`,
+which this project's installer does not expand - the MSI was installed, but
+its `PF/Root` files landed in **`C:\Program Files\`** (`AcJab.dll`,
+`AdMigrator.xml`, `Support\AcCommandWeight.xml`, `MsiKeyFile\`). The same
+MSI also runs the licensing custom actions (`AdskLicensingInstCA.dll`
+`licMarkInstall`/`licRegister` with `ADLM_DEF_PRODKEY` 001S1,
+`ADLM_VERSION` 2027.0.0.F, `ADLM_CONFIG_FILE` AutoCADConfig.pit); on Windows
+ODIS also leaves `ADLM_PRODKEY`, `ACADSERIALPREFIX/NUMBER`, `NIWSELECTION`,
+... empty ("Missing Property ... Ignoring" in its `Install.log`), so the
+MSI defaults are what Windows uses too.
+
+**Fix tried (on the copy that also has ODIS/Access and the UPI2 keys):**
+copy those four items from `C:\Program Files\` into
+`C:\Program Files\Autodesk\AutoCAD 2027\`. AutoCAD 2027 then starts, shows
+the start page, sign-in works (user shown in the title bar), a drawing can
+be created and drawn in. On the MacBook's HD 4000 the drawing area is slow
+and some lines draw badly (expected on that GPU, not a licensing matter).
+
+Open:
+- Which of the changes is required: very likely only the `acadprivate`
+  files (AutoCAD reads `AcJab.dll` before the SDK), but ODIS/Access and
+  UPI2 were present too. To confirm: a fresh copy of the original prefix
+  with only the four items copied.
+- Installer fixes (main): expand `%ACAD_INSTALL_PATH%` (the AutoCAD
+  package's install folder) and pass it as `INSTALLDIR` for packages whose
+  `installLocation` uses it; steps 31/32 (ODIS, Access) not executed;
+  InstallBuilder installers must run from `C:\`; UPI2 keys of ADIX
+  packages (only if the confirmation shows they matter).
+- The SDK log and the `AdlSdk-ACD2027EN-*.log` of a working start, to
+  record the difference.
+
+Validation: L4-like smoke test only (start, sign-in, new drawing, drawing),
+not yet save/reopen/restart.
