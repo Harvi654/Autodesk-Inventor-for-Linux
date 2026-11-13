@@ -289,3 +289,27 @@ Tried the same evening, no change (SDK log still 3 lines, same error): the
 `ADLMInfoPath` folder created empty, then with `AutoCADConfig.pit` from the
 image (`x64/acadprivate/`) in it, both with `upi2.dll` reachable through
 `WINEPATH` (`Common Files\Autodesk\AdpDesktopSDK\bin`). Stopped here.
+
+## 2026-11-13: Autodesk's own web installer (ODIS) under winum
+
+`Autodesk_AutoCAD_2027_1_English_en-US_setup_webinstall.exe`, fresh prefix
+`~/.wine-acadweb`, the wldap32 test build, `wineboot -i` with
+`mscoree,mshtml=` (no Mono/Gecko), Windows 10.
+
+- The 7-Zip self-extractor starts `Setup.exe`, which fails to load
+  `wxbase332u_vc_x64_custom.dll`, `wxmsw332u_core_vc_x64_custom.dll` and
+  `AdHttpLib.dll` (c0000135). They are in `ODIS\odis.bs.wx\` and
+  `ODIS\odis.bs.win\`, each with its own `<name>.manifest` - private
+  side-by-side assemblies that Wine does not resolve for `Setup.exe` (to be
+  looked at in winum). Work-around for the test: unpack with 7z and add both
+  folders to `WINEPATH`.
+- Then the ODIS window works, downloads, installs some packages (Autodesk
+  Access Connector), and stops with "Install error: AutoCAD 2027 - Error
+  4005" on "AutoCAD Shared 2027" (an ADIX package), rolling back.
+  `Install.log`: `MsixCoreLib::PopulatePackageInfo::GetPackageInfoFromPackage
+  ... appxFactory->CreatePackageReader(...) error code: -1951596478`
+  = 0x8BAD0042, MSIX Core's `CertNotTrusted`: the package signature does not
+  chain to a trusted root in Wine's certificate store. Hypothesis: a
+  code-signing root that the Linux (TLS-oriented) CA bundle Wine imports
+  does not contain. Not pursued; this project's own installer unpacks ADIX
+  packages itself.
