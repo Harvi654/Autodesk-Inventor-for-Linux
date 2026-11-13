@@ -1736,6 +1736,23 @@ answers 1060) - running, same error. All package actions of the AutoCAD
 manifests ran; one ran with an unexpanded variable: `AcNGEN.exe install ...
 %ACAD_INSTALL_PATH%` (.NET native images for AutoCAD; speed only).
 
+Last trace of the day: `+relay` limited (`RelayInclude`) to the calls a
+licensing SDK would need to find a service running as a plain process or to
+check it - process lists (`CreateToolhelp32Snapshot`, `Process32*`,
+`EnumProcesses`), `OpenProcess`, `QueryFullProcessImageNameW`,
+`ProcessIdToSessionId`, tokens, the service manager, sockets, named
+objects and pipes, files, registry - over the whole start of AutoCAD 2027.
+Between the load of `AdskLicensingSDK_10.dll` and the error box the SDK only
+resolves `Local AppData` and the profile folder, opens its log file and
+writes it; no process, token, service, network or licensing-registry call
+at all. The failing calls just before the load are AutoCAD's usual lookups
+(`*LICENSE...` variables found on the third try, `SHOWNEWSTATE`, `res`
+resource values, `DisableAdConnect`). So "the service runs as a process,
+not as a Windows service" is not what AutoCAD trips over, and the decision
+is made before or at the SDK's first call without anything Wine reports.
+The experiment stops here; the comparison with Inventor's licensing SDK on
+the main PC is the next step.
+
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
 know AutoCAD's names for the ODIS installer and Autodesk Access packages. `%ACAD_INSTALL_PATH%` in AutoCAD's `AcNGEN.exe` action is not expanded, and
