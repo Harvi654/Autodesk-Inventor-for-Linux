@@ -461,3 +461,60 @@ Open:
 
 Validation: L4-like smoke test only (start, sign-in, new drawing, drawing),
 not yet save/reopen/restart.
+
+### Confirmed the same night, and the first open problem
+
+- **Only the `acadprivate` files matter.** A new copy of the original prefix
+  (no ODIS/Access, no UPI2 keys) with just `AcJab.dll`, `AdMigrator.xml`,
+  `Support\AcCommandWeight.xml` and `MsiKeyFile\` copied from
+  `C:\Program Files\` into the AutoCAD folder starts licensed (a new sign-in
+  is needed, the copy keeps no session).
+- **Saving a DWG crashes, opening the saved DWG too.** First save:
+  `err:seh:NtRaiseException Unhandled exception code c0000409 flags 1`
+  (fail-fast, raised from a Wine builtin DLL's address range); with
+  `WINEDEBUG=fixme-all,+loaddll,+seh` Wine's C++ runtime shows
+  "Runtime error! ... acad.exe Error: R6025" (pure virtual function call);
+  a second save attempt hung. Before it the log has `err:ole` "class not
+  registered" for `{cee92f99-d9c7-4e46-9ab7-e3f705b9a543}`,
+  `{9e928a7c-095e-4f44-81c5-d4f14f4f0265}` and the WinRT class
+  `{daa52b27-8897-50af-ada5-c6c71bb64e17}`, and `RoGetActivationFactory`
+  failures for `Windows.System.Profile.PlatformDiagnosticsAndUsageDataSettings`
+  and `Windows.Devices.Input.PenDevice` (whether any of them is on the save
+  path is not known yet). Exceptions in that run (`+seh`, code: count):
+  e06d7363 (C++) 993, 80000029 602, 40010006 85, 4001000a 83, 406d1388
+  (thread names) 52, c0000005 10, c06d007e (delay-load module not found) 3,
+  40010005 3. Next: the `+seh` lines just before R6025 (module of the
+  caller via the `+loaddll` map), the names behind the three c06d007e, and
+  the same save on Windows in Process Monitor if needed.
+
+## How to reproduce (state 2026-11-13)
+
+Machine: MacBook 2012, Arch, Intel HD 4000 (wined3d, the DXVK overrides
+removed - the GPU has no Vulkan 1.3). Wine: winum 11.20 test build with the
+`wldap32-winsock-cleanup` candidate (winum `topic/wldap32-winsock-cleanup`,
+build run 43390923029), used through `PATH`.
+
+1. Image: `ACD_2027_english_us_win_db_001_002.exe` + `..._002.7z` unpacked
+   with 7z (the image folder has `Setup.exe`, `manifest/app.acad.en-US.xml`).
+2. Install into its own prefix with this project's installer:
+   `scripts/install-from-image.py IMAGE --prefix ~/.wine-autocad2027
+   --app acad.en-US`. Step 11 (licensing service) ends with exit 84 after
+   ~400 s but the service's own log says success; rerun the same command
+   and it continues. .NET Framework 4.8 is installed at the end.
+3. Prefix setup: the non-Inventor parts of `finish-install.sh` (fonts,
+   WebView2, isolation, `adskidmgr://` handler registered by hand) - kept so
+   far in the maintainer's local `acad-setup.sh`, to be moved into the
+   AutoCAD repository.
+4. **The fix:** copy from `drive_c/Program Files/` into
+   `drive_c/Program Files/Autodesk/AutoCAD 2027/` the files the "ACAD
+   Private" MSI put in the wrong place: `AcJab.dll`, `AdMigrator.xml`,
+   `Support/AcCommandWeight.xml`, `MsiKeyFile/` (installer bug:
+   `%ACAD_INSTALL_PATH%` not expanded for that package's `INSTALLDIR`).
+5. Start like `launch-inventor.sh` does (local `acad-launch-ldap.sh`):
+   Identity Manager (wait for "SSO Server is ready" in `IdServices.log`),
+   licensing service, then `acad.exe` from the AutoCAD folder. Sign in in
+   the browser; AutoCAD opens, a new drawing can be drawn in. Saving a DWG
+   crashes (above).
+
+Not needed (tried, no effect on licensing): ODIS/Access, the UPI2 keys of
+the ADIX packages, `ADLMInfoPath` folder, `/product` arguments.
