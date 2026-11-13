@@ -1727,9 +1727,19 @@ Manager. With AutoCAD the first step never happens, so nothing asks for a
 sign-in. Left: compare with a working system (Inventor's licensing SDK on
 the main PC under `+winsock`; AutoCAD on Windows under Process Monitor).
 
+Also checked the same afternoon, no change: the Shared Components registry
+of migration 0001 (`HKLM\SOFTWARE\Autodesk\SharedComponents\2027` and
+`Components\2027\2.0.2` in the system `Path`), and FlexNet: the prefix
+starts `FNPLicensingService64.exe` by itself (a FlexNet service AutoCAD's
+licensing installs; its service name is not `FNPLicensingService64`, `sc`
+answers 1060) - running, same error. All package actions of the AutoCAD
+manifests ran; one ran with an unexpanded variable: `AcNGEN.exe install ...
+%ACAD_INSTALL_PATH%` (.NET native images for AutoCAD; speed only).
+
 Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
-know AutoCAD's names for the ODIS installer and Autodesk Access packages.
+know AutoCAD's names for the ODIS installer and Autodesk Access packages. `%ACAD_INSTALL_PATH%` in AutoCAD's `AcNGEN.exe` action is not expanded, and
+2026's `Autodesk CER Service` is not on the skip list.
 
 ## Known harmless log messages
 
