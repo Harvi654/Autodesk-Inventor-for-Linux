@@ -240,3 +240,47 @@ Also to fix in the installer before AutoCAD is attempted again: a dry run
 creates an empty prefix that blocks the real run, and the skip list does not
 know AutoCAD's names for the ODIS installer and Autodesk Access packages. `%ACAD_INSTALL_PATH%` in AutoCAD's `AcNGEN.exe` action is not expanded, and
 2026's `Autodesk CER Service` is not on the skip list.
+
+## 2026-11-13 evening: Inventor 2027 on the same MacBook, side by side
+
+Inventor 2027 installed with `install.sh --no-content` (INV_VKD3D=off) on the
+same machine and Wine as AutoCAD. Sign-in works; Inventor's window needs
+wined3d there (DXVK: "Device does not support Vulkan 1.3", HD 4000), i.e.
+the DXVK overrides removed. Comparison (all from outside):
+
+- **Same licensing SDK**: `AdskLicensingSDK_10.dll`, 2409304 bytes, in both.
+- Identity Manager log: with Inventor, `AdskLicensingAgent` sends `GetServer`,
+  `IsLoginValid` and `Login`; with AutoCAD the agent never appears.
+- Licensing service log: about 120 ms after Inventor's SDK opens its log,
+  the service shows `SDK monitor starting`, `Launching Agent via SDK`,
+  `Features in service`, `LicenseWorkflowData`, workflow nodes. Nothing
+  from AutoCAD.
+- The SDK log's `[O]` + `[E]` pair at `AdlSdkLogger.cpp:147/155` is written by
+  Inventor too: it is the log header, **not** an error (the notes above
+  that read it as AutoCAD's error were wrong).
+- `ADLSDK_LOG_LEVEL=T` (documented in Autodesk's Nastran Linux manual) makes
+  the SDK log more lines; only level, source file and line are readable.
+  Inventor: 57 lines - `AdlSdkSession.cpp:52`, `AdlSdkAdlsAdapter`,
+  `AdlSdkSocket`, `easywsclient` (a WebSocket to the service), ...
+  AutoCAD: 3 lines - `AdlSdkLogger.cpp:147`, `AdlSdkWinUI.cpp:158`,
+  `AdlSdkWinUI.cpp:168`, then AutoCAD's own message box. AutoCAD never
+  reaches a session.
+- A `+relay` of window, DPI, language, resource and module functions: between
+  the SDK load and the message box no call comes from the SDK's address
+  range at all.
+- Inventor's SDK first checks `<exe folder>\upi\upiconfig.xml`
+  (`GetFileAttributesW`); AutoCAD's SDK never gets that far.
+- Not the difference: the `.pit` path in the registration (`M:\...` for both;
+  M: is gone after the install), the ASR files
+  (`ProgramData\Autodesk\Adlm\ASR`, both). Small difference: the
+  registration's serial field (`000-00000000;0;0` for Inventor, `-` for
+  AutoCAD). AutoCAD's registry has
+  `ADLMInfoPath = C:\ProgramData\Autodesk\AutoCAD 2027\R26.0\enu\Adlm\`, a
+  folder that does not exist in the prefix (Inventor has no such value).
+
+Reading: AutoCAD loads the SDK late (after its main window) and its first use
+is the SDK's UI part, then its own "License manager is not functioning" box -
+as if AutoCAD had decided earlier that licensing failed and uses the SDK only
+to report it. Where to look next: what AutoCAD does before it loads the SDK
+(the early failed `upi2.dll` delay-load, the missing `ADLMInfoPath` folder),
+and the same `ADLSDK_LOG_LEVEL=T` log of AutoCAD on Windows for comparison.
