@@ -440,6 +440,11 @@ Next release (in progress):
       Property Mapping with .NET 4.8
       ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10))
 
+- [ ] installer completeness review: compare a prefix with a Windows
+      installation of the same image (files and registry) and close every
+      gap the installer leaves where ODIS would have done something
+      ([plan](docs/installer-completeness-review.md))
+
 Later, roughly in this order:
 
 - [ ] Weldments, Tube & Pipe, Cable & Harness, Inventor Studio - test in
