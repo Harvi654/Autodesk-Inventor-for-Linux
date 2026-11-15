@@ -76,3 +76,126 @@ Known places where the installer drops something today:
 
 The same review is then repeated for every product the installer handles
 (AutoCAD, Revit), since they share the code.
+
+## First comparison: Inventor 2027 (2026-11-15)
+
+Windows 10 VM (offline) against a fresh prefix made by `install.sh` with
+winum-11.20-2, both from the same image (SHA-256 of both download parts
+compared), no update. How it was done: [tools/README.md](../tools/README.md).
+Windows added 17 260 files and about 49 000 registry keys; the prefix lacked
+3 251 of the files. After sorting, the differences come down to the points
+below. Status: found, not fixed yet; each fix goes into the installer and,
+for existing prefixes, into a migration.
+
+### Needed
+
+1. **Inventor's own registration is never run.** On Windows, during the
+   install, `msiexec` starts `Inventor.exe /install 0` (Process Monitor:
+   `Inventor.exe` with that command line, parent `msiexec.exe`, writes
+   `HKCU\Software\Classes\Inventor.Application` and
+   `InventorRegistrationLog_<pid>.log` in `%TEMP%`). It registers the COM
+   server `Inventor.Application` (used by add-ins, iLogic, Vault, external
+   programs), the document types `Inventor.PartDocument`,
+   `.AssemblyDocument`, `.DrawingDocument`, `.PresentationDocument`,
+   `.iFeatureDocument`, `.DesignViewDocument`, `.ProjectDocument` (icons,
+   open/print verbs, shell extensions) and type libraries (`RxAppCtrl.Ocx`,
+   `RxInventor.tlb`, `UCxTextBtn.Ocx`, `InfoTip.Dll`, `ThView.Dll`). In the
+   prefix none of these keys existed. Running the same command once in the
+   reference prefix created them (`Inventor.Application`: 0 -> 10 entries in
+   `user.reg`, 12 in `system.reg`; `Inventor.PartDocument` 0 -> 11 in
+   `user.reg`) and the registration log. Open before it goes into the
+   installer: run outside msiexec it also brought up the full program (UI,
+   Identity Manager, ADP); how it ends on its own, and that no Linux file
+   associations are created (winemenubuilder off).
+   Which package's action starts it under Windows is not yet known: the
+   action lists of `InvPrivate.msi` are the same on Windows and Wine, and
+   `InvPrivateLoc.msi` (which looks up `INVENTOREXE`) shows no such action
+   in Wine's log.
+2. **`%INV_INSTALL_PATH%` is never filled in.** It is defined in the
+   image's `setup.xml` (`<Properties><Property property="INV_INSTALL_PATH"
+   defaultValue="%INSTALL_DEST%\Inventor 2027\">` with a `RegistrySearch`
+   for an existing install), which the installer does not read. Effects:
+   no `INSTALLDIR` for `InvPrivate.msi` and `InvPrivateLoc.msi` (Windows:
+   `C:\Program Files\Autodesk\Inventor 2027\`; the files still landed in
+   the right folder - unlike AutoCAD's ACAD Private - but by the MSI's
+   default, not by design), and the InvCore postInstall action ran as
+   `InvAcNGEN.exe install ... %INV_INSTALL_PATH%Bin` with the variable
+   unexpanded (the .NET native images, 84 `NGenService` keys on Windows, are
+   not made). Fix: read the `setup.xml` properties as variables.
+3. **`%CONTENT_PATH%`** (Content Center, `DCLibrary64.msi`,
+   `installLocation="%CONTENT_PATH%\Inventor 2027"`) is a setting of the
+   setup UI (`SetupRes/locale/<lang>/dclibrary.xml`, default
+   `%PROGRAMDATA%\Autodesk`); Windows passed
+   `INSTALLDIR=C:\ProgramData\Autodesk\Inventor 2027`. Same fix, plus that
+   default.
+4. **`INSTALLDIR` is also passed by Windows for `adsk-hive-host.msi`**
+   (`C:\Program Files\Autodesk`). Generally: ODIS passes the package's
+   install location to every MSI that has one.
+5. **Two applications of the image are not installed.** The image has
+   `manifest/app.{inventor,dclibrary,dwgtrueview,aceinvaddin,inventor.ui}.xml`;
+   ODIS installs `dwgtrueview` (DWG TrueView 2027, 1 573 files, its
+   `acax26*.tlb`, `dwgviewrAcctrl.dll`, `MsiKeyFile_*` in Common Files) and
+   `aceinvaddin` (Electrical Catalog Browser 2027 and its language pack:
+   `Bin\InventorElectrical\*`, `Autodesk.Electrical.Inventor.addin`, the
+   Electrical Library in Public Documents) by default; the installer plans
+   `inventor` (+ `dclibrary`) only. Fix: the same default as Windows, with
+   an option to leave each out (installer and GUI).
+6. **Unknown variables in action parameters are passed on silently.** Only
+   the action's program path is checked. Fix: check the parameters too and
+   skip the action with a warning (point 2 is the case that showed it).
+7. **ADIX packages: files at the package root other than the known
+   metadata are dropped silently** (`SharedComponents.json` in InvCore).
+   Fix: list them in the log; decide per file.
+8. **ODIS's standard MSI properties** are not passed: `MSIFASTINSTALL=7`,
+   `REBOOT=ReallySuppress`, `ARPSYSTEMCOMPONENT` (keeps the parts out of
+   Programs and Features). For `InvPrivateLoc.msi` ODIS also passes a
+   transform it generates in `%TEMP%`; the resulting files and keys match,
+   it is not looked into further.
+9. **Registration ODIS writes itself:** `HKLM\SOFTWARE\Autodesk\UPI2\{...}`
+   for 24 products, four values in `...\Autodesk\UPI`, the Programs and
+   Features entry of the product ("Autodesk Inventor Professional 2027 -
+   English"). Smaller: `C:\Program Files\dotnet\` in the machine `PATH`
+   and `SOFTWARE\dotnet\Setup\InstalledVersions\x64` (the .NET 10 runtimes),
+   `.NETFramework\AssemblyFolders\Autodesk Inventor 31.0` (references for
+   add-in developers). Whether Inventor or updates need them: next step.
+
+### Not a gap
+
+- The large MSI property list of `InvPrivate.msi` (`ACADSERIALNUMBER`,
+  `UNITS`, `DC_*`, `READONLYMODE`, ...) whose values are `%...%`: ODIS does
+  not pass them either (Windows' command line for the package holds only
+  ODIS's standard properties and `INSTALLDIR`), so leaving them out matches.
+- Add-ins the prefix setup turns off on purpose (`.addin` files moved).
+- Windows' own background changes (logs, caches, Defender), counted and
+  left out by the tool.
+
+### On purpose (decide or document)
+
+- Autodesk Access (`AdODIS`, Access service), CER (crash reporting and its
+  service), ODIS itself with its metadata and `Uninstallers`.
+- **Autodesk Genuine Service** is installed by Windows by default (the
+  manifest marks it optional). It is part of Autodesk's licensing checks;
+  the goal is that licensing works as on Windows, so whether to install it
+  needs a decision.
+- `AdskLicensingService` start type Manual instead of Auto (the launcher
+  starts it).
+
+### Also found
+
+- `.admeta` next to every ADIX package in the image is JSON: the
+  package's files (path, hash), fonts and registry keys. It can serve as a
+  file integrity check of a prefix (every file present, hash matching)
+  without a Windows reference. Hash algorithm still to be determined.
+- `wineserver -k` cannot reach a wineserver whose prefix folder was moved
+  (here: to the trash) while it ran; the "prefix busy" check then refuses
+  the new prefix of the same path. Nothing to do with the installer, but the
+  message could say how to find and stop those processes.
+
+### Next
+
+Fix points 1-8 in `install-from-image.py` with tests (synthetic manifests,
+`setup.xml` properties, action parameter check), migrations for existing
+prefixes (registration, `INSTALLDIR`-less MSIs need no change if their files
+are in place), install again and compare until only the "on purpose" list
+remains; then the 2027.2 update the same way (VM snapshot
+`inventor2027-base` + update, prefix copy + update).
