@@ -29,6 +29,7 @@ import argparse
 import glob
 import hashlib
 import json
+import ntpath
 import os
 import re
 import shlex
@@ -118,6 +119,9 @@ def quirk_key(s):
         return "adsklicensing"
     return s["name"].lower()
 
+# pre/postInstall helpers (event log, COM registration) take seconds;
+# 600s also covers a slow first .NET start.
+ACTION_TIMEOUT = 600
 
 # A Windows exit code reaches Linux only as its low byte: msiexec's 1603
 # shows up as 67. The usual Windows Installer codes:
@@ -210,13 +214,25 @@ class Installer:
         with open(os.path.join(self.logdir, "install.log"), "a") as f:
             f.write(msg + "\n")
 
-    def run(self, argv, logname):
+    def run(self, argv, logname, timeout=None):
         self.log("      $ " + " ".join(shlex.quote(x) for x in argv))
         if self.a.dry_run:
             return 0
         with open(os.path.join(self.logdir, logname), "ab") as out:
             t0 = time.time()
-            rc = subprocess.call(argv, env=self.env, stdout=out, stderr=subprocess.STDOUT)
+            proc = subprocess.Popen(argv, env=self.env, stdout=out, stderr=subprocess.STDOUT)
+            try:
+                rc = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                # A helper that waits for input nobody can give (a message
+                # box, a missing runtime) must not stall the whole install.
+                self.log("        no exit after %ds, stopping it" % timeout)
+                if argv[:1] == ["wine"] and len(argv) > 1:
+                    subprocess.call(["wine", "taskkill", "/f", "/im", ntpath.basename(argv[1])],
+                                    env=self.env, stdout=out, stderr=subprocess.STDOUT)
+                proc.kill()
+                proc.wait()
+                rc = -1
         hint = MSI_RC.get(rc, "") if argv[1:2] == ["msiexec"] else ""
         self.log("        exit code %d%s after %.1fs" % (rc, hint, time.time() - t0))
         return rc
@@ -453,7 +469,8 @@ class Installer:
             if "%" in exe:
                 self.log("      skip action %s %s (unknown variable)" % (act["type"], path))
                 continue
-            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(self.expand(act["params"], step=s)), logname)
+            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(self.expand(act["params"], step=s)), logname,
+                          timeout=ACTION_TIMEOUT)
             if rc != 0:
                 self.log("      WARN %s action returned %d" % (act["type"], rc))
         return ok

@@ -22,7 +22,11 @@ The pinned nix-overlayfs revision includes Wine 11.20's Mono 11.3.0 dependency
 mapping and sandbox MSI link-action fix, published from the local development
 fork. That base environment builds successfully with the patched Wine runtime.
 The pinned library also preserves Wine's registry symbolic-link markers and
-propagates failed installer exit statuses. The WebView2 layer has been built
+propagates failed installer exit statuses. Microsoft's .NET Framework 4.8
+is a layer below the installation (nix-overlayfs's `dotnet-framework-4-8`,
+pinned downloads), used instead of Wine Mono for the .NET Framework parts
+such as 3D PDF and Import CAD's Property Mapping; the installer's own .NET
+step is skipped in the Nix build. The WebView2 layer has been built
 and checked for its actual executable. The Inventor base image, all 21 selected
 installation steps, the 2026.4 update, and final configuration completed in the
 Nix sandbox. The library's opt-in portable directory-reparse support preserves
