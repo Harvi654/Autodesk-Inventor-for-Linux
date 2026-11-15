@@ -103,9 +103,11 @@ for existing prefixes, into a migration.
    prefix none of these keys existed. Running the same command once in the
    reference prefix created them (`Inventor.Application`: 0 -> 10 entries in
    `user.reg`, 12 in `system.reg`; `Inventor.PartDocument` 0 -> 11 in
-   `user.reg`) and the registration log. Open before it goes into the
-   installer: run outside msiexec it also brought up the full program (UI,
-   Identity Manager, ADP); how it ends on its own, and that no Linux file
+   `user.reg`) and the registration log. It showed no window and ended on
+   its own with exit code 0 (Wine's console showed Inventor's start-up
+   messages: DXVK, ADP SDK, Identity Manager). Helper processes it started
+   kept the wineserver alive (`wineserver -w` did not return), so the
+   installer stops the prefix after it. Still to check: that no Linux file
    associations are created (winemenubuilder off).
    Which package's action starts it under Windows is not yet known: the
    action lists of `InvPrivate.msi` are the same on Windows and Wine, and
