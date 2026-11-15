@@ -107,12 +107,25 @@ for existing prefixes, into a migration.
    its own with exit code 0 (Wine's console showed Inventor's start-up
    messages: DXVK, ADP SDK, Identity Manager). Helper processes it started
    kept the wineserver alive (`wineserver -w` did not return), so the
-   installer stops the prefix after it. Still to check: that no Linux file
-   associations are created (winemenubuilder off).
-   Which package's action starts it under Windows is not yet known: the
-   action lists of `InvPrivate.msi` are the same on Windows and Wine, and
-   `InvPrivateLoc.msi` (which looks up `INVENTOREXE`) shows no such action
-   in Wine's log.
+   installer stops the prefix after it. It must run with winemenubuilder
+   off (`WINEDLLOVERRIDES=winemenubuilder.exe=d`): the manual run created
+   13 `wine-extension-*.desktop` / `wine-protocol-*.desktop` files in
+   `~/.local/share/applications` pointing at the test prefix (removed by
+   hand; the `adskidmgr://` default stayed `adskidmgr-handler.desktop`).
+   Which package's action starts it is not certain. Process Monitor: the
+   parent `msiexec.exe` (the Windows Installer service running the
+   multi-package transaction) had last opened the cached package of
+   "Autodesk Interoperability Engine Manager" (`adsk-hive-host.msi`)
+   before it started `Inventor.exe /install 0`; the action lists of
+   `InvPrivate.msi` are the same on Windows and Wine, and Wine's logs of
+   `adsk-hive-host.msi` and `InvPrivateLoc.msi` show no such action. Order
+   on Windows: InvCore 22:45:47, adsk-hive-host 22:47:04, InvPrivate
+   22:47:34, registration 22:47:41 - Inventor's files were in place. Our
+   installer runs adsk-hive-host as package 2 of 28, before any Inventor
+   file exists, so an action that needs `Inventor.exe` could not have run.
+   Either way the fix is the same: run the registration once after the
+   Inventor packages. Whether an update runs it again: see the 2027.2
+   comparison.
 2. **`%INV_INSTALL_PATH%` is never filled in.** It is defined in the
    image's `setup.xml` (`<Properties><Property property="INV_INSTALL_PATH"
    defaultValue="%INSTALL_DEST%\Inventor 2027\">` with a `RegistrySearch`
@@ -185,9 +198,16 @@ for existing prefixes, into a migration.
 ### Also found
 
 - `.admeta` next to every ADIX package in the image is JSON: the
-  package's files (path, hash), fonts and registry keys. It can serve as a
-  file integrity check of a prefix (every file present, hash matching)
-  without a Windows reference. Hash algorithm still to be determined.
+  package's files, fonts and registry keys. Its `hash` field is not a hash
+  of the file content (44 base64 characters; md5, sha1, sha256, sha512,
+  sha3-256, blake2s in hex and base64, whole file and MSIX 64 KiB block
+  hashes, and the stored bytes in the package all tried - none match, also
+  for one-block files). `tools/admeta-check.py` therefore uses the list and
+  compares every listed file in a prefix with the same file inside the
+  package (present, size, SHA-256): a file integrity check without a
+  Windows reference.
+- The order of the packages differs from ODIS (e.g. adsk-hive-host before
+  InvCore, see point 1). Worth comparing as a whole once the fixes are in.
 - `wineserver -k` cannot reach a wineserver whose prefix folder was moved
   (here: to the trash) while it ran; the "prefix busy" check then refuses
   the new prefix of the same path. Nothing to do with the installer, but the

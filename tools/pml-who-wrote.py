@@ -41,7 +41,7 @@ def main():
             for i in range(len(reader)):
                 try:
                     ev = reader[i]
-                except (KeyError, IndexError, ValueError, struct.error):
+                except Exception:
                     bad += 1    # an event whose process is not in this file's table
                     continue
                 pr = ev.process

@@ -16,6 +16,8 @@ names, SIDs and long hex IDs masked.
 | `odis-audit.py` | Linux | Reads the image's manifests (nothing is installed): applications in the image, `%VARIABLES%` the installer cannot fill in (install location, MSI properties, parameters, actions), action types it does not run. |
 | `adix-extensions.py` | Linux | What the `AppxManifest.xml` of each ADIX package declares beyond files (COM, file types, fonts, shortcuts). |
 | `pml-who-wrote.py` | Linux, `pip install procmon-parser` | Which process (command line, parents) wrote a registry key or file, from a Process Monitor capture. |
+| `pml-process-context.py` | Linux, `procmon-parser` | Which installer files (.msi, .mst, ...) the parent of a process had opened before it started it ("which package's action ran this"). |
+| `admeta-check.py` | Linux | File integrity of a prefix: every file the image's `.admeta` lists for an ADIX package is present and identical (size, SHA-256) to the file inside the package. |
 
 ## How the 2026-11-15 comparison was made
 
