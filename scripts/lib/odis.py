@@ -412,6 +412,61 @@ def setup_ui_files(img, lang="en-US"):
     return []
 
 
+# ADIX/MSIX folder tokens and VFS folder names -> Windows folders
+FOLDER_TOKENS = {
+    "programfilesx64": r"C:\Program Files", "programfilesx86": r"C:\Program Files (x86)",
+    "programfilescommonx64": r"C:\Program Files\Common Files",
+    "programfilescommonx86": r"C:\Program Files (x86)\Common Files",
+    "common appdata": r"C:\ProgramData", "common documents": r"C:\users\Public\Documents",
+    "systemx64": r"C:\windows\system32", "systemx86": r"C:\windows\syswow64", "system": r"C:\windows\system32",
+    "windows": r"C:\windows", "fonts": r"C:\windows\Fonts",
+}
+
+
+def mapping_source_path(source):
+    """The Windows folder an InstallPathMapping source names: a folder token
+    ([{ProgramFilesX64}]\\Autodesk\\AutoCAD 2027), a VFS path
+    (VFS\\ProgramFilesX64\\...) or a plain C:\\ path; None when not
+    understood."""
+    s = source.replace("/", "\\").strip().rstrip("\\")
+    m = re.match(r"^\[\{([^}]+)\}\]\\?(.*)$", s)
+    if m and m.group(1).lower() in FOLDER_TOKENS:
+        return FOLDER_TOKENS[m.group(1).lower()] + ("\\" + m.group(2) if m.group(2) else "")
+    m = re.match(r"^(?i:vfs)\\([^\\]+)\\?(.*)$", s)
+    if m and m.group(1).lower() in FOLDER_TOKENS:
+        return FOLDER_TOKENS[m.group(1).lower()] + ("\\" + m.group(2) if m.group(2) else "")
+    if re.match(r"^[A-Za-z]:\\", s):
+        return s
+    return None
+
+
+class PathMapper:
+    """The InstallPathMappings of a package applied to Windows paths:
+    a file the package's VFS puts below a mapping's source goes below its
+    target instead (ODIS does this; AceInvAddIn's VFS folder is
+    Program Files\\Autodesk\\AutoCAD 2027, its files belong in Inventor's
+    folder). expand: fills in the target's %VARIABLES%."""
+
+    def __init__(self, mappings, expand):
+        self.rules, self.unread, self.used = [], [], {}
+        for src, dst in (mappings or {}).items():
+            path = mapping_source_path(src or "")
+            target = (expand(dst or "") or "").replace("/", "\\").rstrip("\\")
+            if not path or not target or "%" in target:
+                self.unread.append((src, dst))
+                continue
+            self.rules.append((path.lower(), src, target))
+        self.rules.sort(key=lambda r: -len(r[0]))
+
+    def map(self, winpath):
+        low = winpath.lower()
+        for prefix, src, target in self.rules:
+            if low == prefix or low.startswith(prefix + "\\"):
+                self.used[src] = self.used.get(src, 0) + 1
+                return target + winpath[len(prefix):]
+        return winpath
+
+
 def find_package(img, display_name, lang="en-US"):
     """A package that no application manifest of the image names - on
     Windows a prerequisite such as the .NET Framework 4.8, which Setup

@@ -26,6 +26,47 @@ import zipfile
 
 USER_RE = re.compile(r"(?i)(users/)(?!public/)[^/]+")
 
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "scripts", "lib"))
+import odis  # noqa: E402
+
+
+def image_expander(image):
+    """expand(text) with the variables install-from-image.py uses for this
+    image (its folders, setup.xml properties and settings) - for the
+    targets of the packages' InstallPathMappings."""
+    import argparse
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("install_from_image",
+                                                  os.path.join(HERE, "..", "scripts", "install-from-image.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    inst = mod.Installer(argparse.Namespace(image=image, prefix="/nonexistent", lang="en-US", dry_run=True))
+    inst.log = lambda msg: None
+    inst.load_setup_properties(image)
+    if os.path.isdir(os.path.join(image, "manifest")):
+        inst.load_setup_ui_settings(odis.Image(image), [])
+    return inst.expand
+
+
+def package_mappings(admeta, package):
+    """InstallPathMappings of the manifest next to an .admeta whose
+    InstallFile is this package (pkg.*.xml in the same folder)."""
+    import xml.etree.ElementTree as ET
+    for x in glob.glob(os.path.join(os.path.dirname(admeta), "pkg.*.xml")):
+        try:
+            root = ET.parse(x).getroot()
+        except ET.ParseError:
+            continue
+        inst = root.find("m:Configuration/m:InstallFile", odis.NS)
+        if inst is None or os.path.basename((inst.get("file") or "").replace("\\", "/")).lower() \
+                != os.path.basename(package).lower():
+            continue
+        return {m.get("source"): m.get("target") for m in root.iterfind(
+            "m:Configuration/m:AdditionalPackageInfo/m:Customizations/m:InstallPathMappings/m:InstallPathMapping",
+            odis.NS)}
+    return {}
+
 
 def prefix_user(drive_c):
     d = os.path.join(drive_c, "users")
@@ -162,6 +203,7 @@ def main():
         return
     total = ok = missing = differ = unknown = nopkg = off = 0
     lines = []
+    expand = image_expander(a.image)
     for m in metas:
         pk = os.path.basename(m)
         stem = os.path.splitext(pk)[0].lower()
@@ -172,10 +214,15 @@ def main():
         names = {urllib.parse.unquote(n).replace("\\", "/").lower(): n for n in z.namelist()} if z else {}
         files = json.load(open(m, encoding="utf-8-sig")).get("files", [])
         pm = pd = 0
+        # where ODIS puts them: the package's InstallPathMappings
+        mapper = odis.PathMapper(package_mappings(m, sib[0]) if sib else {}, expand)
         for e in files:
             total += 1
             rel = e["path"].replace("\\", "/")
             t = to_prefix(e["path"], drive_c, user)
+            if t is not None and mapper.rules:
+                win = "C:\\" + os.path.relpath(t, drive_c).replace("/", "\\")
+                t = os.path.join(drive_c, *mapper.map(win)[3:].split("\\"))
             f = find_ci(t) if t else None
             shown = USER_RE.sub(r"\1USER", rel)
             if t is None:

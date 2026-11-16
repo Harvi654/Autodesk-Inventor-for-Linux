@@ -689,6 +689,12 @@ class Installer:
     def do_adix(self, s, logname, path):
         """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
         written, regs, dropped = 0, [], []
+        # ODIS maps folders of the package's VFS elsewhere
+        # (<InstallPathMappings>): AceInvAddIn's files are under
+        # Program Files\Autodesk\AutoCAD 2027 in its VFS and belong in
+        # Inventor's folder - placed literally, they ended up in an
+        # "AutoCAD 2027" folder (compare-reference, run 3)
+        mapper = odis.PathMapper(s.get("pathMappings"), lambda v: self.expand(v, step=s))
         def place(name, read):
             nonlocal written
             parts = urllib.parse.unquote(name).replace("\\", "/").split("/")
@@ -707,7 +713,8 @@ class Installer:
             if base is None:
                 self.log("      WARN unknown VFS folder %r - skipped %s" % (parts[1], name))
                 return
-            dst = os.path.join(self.c, base, *parts[2:])
+            win = "C:\\" + "\\".join([base.replace("/", "\\")] + parts[2:])
+            dst = self.unix(mapper.map(win))
             if os.path.isfile(dst) and not self.keep_or_replace(dst, read):
                 written += 1
                 return
@@ -727,6 +734,11 @@ class Installer:
                     if not info.is_dir():
                         place(info.filename, lambda info=info: z.read(info))
         self.log("      %d files %s" % (written, "to place (dry run)" if self.a.dry_run else "placed"))
+        for prefix, src, target in mapper.rules:
+            self.log("      path mapping %s -> %s: %d files" % (src, target, mapper.used.get(src, 0)))
+        for src, dst in mapper.unread:
+            self.log("      WARN path mapping %s -> %s not understood - files stay where the package's VFS puts them"
+                     % (src, dst))
         # Files outside VFS/ that are not the package's metadata (InvCore's
         # SharedComponents.json): nothing tells where Windows puts them, so
         # they are listed, not guessed - "Needed" 7
