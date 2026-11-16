@@ -91,7 +91,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Assemblies | ✅ | |
 | Content Center (screws, nuts, profiles, ...) | ✅ | ~12.7 GB, installed by default |
 | DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
-| Electrical Catalog Browser | ❌ | installed by default, as on Windows (its library package unzips with `tar.exe`, which the prefix now gets); at start it asks for Microsoft 365 Access Runtime (64-bit), which is not in Autodesk's image and not installed - not usable yet |
+| Electrical Catalog Browser | ⚠️ | as on Windows: needs Microsoft 365 Access Runtime (64-bit, not in Autodesk's image - Windows asks for it too, the user installs it there). It works on AutoCAD Electrical's catalog database; without AutoCAD Electrical it is empty on Windows too. Installed by default like on Windows (`--no-electrical` leaves it out); whether Access Runtime installs under Wine is not tested |
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |

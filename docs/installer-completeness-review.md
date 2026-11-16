@@ -297,7 +297,7 @@ yet checked on a real install** - the results of the maintainer's run
 | 3 `CONTENT_PATH` | from `SetupRes/locale/<lang>/<app>.xml` (`defaultVal`), else ODIS's default `%PROGRAMDATA%\Autodesk` | none (files in place) | install.log `var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, ...)` | run 4: from `setup.xml` (`<Setting>`); `DCLibrary64.msi` got `INSTALLDIR=C:\ProgramData\Autodesk\Inventor 2027` as on Windows |
 | 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | run 4: the same `INSTALLDIR` as Windows for every MSI (MSIs without a location: `%INSTALL_DEST%`); values with a space through a batch file (Wine msiexec quoting) |
 | 6 Action parameters | unknown `%VARIABLE%` in path or parameters: action skipped with `WARN skip action ...`; MSI properties left out, install parameters with unknown variables and action types never run are listed | - | install.log: no `WARN skip action` for Inventor's packages | run 4: no action skipped for an unknown variable |
-| 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | run 4: all four applications; Catalog Browser in Inventor's folder (InstallPathMappings), its library via `tar.exe`; shared files and fonts as on Windows (TrueView first). The Catalog Browser asks at start for Microsoft 365 Access Runtime (64-bit), not in the image - future work |
+| 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | run 4: all four applications; Catalog Browser in Inventor's folder (InstallPathMappings), its library via `tar.exe`; shared files and fonts as on Windows (TrueView first). The Catalog Browser asks at start for Microsoft 365 Access Runtime (64-bit), not in the image - the same on Windows (checked), not an installer gap |
 | 7 ADIX root files | listed as `not installed (outside VFS, not package metadata): ...` | - | install.log line for InvCore (`SharedComponents.json`) - decide per file | run 4: listed (`SharedComponents.json`, MSIX metadata, Material Library's `Registry.reg` - same names as `Registry.dat`, nothing to add) |
 | 8 Standard MSI properties | `MSIFASTINSTALL=7`, `REBOOT=ReallySuppress`, `ARPSYSTEMCOMPONENT=1` on every MSI (not on MSP patches) unless the manifest gives one | none: only `SystemComponent=1` in the parts' uninstall entries, nothing reads it | compare-reference section 2: these three no longer "Windows passes ..." | run 4: the same as Windows for every MSI |
 | Genuine Service | `--with ags` installs it on request; off by default | - | the test on a prefix copy ("On purpose") | not installable under Wine: its installer's `killBeacon` action needs Windows PowerShell (1603); stays off - maintainer's decision 2026-11-16 |
@@ -991,7 +991,20 @@ Windows. Comparison with Windows:
   "Component Updates Required - Install the latest 64-bit version of
   Microsoft 365 Access Runtime to use the Catalog Browser": a Microsoft
   component outside Autodesk's image, which ODIS does not install either.
-  Future work, not an installer gap.
+  **Checked on Windows (maintainer, 2026-11-16):** in the reference VM
+  (Inventor 2027.2 from the same image, signed in, an online snapshot made
+  only for this check), Assemble > Place > Electrical Catalog Browser shows
+  the same message ("... Download OfficeSetup.exe from Microsoft Download
+  Center"). So the prefix behaves as Windows does: Access Runtime is not in
+  the image, and the user installs it on Windows too. **Not an installer
+  gap.** The Catalog Browser works on AutoCAD Electrical's catalog database
+  (`default_cat.mdb`); the small one Inventor installs is not set as the
+  primary database, so without AutoCAD Electrical it is empty on Windows
+  too. Whether Access Runtime (Click-to-Run) installs under Wine is a
+  separate question, deferred until a user of AutoCAD Electrical with
+  Inventor needs it. The package stays installed by default, as on
+  Windows; `--no-app aceinvaddin` (`install.sh --no-electrical`) leaves it
+  out.
 
 **Dry run with the finished branch (2026-11-16, fresh prefix
 `.wine-inventor2027-review2`):** order `dwgtrueview, inventor, dclibrary,
