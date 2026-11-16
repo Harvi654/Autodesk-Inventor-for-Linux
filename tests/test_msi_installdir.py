@@ -2,6 +2,7 @@
 ODIS passes it (docs/installer-completeness-review.md, "Needed" 4).
 Synthetic manifests, dry run (msiexec is not started)."""
 import os
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,7 +45,9 @@ class MsiInstallDir(unittest.TestCase):
         self.inst.load_setup_properties(str(self.image))
         self.steps = {s["name"]: s for s in self.mod.odis.plan(self.mod.odis.Image(str(self.image)))[0]}
         self.seen = []
-        self.inst.run = lambda argv, logname, timeout=None: self.seen.append(argv) or 0
+        # the command as logged: an msiexec line with a space runs through a batch file
+        self.inst.run = lambda argv, logname, timeout=None, show=None: \
+            self.seen.append(shlex.split(show) if show else argv) or 0
 
     def props(self, name):
         self.seen.clear()

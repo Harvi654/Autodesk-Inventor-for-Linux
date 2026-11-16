@@ -3,6 +3,7 @@ REBOOT=ReallySuppress and ARPSYSTEMCOMPONENT=1 (docs/installer-
 completeness-review.md, "Needed" 8); a value the manifest gives wins.
 Patches (MSP) are left as they were. Synthetic step dicts, dry run."""
 import os
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -27,7 +28,9 @@ class MsiStandardProperties(unittest.TestCase):
                         else os.environ.__setitem__("INV_LOGDIR", saved))
         self.mod, self.inst = fx.installer(t / "image", t / "prefix", t / "logs")
         self.seen = []
-        self.inst.run = lambda argv, logname, timeout=None: self.seen.append(argv) or 0
+        # the command as logged: an msiexec line with a space runs through a batch file
+        self.inst.run = lambda argv, logname, timeout=None, show=None: \
+            self.seen.append(shlex.split(show) if show else argv) or 0
 
     def test_standard_properties(self):
         self.inst.do_msi(msi(), "x.log")

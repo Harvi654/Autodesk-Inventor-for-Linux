@@ -45,6 +45,16 @@ import urllib.parse
 import zipfile
 
 
+def cmd_arg(a):
+    """One msiexec argument for a batch file line: a property value with a
+    space as NAME="value" (as ODIS passes it), another argument with a space
+    in quotes; % doubled for cmd."""
+    if (" " in a or "\t" in a) and '"' not in a:
+        k, eq, v = a.partition("=")
+        a = '%s="%s"' % (k, v) if eq and re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", k) else '"%s"' % a
+    return a.replace("%", "%%")
+
+
 def win_split(cmdline):
     """Split a Windows command line from a manifest into arguments.
     Spaces separate arguments outside double quotes, the quotes are removed and
@@ -292,8 +302,10 @@ class Installer:
         with open(os.path.join(self.logdir, "install.log"), "a") as f:
             f.write(msg + "\n")
 
-    def run(self, argv, logname, timeout=None):
-        self.log("      $ " + " ".join(shlex.quote(x) for x in argv))
+    def run(self, argv, logname, timeout=None, show=None):
+        """show: the command as logged, when argv only carries it (an
+        msiexec line run through a batch file)"""
+        self.log("      $ " + (show or " ".join(shlex.quote(x) for x in argv)))
         if self.a.dry_run:
             return 0
         with open(os.path.join(self.logdir, logname), "ab") as out:
@@ -311,7 +323,7 @@ class Installer:
                 proc.kill()
                 proc.wait()
                 rc = -1
-        hint = MSI_RC.get(rc, "") if argv[1:2] == ["msiexec"] else ""
+        hint = MSI_RC.get(rc, "") if argv[1:2] == ["msiexec"] or (show or "").startswith("wine msiexec") else ""
         self.log("        exit code %d%s after %.1fs" % (rc, hint, time.time() - t0))
         return rc
 
@@ -467,8 +479,34 @@ class Installer:
                          "its own default folder" % (", ".join("%%%s%%" % v for v in unknown), s["installLocation"]))
             else:
                 argv.append("INSTALLDIR=" + loc)
-        rc = self.run(argv, logname)
+        rc = self.run_msiexec(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
+
+    # Wine's msiexec cannot take a property value with a space as an
+    # argument: Wine puts the whole argument in quotes
+    # ("INSTALLDIR=C:\Program Files\..."), msiexec keeps them, and the
+    # Windows Installer then reads a property named "INSTALLDIR with
+    # unbalanced quotes and returns 1639 (exit code 103) - read in Wine
+    # 11.20's ntdll build_command_line, msiexec chomp/build_properties and
+    # msi_parse_command_line. ODIS passes INSTALLDIR="C:\Program Files\...\",
+    # which they parse correctly. Such a command line therefore goes into a
+    # batch file, which cmd hands to msiexec unchanged; cmd waits for it and
+    # returns its exit code. Everything else runs as before.
+    def run_msiexec(self, argv, logname):
+        if not any(" " in a or "\t" in a for a in argv[2:]):
+            return self.run(argv, logname)
+        line = "msiexec " + " ".join(cmd_arg(a) for a in argv[2:])
+        show = " ".join(shlex.quote(x) for x in argv)
+        if not line.isascii():
+            self.log("      WARN non-ASCII characters - msiexec run directly, values with spaces may fail")
+            return self.run(argv, logname)
+        bat = r"C:\odis-logs\%s.msi.cmd" % os.path.splitext(logname)[0]
+        self.log("      (a value with a space: through %s - %s)" % (bat, line.replace("%%", "%")))
+        if not self.a.dry_run:
+            os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+            with open(self.unix(bat), "w", encoding="ascii", newline="\r\n") as f:
+                f.write("@echo off\n%s\nexit /b %%errorlevel%%\n" % line)
+        return self.run(["wine", "cmd", "/c", bat], logname, show=show)
 
     def warn_unknown_params(self, s, params):
         """A package's install parameters cannot be left out; say which

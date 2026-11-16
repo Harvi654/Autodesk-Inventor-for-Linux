@@ -317,4 +317,50 @@ the Windows capture (`~/vm-inventor/cap`) and the Inventor smoke test
 (start, part, assembly, drawing, save/reopen, restart, Import CAD, 3D
 PDF). Filtered output only. Results go into the table above and here.
 
-Results: pending.
+Results:
+
+**Run 1 (2026-11-16, `/mnt/nvme/.wine-inventor2027-review`, winum-11.20-2):**
+stopped at step 22/32, `InvPrivate.msi`: exit code 103 after 0.2 s, i.e.
+1639 (`ERROR_INVALID_COMMAND_LINE`) - the new
+`INSTALLDIR=C:\Program Files\Autodesk\Inventor 2027\`. Cause, read in
+Wine 11.20's source: Wine builds the Windows command line from the
+arguments and puts an argument with a space in quotes as a whole
+(`"INSTALLDIR=C:\Program Files\..."`, ntdll `build_command_line`);
+msiexec splits it keeping the quotes (`chomp`) and quotes the value once
+more (`build_properties`), so the Windows Installer reads a property
+named `"INSTALLDIR` with unbalanced quotes (`msi_parse_command_line`).
+Every property value with a space fails this way - also Revit's earlier
+"values with a space" failure. ODIS passes `INSTALLDIR="C:\Program
+Files\...\"`, which these functions parse correctly (checked with a
+local port of the three functions, not committed). Fix: an msiexec command
+line with a space goes into `C:\odis-logs\NN-<package>.msi.cmd` and runs
+through `cmd /c` (cmd hands the line to msiexec unchanged, waits for it in
+a batch file and returns its exit code); commands without a space run as
+before. A Wine bug report is possible (msiexec should not keep the quotes
+around a whole argument); not filed yet.
+
+What run 1 showed before that:
+- Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
+  `inventor.ui` left out.
+- `%INV_INSTALL_PATH%` = `C:\Program Files\Autodesk\Inventor 2027\`;
+  its RegistrySearch was understood
+  (`HKLM\SOFTWARE\Autodesk\Inventor\RegistryVersion31.0 ->
+  InstallLocation`, not in a fresh prefix). Also from `setup.xml`:
+  `INSTALLED_PRD_VER` (empty), `DC_GOST=0` (now passed to
+  `InvPrivate.msi`, as a manifest property that can be filled in),
+  `STANDALONE_LP=0`.
+- InvCore's NGEN action now runs with real paths:
+  `M:\x64\InvCore\InvAcNGEN.exe install 31.0.19200.0
+  M:\x64\InvCore\inventor.acngen "C:\...\Inventor 2027\Bin"`, exit
+  code 0 after 0.7 s (whether it made native images: compare, NGenService).
+- `%CONTENT_PATH%`: no setup UI settings file named it - ODIS's default
+  was used. To check: where the setting is in the image.
+- `adsk-hive-host.msi` got no `INSTALLDIR`: its manifest has no
+  `installLocation`, yet Windows passed `C:\Program Files\Autodesk`. Where
+  ODIS takes it from is open.
+- ADIX files outside VFS: `AppxMetadata/CodeIntegrity.cat` and
+  `Assets/*.png` (MSIX package metadata and logos), `SharedComponents.json`
+  (REX Inventor, Geospatial Coordinate Systems, RealDWG, InvCore), and in
+  the three Material Library packages `Icon.png` and `Registry.reg` next to
+  the `Registry.dat` that is imported. Whether `Registry.reg` holds more
+  than `Registry.dat`: open.

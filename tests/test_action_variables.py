@@ -3,6 +3,7 @@ a warning instead of passing the text on (docs/installer-completeness-
 review.md, "Needed" 6); what is left out of MSI properties, install
 parameters and action types is listed too. Synthetic step dicts, dry run."""
 import os
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -28,7 +29,9 @@ class ActionVariables(unittest.TestCase):
                         else os.environ.__setitem__("INV_LOGDIR", saved))
         self.mod, self.inst = fx.installer(t / "image", t / "prefix", t / "logs")
         self.seen = []
-        self.inst.run = lambda argv, logname, timeout=None: self.seen.append(argv) or 0
+        # the command as logged: an msiexec line with a space runs through a batch file
+        self.inst.run = lambda argv, logname, timeout=None, show=None: \
+            self.seen.append(shlex.split(show) if show else argv) or 0
 
     def log(self):
         return Path(self.inst.logdir, "install.log").read_text()
