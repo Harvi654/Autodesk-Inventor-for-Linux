@@ -471,6 +471,15 @@ calls, errors), and whether the target folder is created at all.
   as `tar.exe` - as a pinned, SHA-256-checked download put into the
   prefix before the packages (also in `nix/inventor.nix`). Whether
   libarchive publishes such a build: not checked yet.
+  Decision (maintainer, 2026-11-16): now the Electrical Catalog Browser is
+  off by default (`DEFAULT_OFF` in `install-from-image.py`;
+  `--include-app aceinvaddin`, `install.sh --with-electrical`, the GUI
+  switch off; note in the README). The fix: libarchive's own Windows build
+  of bsdtar as `C:\windows\system32\tar.exe` - pinned and SHA-256
+  checked, a prefix setup step before the packages, a migration for
+  existing prefixes, `fetchurl` in `nix/inventor.nix` (@krokosik to be
+  told) - and then the Catalog Browser back on by default. A `tar.exe` in
+  winum (option 2) only if libarchive has no usable Windows build.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;

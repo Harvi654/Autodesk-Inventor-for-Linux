@@ -25,7 +25,9 @@
 #                      from the download names, or INV_YEAR=2027)
 #   --no-content       leave out the Content Center libraries (~12.7 GB)
 #   --no-trueview      leave out DWG TrueView (installed with Inventor on Windows)
-#   --no-electrical    leave out the Electrical Catalog Browser (likewise)
+#   --no-electrical    leave out the Electrical Catalog Browser (off by default
+#                      for now: it needs Windows' tar.exe, which Wine lacks)
+#   --with-electrical  install the Electrical Catalog Browser anyway (fails today)
 #   --skip-packages    don't install system packages (already there)
 #   --skip-wine        don't install/check Wine
 #   --no-desktop       no app-launcher entry (e.g. for a test prefix)
@@ -46,10 +48,11 @@ while [ $# -gt 0 ]; do
         --no-content) APP_OPTS+=(--no-content) ;;
         --no-trueview) APP_OPTS+=(--no-app dwgtrueview) ;;
         --no-electrical) APP_OPTS+=(--no-app aceinvaddin) ;;
+        --with-electrical) APP_OPTS+=(--include-app aceinvaddin) ;;
         --skip-packages) SKIP_PKG=1 ;;
         --skip-wine) SKIP_WINE=1 ;;
         --no-desktop) NO_DESKTOP=1 ;;
-        -h|--help) sed -n '2,33p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) die "unknown option: $1 (see --help)" ;;
         *) ARGS+=("$1") ;;
     esac

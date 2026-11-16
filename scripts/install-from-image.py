@@ -22,7 +22,8 @@ Usage:
   --redo    run steps again even if they finished before
   --dry-run print what would run, and everything left out, with the reason
   --no-app  leave out an application of the image (default: all of them, as
-            ODIS - inventor, dclibrary, dwgtrueview, aceinvaddin)
+            ODIS - inventor, dclibrary, dwgtrueview; aceinvaddin is off for
+            now, --include-app aceinvaddin installs it)
 
 Finished steps are remembered in PREFIX/.odis-install-state.json, so after a
 failure you can fix things and simply rerun - it continues where it stopped.
@@ -855,6 +856,14 @@ class Installer:
     # app.<name>.ui.xml (inventor.ui) describes the setup's UI, not an
     # application.
     APP_ORDER = ("inventor", "dclibrary")
+    # Applications ODIS installs that stay out by default for now, with the
+    # reason; --include-app NAME (install.sh --with-electrical) installs one.
+    # aceinvaddin: its content package AceInvAddIn-ca.msi unzips its library
+    # with Windows' System32\tar.exe, which Wine lacks - the action fails
+    # and the MSI rolls back (docs/installer-completeness-review.md, run 2).
+    # Back on by default once the prefix gets libarchive's bsdtar as tar.exe
+    # (maintainer's decision, 2026-11-16).
+    DEFAULT_OFF = {"aceinvaddin": "needs Windows' tar.exe, which Wine lacks (AceInvAddIn-ca.msi fails)"}
     APP_TITLES = {"dclibrary": "Content Center libraries", "dwgtrueview": "DWG TrueView",
                   "aceinvaddin": "Electrical Catalog Browser"}
 
@@ -866,6 +875,7 @@ class Installer:
         if self.a.app:
             return list(self.a.app), [(n, "not asked for (--app)") for n in names if n not in self.a.app]
         no = {n.lower() for n in (self.a.no_app or [])}
+        include = {n.lower() for n in (getattr(self.a, "include_app", None) or [])}
         if self.a.no_content:
             no.add("dclibrary")
         for n in sorted(no - {x.lower() for x in names}):
@@ -878,6 +888,9 @@ class Installer:
             elif n.lower() in no:
                 left.append((n, "left out (%s)" % ("--no-content" if n == "dclibrary" and self.a.no_content
                                                    else "--no-app " + n)))
+            elif n.lower() in self.DEFAULT_OFF and n.lower() not in include:
+                left.append((n, "off by default: %s - install it with --include-app %s"
+                             % (self.DEFAULT_OFF[n.lower()], n)))
             else:
                 apps.append(n)
         return apps, left
@@ -1423,6 +1436,9 @@ def main():
     ap.add_argument("--no-app", action="append", default=[], metavar="APP",
                     help="leave out this application (dclibrary = Content Center libraries, "
                          "dwgtrueview = DWG TrueView, aceinvaddin = Electrical Catalog Browser)")
+    ap.add_argument("--include-app", action="append", default=[], metavar="APP",
+                    help="also install an application that is off by default for now "
+                         "(aceinvaddin = Electrical Catalog Browser: needs tar.exe, which Wine lacks)")
     ap.add_argument("--no-content", action="store_true",
                     help="leave out the Content Center libraries (~12.7 GB); same as --no-app dclibrary")
     ap.add_argument("--no-dotnet48", action="store_true",

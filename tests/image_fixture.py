@@ -73,7 +73,7 @@ def installer(image, prefix, logdir, **opts):
     mod = load_installer()
     os.environ["INV_LOGDIR"] = str(logdir)
     a = argparse.Namespace(image=str(image), prefix=str(prefix), lang="en-US", dry_run=True, redo=False,
-                           start=1, only=None, app=None, no_app=[], no_content=False, extra=[],
+                           start=1, only=None, app=None, no_app=[], include_app=[], no_content=False, extra=[],
                            no_dotnet48=True, prepared_prefix=False, preinstalled_webview2=False)
     for k, v in opts.items():
         setattr(a, k, v)
