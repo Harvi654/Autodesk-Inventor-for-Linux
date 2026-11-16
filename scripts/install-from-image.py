@@ -424,7 +424,8 @@ class Installer:
     # --- package types ------------------------------------------------------
     def do_msi(self, s, logname, media=None):
         winlog = r"C:\odis-logs\%s.msi.log" % os.path.splitext(logname)[0]
-        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        if not self.a.dry_run:
+            os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
         extra = {"media_root": media} if media else None
         argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
                 if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
@@ -489,7 +490,8 @@ class Installer:
     def do_msp(self, s, logname, media=None):
         """Update patch for an installed product (msiexec finds the target)."""
         winlog = r"C:\odis-logs\%s.msp.log" % os.path.splitext(logname)[0]
-        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        if not self.a.dry_run:
+            os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
         patch = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         # Windows Installer reinstalls the features a patch touches on its
         # own; Wine's MsiApplyPatch only adds PATCH=... - without REINSTALL

@@ -99,6 +99,9 @@ class DefaultApps(unittest.TestCase):
         for f in ("InvCore.msi", "DCLibrary64.msi", "ace.msi", "dwgviewr.msi"):
             self.assertIn(f, log)
         self.assertNotIn("ndp48.exe", log)
+        # a dry run leaves the prefix alone: install.sh refuses a prefix
+        # with drive_c that this installer did not finish setting up
+        self.assertEqual(list(self.prefix.iterdir()), [])
 
     def test_install_sh_options(self):
         env = dict(os.environ, USER="test", HOME=self.tmp.name, XDG_CONFIG_HOME=self.tmp.name)
