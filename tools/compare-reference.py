@@ -87,10 +87,20 @@ def win_key_to_wine(k):
     lk = norm_key(k)
     for pre, hive, wpre in WIN_ROOTS:
         if lk.startswith(pre):
-            return hive, wpre + lk[len(pre):]
+            return wow_classes(hive, wpre + lk[len(pre):])
         if lk + "\\" == pre:
-            return hive, wpre.rstrip("\\")
+            return wow_classes(hive, wpre.rstrip("\\"))
     return None, lk
+
+
+def wow_classes(hive, key):
+    """HKLM\\Software\\WOW6432Node\\Classes is Software\\Classes\\Wow6432Node
+    (one key, two names); a Windows export lists it under the first, Wine's
+    system.reg under the second."""
+    pre = "software\\wow6432node\\classes"
+    if hive == "hklm" and (key == pre or key.startswith(pre + "\\")):
+        return hive, "software\\classes\\wow6432node" + key[len(pre):]
+    return hive, key
 
 
 def parse_windows_reg(path):
@@ -536,6 +546,11 @@ def main():
                 if v not in rb[k]:
                     new_vals.append((k, vals[v]))
     miss_keys = [k for k in new_keys if k not in wine_keys]
+    # written per user on Windows (HKCU\Software\Classes), machine-wide in
+    # the prefix (HKLM\Software\Classes): both are HKEY_CLASSES_ROOT
+    per_user = {k for k in miss_keys if k[0] == "hkcu" and k[1].startswith("software\\classes\\")
+                and ("hklm", k[1]) in wine_keys}
+    miss_keys = [k for k in miss_keys if k not in per_user]
     miss_vals = []
     for k in new_keys:
         if k in wine_keys:
@@ -549,6 +564,10 @@ def main():
             miss_vals.append((k, name))
     r.line("Windows added %d keys and %d values in existing keys; missing in the prefix: "
            "%d keys, %d value names" % (len(new_keys), len(new_vals), len(miss_keys), len(miss_vals)))
+    r.line("keys Windows wrote per user (HKCU\\Software\\Classes) that the prefix has machine-wide "
+           "(HKLM\\Software\\Classes): %d" % len(per_user))
+    r.groups("per user on Windows, machine-wide in the prefix", ["%s:%s" % k for k in sorted(per_user)],
+             lambda s: key_group(s, 4), limit=5)
     r.groups("keys missing in the prefix", ["%s:%s" % k for k in miss_keys],
              lambda s: key_group(s, 5))
     r.groups("value names missing in the prefix (key present or added)",
