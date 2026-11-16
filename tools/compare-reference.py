@@ -16,7 +16,7 @@ The captures themselves stay local; they are never committed.
 
 Usage:
   compare-reference.py CAP_DIR PREFIX --linux-log INSTALL_LOG [...]
-                       [--details OUT.md] [--all-groups]
+                       [--details OUT.md] [--all-groups] [--changed]
   CAP_DIR      folder with before/ and after/ from capture-state.ps1
   PREFIX       the Wine prefix our installer made from the same image
   INSTALL_LOG  logs/odis-install-<date>/install.log of that install (several
@@ -403,6 +403,9 @@ def main():
     ap.add_argument("--linux-log", action="append", default=[])
     ap.add_argument("--details")
     ap.add_argument("--all-groups", action="store_true", help="list every group, not only Autodesk-related")
+    ap.add_argument("--changed", action="store_true",
+                    help="section 3a also covers files Windows had before whose size the install changed "
+                         "(for an update, which mostly replaces files)")
     a = ap.parse_args()
     before, after = os.path.join(a.cap, "before"), os.path.join(a.cap, "after")
     drive_c = os.path.join(a.prefix, "drive_c")
@@ -490,12 +493,14 @@ def main():
     # e.g. a shared file two packages install in different builds: which one
     # Windows kept has to be the one the prefix has
     sizes = read_sizes_tsv(os.path.join(after, "files.tsv"))
+    sizes_before = read_sizes_tsv(os.path.join(before, "files.tsv")) if a.changed else {}
     differ = []
     for k, p in fa.items():
         rel = windows_to_prefix(p, wine_user)
         # only what the install added: Windows' own fonts against Wine's are
         # no install difference
-        if k in fb or rel is None or rel not in pf or k not in sizes or NOISE.search(k):
+        changed = a.changed and k in sizes_before and k in sizes and sizes_before[k] != sizes[k]
+        if (k in fb and not changed) or rel is None or rel not in pf or k not in sizes or NOISE.search(k):
             continue
         # Autodesk's folders, the shared Public Documents and the fonts
         # packages install (AIGDT___.TTF from two packages in two sizes)

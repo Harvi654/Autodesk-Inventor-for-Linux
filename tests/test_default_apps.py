@@ -194,6 +194,28 @@ if __name__ == "__main__":
     unittest.main()
 
 
+class CompareChanged(unittest.TestCase):
+    """--changed: files an update replaced (there before, other size after)."""
+
+    def test_replaced_file(self):
+        with tempfile.TemporaryDirectory(prefix="inventor-compare-changed-") as d:
+            d = Path(d)
+            inv = d / "pfx/drive_c/Program Files/Autodesk/Inventor 2027/Bin"
+            inv.mkdir(parents=True)
+            (d / "cap/after/logs").mkdir(parents=True)
+            (d / "cap/before").mkdir(parents=True)
+            row = "C:\\Program Files\\Autodesk\\Inventor 2027\\Bin\\Inventor.exe\t%d\tx\n"
+            (d / "cap/before/files.tsv").write_text("Path\tLength\tTime\n" + row % 10)
+            (d / "cap/after/files.tsv").write_text("Path\tLength\tTime\n" + row % 20)
+            (inv / "Inventor.exe").write_bytes(b"\0" * 10)          # not updated in the prefix
+            args = ["python3", "-I", str(fx.ROOT / "tools/compare-reference.py"), str(d / "cap"), str(d / "pfx"),
+                    "--details", str(d / "details.md")]
+            subprocess.run(args, capture_output=True, check=True)
+            self.assertNotIn("Inventor.exe (Windows", (d / "details.md").read_text())
+            subprocess.run(args + ["--changed"], capture_output=True, check=True)
+            self.assertIn("Inventor.exe (Windows 20, prefix 10 bytes)", (d / "details.md").read_text())
+
+
 class CompareSizes(unittest.TestCase):
     """tools/compare-reference.py lists files both sides have in a different
     size - how the shared files are checked against Windows."""

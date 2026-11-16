@@ -47,3 +47,15 @@ python3 -I tools/compare-reference.py <cap> /path/.wine-inventor2027-ref \
     --linux-log logs/odis-install-<date>/install.log --details compare-details.md
 venv/bin/python -I tools/pml-who-wrote.py <cap>/install-1.PML --path 'Inventor\.Application'
 ```
+
+## Comparing an update (2027.2)
+
+The same tools, with Windows' "before" taken in the VM snapshot with the
+product installed (`inventor2027-base`) and "after" once the update has
+run; the base install's logs in `%TEMP%` are moved aside after "before",
+so that "after" collects only the update's. On Linux the update goes into
+a reflink copy of a prefix made from the same image, with
+`scripts/install.sh UPDATE.exe --prefix COPY` (the prefix has the
+installer's state, so only the update runs). `compare-reference.py
+--changed` also lists files whose size the update changed but the prefix
+did not (an update mostly replaces files).
