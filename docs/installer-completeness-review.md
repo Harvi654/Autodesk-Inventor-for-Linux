@@ -490,6 +490,51 @@ calls, errors), and whether the target folder is created at all.
   ourselves from the pinned, signature-checked source (MinGW, in public
   CI, the source next to the binary - as winum does with Wine) and
   option 2; the maintainer decides.
+  Older releases (GitHub API, maintainer): official Windows builds
+  `libarchive-vX-win64.zip` with `.asc` exist up to v3.5.3. **Chosen
+  (maintainer, 2026-11-16): `libarchive-v3.5.3-win64.zip`** - official,
+  signed, the same 3.5 line as Windows' bsdtar 3.5.2; no own build.
+  - Pinned in `scripts/lib/bsdtar.env`: SHA-256 of the zip
+    `81c45c31a31a7b49809b3625594c28a1afbcc18faa6ee1d2ab4e4328ba8ef736`,
+    of its `libarchive/bin/bsdtar.exe`
+    `b072373bb24396c83e56093a8842497069b9014e7dc6caec2b595ad1057ff5c2`.
+    The `.asc` is signed by the key with fingerprint
+    `A5A45B12AD92D964B89EEE2DEC560C81CEC2276E` (the same key signs
+    `libarchive-3.5.3.tar.gz`); the maintainer verifies it with
+    libarchive's release key.
+  - Contents of the zip: `bin/bsdtar.exe`, `bsdcpio.exe`, `bsdcat.exe`,
+    `archive.dll`, headers, import/static libraries, man pages - no
+    license file. `bsdtar.exe` is statically linked with libarchive
+    (it does not import `archive.dll`; imports: kernel32, user32,
+    advapi32, bcrypt, `VCRUNTIME140.dll` and the UCRT `api-ms-win-crt-*`,
+    which the image's VC++ 2015-2022 redistributable and Wine provide).
+    So only `bsdtar.exe` goes into the prefix, as `tar.exe` (the name
+    Windows uses) in `system32` and, in a WoW64 prefix, `syswow64` too
+    (Windows 10 has a `tar.exe` in both). libarchive's `COPYING` comes from
+    the signed 3.5.3 source release (`libarchive-3.5.3.tar.gz`, SHA-256
+    `72788e5f58d16febddfa262a5215e05fc9c79f2670f641ac039e6df44330ef51`),
+    kept in `scripts/lib/licenses/libarchive-3.5.3-COPYING` and copied to
+    `<prefix>/.inventor-on-linux/doc/libarchive-3.5.3/COPYING`.
+  - Where: `install-from-image.py` puts it in place before the packages
+    (the Catalog Browser needs it during its install); migration
+    `0006-bsdtar-tar-exe` for existing prefixes; `nix/inventor.nix`
+    fetches the same zip (`bsdtarArchive`) and links it into
+    `DOWNLOAD_DIR`. The Catalog Browser is on by default again.
+  - **Security:** 3.5.x lacks the security fixes of later libarchive
+    releases (3.6 onwards). Accepted (maintainer, 2026-11-16): in the
+    prefix only installers run it, on Autodesk's own archives from the
+    user's image; nothing feeds it untrusted archives. If that ever
+    changes, an own build of a current release (from the signed source)
+    replaces it.
+  - **Nix (@krokosik):** a new fixed-output download in
+    `nix/inventor.nix`, `bsdtarArchive` =
+    `libarchive-v3.5.3-win64.zip` (2.3 MB, sha256 above), linked into
+    `DOWNLOAD_DIR`; `install-from-image.py` writes `tar.exe` into the
+    prefix before the packages. The package also gets DWG TrueView and the
+    Electrical Catalog Browser by default now (`--no-app` leaves one out).
+  - Result: pending (the next install: `AceInvAddIn-ca.msi` exit code 0,
+    20 files in `Public Documents\Autodesk\Inventor Electrical Library
+    2027`, as on Windows).
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
