@@ -63,10 +63,12 @@ fi
 have winetricks && ok "winetricks" || bad "winetricks missing"
 if [ "$INV_DXVK" = system ]; then
     have setup_dxvk && ok "setup_dxvk ($(command -v setup_dxvk))" || bad "INV_DXVK=system but setup_dxvk is missing"
+elif [ "$INV_DXVK" = none ]; then
+    info "DXVK: not installed in the prefix (INV_DXVK=none)"
 else
     info "DXVK: pinned $DXVK_VER from GitHub (sha256 ${DXVK_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/dxvk-$DXVK_VER.tar.gz" ] && echo ', already downloaded')"
 fi
-[ "$INV_VKD3D" = off ] || info "vkd3d-proton: pinned $VKD3D_VER from GitHub (sha256 ${VKD3D_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" ] && echo ', already downloaded')"
+[ "$INV_VKD3D" = off ] || [ "$INV_VKD3D" = none ] || info "vkd3d-proton: pinned $VKD3D_VER from GitHub (sha256 ${VKD3D_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" ] && echo ', already downloaded')"
 info "Isolation: INV_SANDBOX=$INV_SANDBOX, data folder (D:) = ${INV_DATA_DIR:-<none>}"
 
 hdr "Windows partition ($WIN_ROOT)"

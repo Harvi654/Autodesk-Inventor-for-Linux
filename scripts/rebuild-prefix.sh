@@ -82,7 +82,7 @@ ok "prefix created"
 step "Windows 10 mode, X11 (XWayland) graphics driver..."
 cfg_wine_mode
 
-step "Installing DXVK ($([ "$INV_DXVK" = system ] && echo "system setup_dxvk" || echo "$DXVK_VER, pinned"))..."
+step "Installing DXVK ($(dxvk_label))..."
 install_dxvk
 
 step "Starting WebView2 install in the background..."
