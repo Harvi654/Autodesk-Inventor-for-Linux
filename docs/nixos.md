@@ -300,6 +300,34 @@ Changes to the launcher alone (environment, DLL overrides, URL handling) no
 longer rebuild the installed layers (since nix-overlayfs `543c070`; moving the
 input past it rebuilt them once).
 
+DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) are not part of the
+installation either: the launcher mounts them as layers above it, so a new
+version rebuilds only the launcher. The defaults are DXVK 2.7.1 and winum's
+vkd3d-proton 3.0.1-winum-1 (with the GPU ray tracing fixes), both pinned by
+SHA-256. Their `native` overrides live in the layers' registry rather than in
+`WINEDLLOVERRIDES`, so the prefix setup's exception for `msedgewebview2.exe`
+(wined3d and Wine's d3d12, which WebView2 needs) still applies. To use other
+builds:
+
+```nix
+inputs.inventor.lib.mkInventor {
+  # ...media, year, version as above...
+  dxvkLayer = modules.dxvkRelease {
+    version = "2.7.2";
+    src = pkgs.fetchurl { url = ".../dxvk-2.7.2.tar.gz"; hash = "sha256-..."; };
+  };
+  vkd3dLayer = modules.vkd3d-proton.override {
+    archiveVersion = "3.0.2";
+    archive = pkgs.fetchurl { url = ".../vkd3d-proton-3.0.2.tar.zst"; hash = "sha256-..."; };
+  };
+}
+```
+
+(`modules` is nix-overlayfs's module scope for the flake's install Wine.) The
+script-based installer keeps installing both into the prefix as before; the
+Nix installation runs the same setup with `INV_DXVK=none` and
+`INV_VKD3D=none`. Moving to this layout rebuilds the installation once.
+
 The launcher prepares each release's writable public `Macros` directory and
 per-user `Addins` directory before startup, preserving existing files.
 
@@ -325,7 +353,8 @@ Validated on 2026-10-20 with the library pinned to
 - Launcher: `/nix/store/kbrqwdmy6g8qmzd82s82x2fs137w6pgv-inventor-overlay-2026.4/bin/inventor`.
 - `Inventor.exe`: PE signature and x86-64 machine type verified; 1,587,032 bytes.
 - Required Noto Sans, Liberation Sans, and DejaVu Sans font files verified.
-- All ten DXVK replacement DLLs retained in the captured layer.
+- All ten DXVK replacement DLLs retained in the captured layer (since
+  2026-11-16 they are in their own layer, see above).
 - NixOS module evaluation confirms graphics, FUSE, and callback defaults.
 - Relative `Current` links resolve to installed licensing and Identity Manager versions.
 - Library tests: portable reparse metadata, installer failure propagation, direct
