@@ -60,9 +60,9 @@ Mapping and 3D PDF Publish OK). Details: `docs/arch-hyprland.md`, "Prefix
 migrations".
 
 Steps 0005-0008 on a copy of the maintainer's everyday 2027 prefix
-(2026-11-16): 0005 "already so" (the keys were there - untested on a
-prefix without them), 0006-0008 applied, no new `wine-*.desktop`; Inventor
-starts. After testing on a copy, the everyday prefix may need a new
+(2026-11-16): 0005 "already so" (the keys were there), 0006-0008 applied,
+no new `wine-*.desktop`; Inventor starts. 0005 then on the same copy with
+both registration keys deleted: keys back, no new `wine-*.desktop`. After testing on a copy, the everyday prefix may need a new
 Autodesk sign-in: signing in in one copy invalidates the session of the
 others ("Licensing Error" -> "Change license type"). Details:
 `docs/installer-completeness-review.md`, "Migrations on a copy of the

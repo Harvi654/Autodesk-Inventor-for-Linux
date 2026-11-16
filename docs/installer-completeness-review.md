@@ -271,7 +271,7 @@ yet checked on a real install** - the results of the maintainer's run
 
 | Point | What the installer does now | Existing prefixes | Check | Result |
 |---|---|---|---|---|
-| 1 Registration | `Inventor.exe /install 0` once after the product's packages and the .NET 4.8 step, winemenubuilder off for everything it runs, then `wineserver -k`/`-w`; checks `Inventor.Application` and `Inventor.PartDocument` in `user.reg`; not finished = warning, tried again on the next run | migration `0005-inventor-registration` (a registration that does not finish warns, does not stop the launcher; again with `migrate-prefix.sh --run 0005`) | `user.reg` has both keys; no new `~/.local/share/applications/wine-*.desktop`; install.log `registered:` | run 4: both keys, no menu entries; L4 2026-11-16; migration 0005 still untested on a prefix without the keys (the run-3 prefix and the copy of the everyday prefix had them: "already so") |
+| 1 Registration | `Inventor.exe /install 0` once after the product's packages and the .NET 4.8 step, winemenubuilder off for everything it runs, then `wineserver -k`/`-w`; checks `Inventor.Application` and `Inventor.PartDocument` in `user.reg`; not finished = warning, tried again on the next run | migration `0005-inventor-registration` (a registration that does not finish warns, does not stop the launcher; again with `migrate-prefix.sh --run 0005`) | `user.reg` has both keys; no new `~/.local/share/applications/wine-*.desktop`; install.log `registered:` | run 4: both keys, no menu entries; L4 2026-11-16; migration 0005 tested on a copy of the everyday prefix with both keys removed: keys back, no menu entries (2026-11-16) |
 | 2 `setup.xml` properties | `<Properties>` become variables (`INV_INSTALL_PATH`); a `RegistrySearch` whose key and value exist in the prefix wins; logged as `var    %X% = ... (setup.xml; ...)` | none needed for `INSTALLDIR` (files in place); the InvAcNGEN action (.NET native images) did not run in them - open, below | install.log `var    %INV_INSTALL_PATH% = C:\Program Files\Autodesk\Inventor 2027\`; InvAcNGEN runs with `...\Inventor 2027\Bin`; compare: `NGenService` keys | run 4: `INV_INSTALL_PATH` from `setup.xml`, its RegistrySearch read; InvAcNGEN runs with real paths (native images: open) |
 | 3 `CONTENT_PATH` | from `SetupRes/locale/<lang>/<app>.xml` (`defaultVal`), else ODIS's default `%PROGRAMDATA%\Autodesk` | none (files in place) | install.log `var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, ...)` | run 4: from `setup.xml` (`<Setting>`); `DCLibrary64.msi` got `INSTALLDIR=C:\ProgramData\Autodesk\Inventor 2027` as on Windows |
 | 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | run 4: the same `INSTALLDIR` as Windows for every MSI (MSIs without a location: `%INSTALL_DEST%`); values with a space through a batch file (Wine msiexec quoting) |
@@ -339,7 +339,7 @@ Open, to be decided with the results:
 The maintainer's everyday 2027 prefix, copied to
 `/mnt/nvme/.wine-inventor2027-mig`, started with the launcher from
 `installer-review`: 0005 "already so" (that prefix had the registration
-keys already - **0005 is still untested on a prefix without them**), 0006
+keys already; tested afterwards without them, below), 0006
 applied (`tar.exe`, 882 688 bytes), 0007 and 0008 applied (3 + 1 registry
 values now `C:\users\Public\...`), no new `wine-*.desktop`. Inventor then
 showed "Licensing Error" - not the branch: the everyday prefix showed the
@@ -365,9 +365,19 @@ the Wine version the prefix was last set up for
 system Wine 11.20. Probable cause on that prefix: a `runtime=` recorded
 without the winum build (while `config.env` had `INV_WINE=system`, which
 was deleted for this review) or for an older winum build; to be confirmed
-from its state file. The launcher now says which of the two differs and
+from its state file - checked afterwards: the state now records
+`runtime=wine-11.20 winum-11.20-2-x86_64`, the same as the Wine in use, so
+the update that ran then overwrote the old value and the cause cannot be
+read any more. The launcher now says which of the two differs and
 what it recorded (`prefix_update_reason` in `common.sh`); the update itself
 is unchanged and records the current runtime, so it happens once.
+
+**0005 on a prefix without the keys (2026-11-16):** on the copy
+`.wine-inventor2027-mig`, `HKCU\Software\Classes\Inventor.Application`
+and `...\Inventor.PartDocument` deleted with `wine reg delete` (0 in
+`user.reg`), then `migrate-prefix.sh --run 0005`: "registered:
+Inventor.Application, Inventor.PartDocument, ...", both keys back in
+`user.reg`, no new `wine-*.desktop`. Passed.
 
 ### Wine bug: msiexec and a property value with a space
 
