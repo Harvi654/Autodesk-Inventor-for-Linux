@@ -229,6 +229,12 @@ SHOW_VALUE = re.compile(r"^(INSTALLDIR|TARGETDIR|APPDIR|INSTALLLOCATION|TRANSFOR
                         r"ALLUSERS|MSIFASTINSTALL|.*DIR|.*PATH|.*LOCATION)$", re.I)
 
 
+# Properties the Windows Installer client adds itself when it hands an
+# install to the Windows Installer service; ODIS does not pass them, and
+# Wine's msiexec (no separate service) has no counterpart.
+CLIENT_PROPS = {"CURRENTDIRECTORY", "CLIENTUILEVEL", "MSICLIENTUSESEXTERNALUI", "CLIENTPROCESSID"}
+
+
 def msi_props(cmdline):
     """NAME=value pairs; a value runs to the next ' NAME=' (Windows logs
     print paths with spaces unquoted)."""
@@ -432,9 +438,13 @@ def main():
         if ln_ is None:
             r.line("- `%s`: only on Windows (we never ran it as MSI)" % name)
             continue
-        miss = [p for p in wp if p not in lp]
+        client = [p for p in wp if p in CLIENT_PROPS and p not in lp]
+        miss = [p for p in wp if p not in lp and p not in CLIENT_PROPS]
         extra = [p for p in lp if p not in wp]
         diff = [p for p in wp if p in lp and wp[p] != lp[p] and not SECRET.search(p)]
+        if client:
+            r.line("- `%s`: Windows Installer client's own properties (ignored): %s"
+                   % (name, ", ".join("`%s`" % p for p in client)), detail_only=True)
         if not (miss or extra or diff):
             r.line("- `%s`: same property names (%d)" % (name, len(wp)), detail_only=True)
             continue
@@ -466,14 +476,16 @@ def main():
            "%d of them are not in the prefix" % (len(added), noise, len(missing)))
     r.groups("missing in the prefix", missing, lambda p: file_group(p, group_depth(p)))
 
-    r.h("3a. Autodesk files and fonts on both sides with a different size (another build)")
+    r.h("3a. Files the install added, on both sides with a different size (another build)")
     # e.g. a shared file two packages install in different builds: which one
     # Windows kept has to be the one the prefix has
     sizes = read_sizes_tsv(os.path.join(after, "files.tsv"))
     differ = []
     for k, p in fa.items():
         rel = windows_to_prefix(p, wine_user)
-        if rel is None or rel not in pf or k not in sizes or NOISE.search(k):
+        # only what the install added: Windows' own fonts against Wine's are
+        # no install difference
+        if k in fb or rel is None or rel not in pf or k not in sizes or NOISE.search(k):
             continue
         # Autodesk's folders, the shared Public Documents and the fonts
         # packages install (AIGDT___.TTF from two packages in two sizes)
