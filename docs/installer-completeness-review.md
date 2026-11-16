@@ -525,7 +525,19 @@ capture):
   seen. A file the prefix setup moved aside (`Addins.disabled`,
   `Addins.disabled/libs`, `*.disabled`; admeta-check's rules) is moved from
   there when its original path is gone - else old turned-off add-ins stayed
-  behind; a file that cannot be moved is a warning and the rest go on. Prefixes from before:
+  behind; a file that cannot be moved is a warning and the rest go on.
+  Dry runs after that change (maintainer, 2026-11-16): on a copy of the
+  cleaned update prefix, `install-from-image.py BASE --dry-run` and
+  `UPDATE --dry-run` would move nothing (the lists already at the update's
+  versions). On a copy of the never updated `-review2`, after a normal run
+  of the base image that only recorded the 17 packages' lists: the update
+  would move 215 files of Inventor Core 31.0.19200.0 to
+  `removed-by-update/InvCore.MSIX-31.0.19200.0` and 2 of its en-US
+  language pack to `removed-by-update/InvCoreLP.en-US.MSIX-31.0.19200.0` -
+  the same 217 that the earlier run deleted and that Windows does not have
+  after the update; one of them is the copy in
+  `Addins.disabled\Autodesk.AssistantAddin.Inventor.addin` (a dry run does
+  not restore the turned-off add-ins first, so the moved copy is found). Prefixes from before:
   `install.sh BASE UPDATE` records the base packages' lists without
   unpacking, and an already installed newer package then removes what it
   dropped; the base image alone on an updated prefix removes nothing.
