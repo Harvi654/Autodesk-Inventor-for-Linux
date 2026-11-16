@@ -584,7 +584,7 @@ class Installer:
 
     def do_adix(self, s, logname, path):
         """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
-        written, regs = 0, []
+        written, regs, dropped = 0, [], []
         def place(name, read):
             nonlocal written
             parts = urllib.parse.unquote(name).replace("\\", "/").split("/")
@@ -596,6 +596,8 @@ class Installer:
                             f.write(read())
                 return
             if parts[0] != "VFS" or len(parts) < 3 or not parts[-1]:
+                if parts[-1]:
+                    dropped.append("/".join(parts))
                 return
             base = VFS.get(parts[1].lower())
             if base is None:
@@ -621,6 +623,12 @@ class Installer:
                     if not info.is_dir():
                         place(info.filename, lambda info=info: z.read(info))
         self.log("      %d files %s" % (written, "to place (dry run)" if self.a.dry_run else "placed"))
+        # Files outside VFS/ that are not the package's metadata (InvCore's
+        # SharedComponents.json): nothing tells where Windows puts them, so
+        # they are listed, not guessed - "Needed" 7
+        if dropped:
+            self.log("      not installed (outside VFS, not package metadata): %s"
+                     % ", ".join(sorted(dropped, key=str.lower)))
         for hive in regs:
             if not self.import_hive(s, os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), logname):
                 return False
