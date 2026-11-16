@@ -271,6 +271,32 @@ class Migrations(unittest.TestCase):
         self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
         self.assertNotIn("done.0006-bsdtar-tar-exe", self.state(p))
 
+    # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
+    def test_public_paths_in_autodesk_strings(self):
+        p = self.prefix(runtime="winum")
+        (p / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n\n"
+            "[Software\\\\Autodesk\\\\Inventor\\\\RegistryVersion31.0\\\\TaskScheduler\\\\Installation Path] 1\n"
+            "\"DBQ\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Task Scheduler\\\\TaskScheduler.db\"\n"
+            "\"Other\"=\"C:\\\\x\"\n\n"
+            "[Software\\\\Microsoft\\\\Windows\\\\HTML Help] 1\n"
+            "\"admapi_31_0.chm\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Local Help\\\\\"\n\n"
+            "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\Shell Folders] 1\n"
+            "\"Common Documents\"=str(2):\"%PUBLIC%\\\\Documents\"\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0007-public-documents-paths"])
+        self.assertIn("2 value(s) now point to", out.stdout)
+        system = (p / "system.reg").read_text()
+        self.assertIn("HKLM\\Software\\Autodesk\\Inventor\\RegistryVersion31.0\\TaskScheduler\\Installation Path"
+                      "|DBQ|C:\\users\\Public\\Documents\\Autodesk\\Inventor 2027\\Task Scheduler\\TaskScheduler.db",
+                      system)
+        self.assertIn("HKLM\\Software\\Microsoft\\Windows\\HTML Help|admapi_31_0.chm|C:\\users\\Public\\", system)
+        # Wine's own REG_EXPAND_SZ value and other values are not touched
+        calls = (p / "calls.log").read_text()
+        self.assertNotIn("Shell Folders", calls)
+        self.assertNotIn("/v Other", calls)
+
     # --- failure and restore ------------------------------------------------
     def test_failing_step_is_restored_and_stops(self):
         # 0003 writes UseEGL, then fails on ClientSideWithRender

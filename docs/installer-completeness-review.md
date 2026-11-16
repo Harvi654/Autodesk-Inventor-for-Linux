@@ -652,9 +652,14 @@ Inventor 2027, Common Files, ProgramData). Four packages map
 `[{Common Documents}]\ -> %PUBLIC%\Documents\`, which was not understood:
 `%PUBLIC%` is now `C:\users\Public`. The same mappings replace folder
 tokens in the packages' registry values, so until now such values got the
-text `%PUBLIC%\Documents\...` - in existing prefixes too; whether any
-value has it and whether it matters (REG_EXPAND_SZ or not): to be
-checked.
+text `%PUBLIC%\Documents\...` - in existing prefixes too. Checked in the
+run-3 prefix (2026-11-16): three plain string (REG_SZ) values, which are
+never expanded - Inventor's Task Scheduler (`TaskScheduler\Installation
+Path`: `DBQ`, the path of its database, and `LogFile`) and
+`HTML Help -> admapi_31_0.chm` (the API help); the other `%PUBLIC%` values
+in `system.reg` are Wine's own shell folders (REG_EXPAND_SZ, fine).
+Migration `0007-public-documents-paths` rewrites such Autodesk values to
+`C:\users\Public\...` in existing prefixes.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
