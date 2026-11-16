@@ -417,10 +417,23 @@ debug channels only, nothing looked at inside the action's DLL):
 test; (b) it fails because the source is on `M:` (the image mapped as a
 drive; Bitrock InstallBuilder installers also fail from `M:`). Check:
 the same MSI once with `WINEDEBUG=+loaddll` (does `zipfldr.dll` load?)
-and once from a copy of its folder on `C:`. Until fixed, the maintainer
-decides between placing the zip's contents where the action would (a
-documented workaround for that one action, checked against the Windows
-file list) and leaving the Electrical Catalog Browser out by default.
+and once from a copy of its folder on `C:`. Decision (maintainer, 2026-11-16): if (b), the
+package is installed from a copy of its folder on `C:` (the action stays
+as it is); if (a), the Electrical Catalog Browser is left out by default
+with a note in the README, and zipfldr becomes a winum candidate with a
+test. The installer never places the zip's contents itself.
+Diagnosis (2026-11-16): (b) ruled out - from a copy on `C:` the action
+fails the same way (Wine: `custom_get_thread_return invalid Return Code
+1359`, i.e. the action returned ERROR_INTERNAL_ERROR; 0 files in the
+library folder); the copy mechanism prepared for (b) was reverted. (a) not
+shown either: with `+loaddll`, `zipfldr.dll` was not loaded (`shell32` and
+`cabinet` were). Next hypothesis (c): the action needs the .NET Framework
+(a managed custom action), which our installer adds only after all
+packages while Windows has it from the start. Check: the DLLs the run
+loaded (`mscoree`, `clr`), the COM classes it asked for (`+ole`), and the
+same MSI again once .NET 4.8 is in the prefix. If (c), the cause is our
+order, not Wine: the decision for (a)/(b) does not apply and is asked
+again.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
