@@ -310,15 +310,29 @@ Open, to be decided with the results:
   `PATH`): decided by the maintainer on 2026-11-16 - not now; after the
   comparison with the 2027.2 update, since UPI2 is mainly what updates
   rely on.
-- **`INSTALLDIR` for MSIs without an `installLocation`**
-  (`adsk-hive-host.msi`: Windows passed `C:\Program Files\Autodesk`,
-  i.e. `%INSTALL_DEST%`): not implemented until the Windows logs show that
-  ODIS does it for every such MSI - `tools/installdir-check.py CAP IMAGE`
-  lists each MSI package with its `installLocation` and Windows'
-  `INSTALLDIR`. Result: pending.
+- **`INSTALLDIR` for MSIs without an `installLocation`**: measured with
+  `tools/installdir-check.py` on the Windows capture (2026-11-16): the
+  image has seven MSI packages; the four with an `installLocation` got it
+  (InvPrivate, InvPrivateLoc, DCLibrary64, Autodesk Genuine Service), the
+  three without one (`adsk-hive-host.msi`, `cer.msi`,
+  `AceInvAddIn-ca.msi`) all got `C:\Program Files\Autodesk` =
+  `%INSTALL_DEST%`. The installer now passes `%INSTALL_DEST%` to every MSI
+  without an `installLocation`.
 - **`Registry.reg` next to `Registry.dat`** (the three Material Library
-  packages): `tools/adix-registry-names.py IMAGE` compares the key and
-  value names of both (never the data). Result: pending.
+  packages), compared with `tools/adix-registry-names.py` (names only,
+  2026-11-16): the same key and the same five value names in both
+  (`HKLM\SOFTWARE\Autodesk\ADSKAssetLibrary\5` resp.
+  `...\ADSKTextureLibraryNew\1\Textures` and `\2\Textures`: `Build`,
+  `LibraryPaths`, `Master`, `ProductLine`, `Release`). The `.reg` writes
+  its keys as `REGISTRY\MACHINE\...`, like the hive. It holds nothing the
+  imported `.dat` does not: nothing to add.
+- **`CONTENT_PATH`**: the image has `<Setting name="CONTENT_PATH"
+  defaultVal="%PROGRAMDATA%\Autodesk" deployment="true" standalone="true">`,
+  but run 2 used ODIS's default (same value) because the first reader did
+  not find it. The reader now looks at every setup UI file and falls back
+  to a plain pattern for a file the XML parser rejects. Where the file is:
+  to be confirmed in the next run's log (`var    %CONTENT_PATH% = ...
+  (setup UI default, <file>)`).
 
 ### Wine bug: msiexec and a property value with a space
 
@@ -386,6 +400,27 @@ through `cmd /c` (cmd hands the line to msiexec unchanged, waits for it in
 a batch file and returns its exit code); commands without a space run as
 before. A Wine bug report is possible (msiexec should not keep the quotes
 around a whole argument); not filed yet.
+
+**Run 2 (2026-11-16, same prefix, resumed at step 22):** `InvPrivate.msi`,
+`InvPrivateLoc.msi` and `DCLibrary64.msi` installed through the batch
+file with `INSTALLDIR` (exit code 0). Stopped at step 31,
+`AceInvAddIn-ca.msi` (Electrical Catalog Browser, the content package):
+1603. Its MSI log: the custom action `AceUnzipZipFiles` reports "Error
+when unzipping" for `M:\x64\AceAddIn-ca\Documents\ADSK\Content\AceInvLib.zip`
+(its CustomActionData: that zip and the target `C:\users\Public\Documents\
+Autodesk\Inventor Electrical Library 2027\`). On Windows the result is 20
+files in `Public Documents\Autodesk\Inventor Electrical Library 2027`.
+Two possible causes, to be told apart from outside (clean room: Wine
+debug channels only, nothing looked at inside the action's DLL):
+(a) the action unzips through the Windows shell (Explorer's zip folder,
+`zipfldr`), which Wine does not implement - then a winum candidate with a
+test; (b) it fails because the source is on `M:` (the image mapped as a
+drive; Bitrock InstallBuilder installers also fail from `M:`). Check:
+the same MSI once with `WINEDEBUG=+loaddll` (does `zipfldr.dll` load?)
+and once from a copy of its folder on `C:`. Until fixed, the maintainer
+decides between placing the zip's contents where the action would (a
+documented workaround for that one action, checked against the Windows
+file list) and leaving the Electrical Catalog Browser out by default.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
