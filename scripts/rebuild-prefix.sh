@@ -201,7 +201,7 @@ cfg_sso_plugin
 step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."
 cfg_disable_addins
 
-step "Removing known crash sources (InteractiveTutorial, CER reporter, bcp47langs)..."
+step "Removing known crash sources (CER reporter, bcp47langs)..."
 cfg_crash_sources
 
 step "Removing wine-mono WPF stub assemblies (README: Key Discovery #1)..."

@@ -174,12 +174,17 @@ class Dotnet48Present(unittest.TestCase):
         self.complete()
         on = self.addin("Anark.Core.addin")
         self.addin("Autodesk.Publisher.Inventor.addin")
+        self.addin("Autodesk.SharedViews.Inventor.addin")
         self.addin("autodesk.translatorfusion.inventor.addin")
+        self.addin("Autodesk.AssistantAddin.Inventor.addin")
         out = self.run_finish()
         self.assertTrue((on / "Anark.Core.addin").exists(), out)
         self.assertTrue((on / "Autodesk.Publisher.Inventor.addin").exists(), out)
-        self.assertFalse((on / "autodesk.translatorfusion.inventor.addin").exists())
-        self.assertIn(".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher) on", out)
+        self.assertTrue((on / "Autodesk.SharedViews.Inventor.addin").exists(), out)
+        # on since 2026-11-16; the Assistant is the one add-in off by default
+        self.assertTrue((on / "autodesk.translatorfusion.inventor.addin").exists(), out)
+        self.assertFalse((on / "Autodesk.AssistantAddin.Inventor.addin").exists())
+        self.assertIn(".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher) and SharedViews on", out)
         self.assertIn("wine: %s/wine" % self.bin, out)
         self.assertIn("prefix: %s" % self.prefix, out)
         self.assertNotIn("Anark", out.split("off by default here:")[1].splitlines()[0])
@@ -230,13 +235,15 @@ class Dotnet48Present(unittest.TestCase):
         self.assertEqual(state, "PRESENT")
         self.assertNotIn("Anark.Core.addin", off)
         self.assertNotIn("Autodesk.Publisher.Inventor.addin", off)
-        self.assertIn("Autodesk.SharedViews.Inventor.addin", off)
+        self.assertNotIn("Autodesk.SharedViews.Inventor.addin", off)
+        self.assertEqual(off, {"Autodesk.AssistantAddin.Inventor.addin"})
 
     def test_missing_without_anything(self):
         state, off = self.run_sh()
         self.assertEqual(state, "MISSING")
         self.assertIn("Anark.Core.addin", off)
         self.assertIn("Autodesk.Publisher.Inventor.addin", off)
+        self.assertIn("Autodesk.SharedViews.Inventor.addin", off)
 
     def test_missing_with_clr_but_builtin_mscoree(self):
         self.clr("Framework64", "Framework")

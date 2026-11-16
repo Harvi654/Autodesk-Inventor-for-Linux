@@ -28,7 +28,10 @@ cd scripts/lib/migrations && sha256sum [0-9][0-9][0-9][0-9]-*.sh > SHA256SUMS
   step is then recorded as done without changing anything;
 - `MIG_BACKUP` (optional) - paths relative to the prefix to save first
   besides the registry files (`system.reg`, `user.reg`, `userdef.reg`,
-  always saved); `none` saves nothing (installation-time steps only);
+  always saved): a word list, or one path per line for paths with a space
+  (`Program Files`, 0010); a path that does not exist yet is recorded and
+  removed again on a restore; `none` saves nothing (installation-time
+  steps only);
 - `MIG_OPTIONAL=1` - run only when asked for by name
   (`migrate-prefix.sh --run NNNN`), never from the launcher or an update.
 
@@ -57,6 +60,7 @@ backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
 | 0007-public-documents-paths | registry: Autodesk's plain string values (REG_SZ) under `Software\Autodesk` and `HTML Help` that hold the text `%PUBLIC%\...` (Task Scheduler `DBQ`, `LogFile`; `admapi_31_0.chm`) -> `C:\users\Public\...`; the installer wrote the `[{Common Documents}]` mapping's target unexpanded before 2026-11-16. Wine's own REG_EXPAND_SZ values stay | 2026-11-16 |
 | 0008-public-documents-paths-wow64 | the same as 0007 for the 32-bit view (`Software\Wow6432Node\Autodesk`, `...\Wow6432Node\Microsoft\Windows\HTML Help`), which 0007 missed: `admapi_31_0.chm` there kept `%PUBLIC%\` on the maintainer's prefix | 2026-11-16 |
 | 0009-vkd3d-proton-winum | `d3d12.dll`, `d3d12core.dll` (system32, syswow64) from winum's `vkd3d-proton-3.0.1-winum-1` (upstream 3.0.1 plus the ray payload fix, the same archive as the NixOS package) in place of upstream's 3.0.1; only with `INV_VKD3D=pinned`, the default `VKD3D_VER` (the one `VKD3D_DLL_SHA256_VER` names) and when the DLLs differ from the pinned ones (`VKD3D_DLL_SHA256`); the old DLLs in the backup; offline put off like 0006 | 2026-11-16 |
+| 0010-default-addins-on | add-ins on as on Windows: Feedback, PerfFeedback, InteractiveTutorial (and `InteractiveTutorial.dll`, `en-US\InteractiveTutorial.resources.dll` from `Addins.disabled\libs` back to `Bin`), translatorfusion, and SharedViews with .NET Framework 4.8 - moved from `Addins.disabled` back to `Bin\Addins` (maintainer's test, 2026-11-16, `notes/disabled-addins.md`); the Assistant stays off; an add-in already in `Bin\Addins` is left as it is; both ends of every move in the backup | 2026-11-16 |
 
 ## Tested
 

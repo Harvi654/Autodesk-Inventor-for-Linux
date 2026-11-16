@@ -1,17 +1,17 @@
 #!/bin/bash
 # List / enable / disable Inventor add-ins in the prefix.
-# rebuild-prefix.sh disables some of them (see notes/disabled-addins.md);
-# this lets you turn them back on one by one to test.
+# finish-install.sh / rebuild-prefix.sh turn off a few (notes/disabled-addins.md:
+# the Assistant; without .NET Framework 4.8 also 3D PDF and SharedViews);
+# this lets you turn them on or off one by one.
 #
 # Usage:
 #   bash scripts/addins.sh list
-#   bash scripts/addins.sh enable  <name-or-part>    e.g. enable InteractiveTutorial
+#   bash scripts/addins.sh enable  <name-or-part>    e.g. enable assistant
 #   bash scripts/addins.sh disable <name-or-part>
-#   bash scripts/addins.sh enable-safe     everything except Anark without .NET 4.8
+#   bash scripts/addins.sh enable-safe     everything, except the add-ins that need
+#                                          .NET Framework 4.8 when it is missing
 #                                          (also restores InteractiveTutorial.dll)
-#                                          WARNING: SharedViews then crashes Inventor
-#                                          (it is loaded by wine-mono) - use reset
-#   bash scripts/addins.sh reset           back to the rebuild-prefix.sh defaults
+#   bash scripts/addins.sh reset           back to the defaults
 
 set -euo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
@@ -55,25 +55,28 @@ case "${1:-list}" in
         f="$(pick "$ADDINS" "${2:?name}")"; mv "$ADDINS/$f" "$OFF/"; ok "disabled $f"
         ;;
     enable-safe)
+        has48=1; dotnet48_present || has48=""
         while IFS= read -r f; do
-            case "$f" in *Anark*) dotnet48_present || { info "kept disabled: $f (needs .NET Framework 4.8)"; continue; } ;; esac
+            if [ -z "$has48" ] && printf '%s\n' "${INV_DOTNET48_ADDINS[@]}" | grep -qixF -- "$f"; then
+                info "kept disabled: $f (needs .NET Framework 4.8)"; continue
+            fi
             mv "$OFF/$f" "$ADDINS/"; ok "enabled $f"
         done < <(find "$OFF" -maxdepth 1 -iname '*.addin' -printf '%f\n' | sort)
         restore_tutorial_libs
         ;;
     reset)
-        while IFS= read -r f; do
+        mapfile -t defoff < <(inv_default_disabled_addins)
+        for f in "${defoff[@]}"; do
             if [ -f "$ADDINS/$f" ]; then mv "$ADDINS/$f" "$OFF/"; ok "disabled $f"; fi
-        done < <(inv_default_disabled_addins)
-        if dotnet48_present; then
-            for f in "${INV_DOTNET48_ADDINS[@]}"; do
-                if [ -f "$OFF/$f" ]; then mv "$OFF/$f" "$ADDINS/"; ok "enabled $f (.NET Framework 4.8)"; fi
-            done
-        fi
-        mkdir -p "$LIBS"
-        for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/en-US/InteractiveTutorial.resources.dll"; do
-            if [ -f "$f" ]; then mv "$f" "$LIBS/"; info "moved away $(basename "$f")"; fi
         done
+        # on by default: the .NET 4.8 add-ins when it is there, and those
+        # that were off by default until 2026-11-16 (with InteractiveTutorial's
+        # libraries); add-ins turned off by hand otherwise stay off
+        for f in "${INV_DOTNET48_ADDINS[@]}" "${INV_ADDINS_ON_SINCE_2026_11_16[@]}"; do
+            printf '%s\n' "${defoff[@]}" | grep -qixF -- "$f" && continue
+            if [ -f "$OFF/$f" ]; then mv "$OFF/$f" "$ADDINS/"; ok "enabled $f"; fi
+        done
+        restore_tutorial_libs
         ;;
     *) die "usage: $0 list | enable NAME | disable NAME | enable-safe | reset" ;;
 esac

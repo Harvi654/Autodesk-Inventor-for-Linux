@@ -417,6 +417,121 @@ class Migrations(unittest.TestCase):
         self.assertIn("0009-vkd3d-proton-winum put off", out.stderr)
         self.assertNotIn("done.0009-vkd3d-proton-winum", self.state(p))
         self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+    # --- 0010: add-ins on as on Windows ---------------------------------------------
+    FORMER_OFF = ["Autodesk.Feedback.Inventor.addin", "Autodesk.PerfFeedbackAddin.Inventor.addin",
+                  "Autodesk.InteractiveTutorial.Inventor.addin", "autodesk.translatorfusion.inventor.addin",
+                  "Autodesk.SharedViews.Inventor.addin", "Autodesk.AssistantAddin.Inventor.addin"]
+
+    def old_addins(self, p, dotnet48=False):
+        """A prefix as finish-install.sh left it before 2026-11-16: six add-ins
+        and InteractiveTutorial's libraries in Addins.disabled."""
+        inv = p / "drive_c/Program Files/Autodesk/Inventor 2027"
+        (inv / "Addins.disabled/libs").mkdir(parents=True)
+        (inv / "Bin/en-US").mkdir(parents=True)
+        for f in self.FORMER_OFF:
+            (inv / "Addins.disabled" / f).write_text("<Addin/>")
+        (inv / "Addins.disabled/libs/InteractiveTutorial.dll").write_bytes(b"MZ tutorial")
+        (inv / "Addins.disabled/libs/InteractiveTutorial.resources.dll").write_bytes(b"MZ tutorial en-US")
+        (inv / "Bin/Addins/iLogic.addin").write_text("<Addin/>")
+        if dotnet48:
+            for fw in ("Framework64", "Framework"):
+                d = p / "drive_c/windows/Microsoft.NET" / fw / "v4.0.30319"
+                d.mkdir(parents=True)
+                (d / "clr.dll").write_bytes(b"MZ")
+            for d in ("system32", "syswow64"):
+                (p / "drive_c/windows" / d / "mscoree.dll").write_bytes(b"MZ mscoree")
+            with open(p / "user.reg", "a") as f:
+                f.write("HKCU\\Software\\Wine\\DllOverrides|mscoree|native\n")
+        return inv
+
+    def on_off(self, inv):
+        on = sorted(f.name for f in (inv / "Bin/Addins").glob("*.addin"))
+        off = sorted(f.name for f in (inv / "Addins.disabled").glob("*.addin"))
+        return on, off
+
+    def test_former_default_addins_on_without_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0010-default-addins-on"])
+        on, off = self.on_off(inv)
+        self.assertEqual(off, ["Autodesk.AssistantAddin.Inventor.addin", "Autodesk.SharedViews.Inventor.addin"])
+        for f in self.FORMER_OFF[:4] + ["iLogic.addin"]:
+            self.assertIn(f, on)
+        self.assertEqual((inv / "Bin/InteractiveTutorial.dll").read_bytes(), b"MZ tutorial")
+        self.assertEqual((inv / "Bin/en-US/InteractiveTutorial.resources.dll").read_bytes(), b"MZ tutorial en-US")
+        self.assertEqual(list((inv / "Addins.disabled/libs").iterdir()), [])
+        # the backup holds both ends of every move (with spaces in the path)
+        man = (p / ".inventor-on-linux/backup/0010-default-addins-on/manifest").read_text()
+        self.assertIn("saved\tdrive_c/Program Files/Autodesk/Inventor 2027/Addins.disabled/"
+                      "Autodesk.Feedback.Inventor.addin", man)
+        self.assertIn("absent\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/Addins/"
+                      "Autodesk.Feedback.Inventor.addin", man)
+        self.assertIn("absent\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/InteractiveTutorial.dll", man)
+        self.assertNotIn("AssistantAddin", man)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+        # put back by hand: as it was
+        out = self.migrate(p, "--restore", "0010-default-addins-on")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(self.on_off(inv)[1], sorted(self.FORMER_OFF))
+        self.assertFalse((inv / "Bin/InteractiveTutorial.dll").exists())
+
+    def test_shared_views_on_with_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p, dotnet48=True)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.AssistantAddin.Inventor.addin"])
+        self.assertIn("Autodesk.SharedViews.Inventor.addin", self.on_off(inv)[0])
+
+    def test_addin_already_on_is_not_overwritten(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p)
+        (inv / "Bin/Addins/Autodesk.Feedback.Inventor.addin").write_text("<Addin new/>")
+        (inv / "Bin/InteractiveTutorial.dll").write_bytes(b"MZ tutorial new")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual((inv / "Bin/Addins/Autodesk.Feedback.Inventor.addin").read_text(), "<Addin new/>")
+        self.assertTrue((inv / "Addins.disabled/Autodesk.Feedback.Inventor.addin").exists())
+        self.assertEqual((inv / "Bin/InteractiveTutorial.dll").read_bytes(), b"MZ tutorial new")
+        self.assertTrue((inv / "Addins.disabled/libs/InteractiveTutorial.dll").exists())
+        self.assertIn("Autodesk.PerfFeedbackAddin.Inventor.addin", self.on_off(inv)[0])
+
+    def test_prefix_without_disabled_addins_has_nothing_to_do(self):
+        p = self.prefix(runtime="winum")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0010-default-addins-on"])
+
+    def addins(self, p, *args, **extra):
+        return subprocess.run(["bash", "scripts/addins.sh"] + list(args), cwd=str(ROOT),
+                              env=self.env(p, **extra), capture_output=True, text=True)
+
+    def test_addins_sh_disable_enable_reset(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p)
+        self.migrate(p)
+        out = self.addins(p, "disable", "tutorial")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[1])
+        out = self.addins(p, "enable", "assistant")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        # enable-safe without .NET 4.8: SharedViews stays off
+        out = self.addins(p, "enable-safe")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("kept disabled: Autodesk.SharedViews.Inventor.addin (needs .NET Framework 4.8)", out.stdout)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.SharedViews.Inventor.addin"])
+        # reset: the defaults - only the Assistant (and without .NET 4.8
+        # SharedViews) off, the tutorial and its libraries on
+        (inv / "Bin/InteractiveTutorial.dll").rename(inv / "Addins.disabled/libs/InteractiveTutorial.dll")
+        (inv / "Bin/Addins/Autodesk.InteractiveTutorial.Inventor.addin").rename(
+            inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin")
+        out = self.addins(p, "reset")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.AssistantAddin.Inventor.addin",
+                                               "Autodesk.SharedViews.Inventor.addin"])
+        self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
+        self.assertNotIn("SharedViews then crashes", (ROOT / "scripts/addins.sh").read_text())
 
     # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
     def test_public_paths_in_autodesk_strings(self):
