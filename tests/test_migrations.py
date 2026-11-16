@@ -403,6 +403,26 @@ class Migrations(unittest.TestCase):
         (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
         self.assertEqual(differs(old), "DIFFERS")
 
+    def test_launcher_says_why_it_updates(self):
+        # the everyday prefix case: same `wine --version`, another runtime record
+        def reason(prefix):
+            r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
+                                "source scripts/lib/migrations.sh; prefix_update_reason"],
+                               cwd=str(ROOT), env=self.env(prefix), capture_output=True, text=True)
+            return r.stdout.strip()
+        p = self.prefix(runtime="winum")
+        (p / ".inventor-wine-version").write_text("wine-11.20\n")
+        self.assertEqual(reason(p), "")                       # made by this Wine, no record
+        (p / ".inventor-on-linux").mkdir()
+        (p / ".inventor-on-linux/state").write_text("schema=1\nruntime=wine-11.20\n")
+        (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
+        self.assertEqual(reason(p), 'the prefix was last updated for "wine-11.20", now '
+                                    '"wine-11.20 winum-11.20-2-x86_64" (runtime= in .inventor-on-linux/state)')
+        (p / ".inventor-on-linux/state").write_text("runtime=wine-11.20 winum-11.20-2-x86_64\n")
+        self.assertEqual(reason(p), "")
+        (p / ".inventor-wine-version").write_text("wine-10.0\n")
+        self.assertEqual(reason(p), "the prefix was last set up for wine-10.0 (.inventor-wine-version), now wine-11.20")
+
     def notice(self, prefix, year=2027):
         r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
                             "source scripts/lib/migrations.sh; dotnet48_notice_once"],

@@ -130,8 +130,10 @@ dotnet48_notice_once
 # Z: or the $HOME links.
 WINE_NOW="$(wine --version 2>/dev/null)"
 # also a new build of the same Wine version (another winum release)
-if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ] || prefix_runtime_differs; then
-    info "    Wine changed ($WINE_NOW) - updating the prefix (once, up to a minute;
+UPDATE_REASON="$(prefix_update_reason)"
+if [ -n "$UPDATE_REASON" ]; then
+    info "    Wine changed: $UPDATE_REASON"
+    info "    updating the prefix (once, up to a minute;
           a Wine window about updating the configuration shows meanwhile - that is normal)"
     wine_update_prefix "$LOGDIR/inventor-$TS.log"
     wineserver -w

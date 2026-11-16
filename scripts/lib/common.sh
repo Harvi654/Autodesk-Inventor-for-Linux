@@ -437,6 +437,34 @@ prefix_runtime_differs() {
     return 1
 }
 
+# Why the prefix needs `wineboot -u` for the Wine in PATH, as one line for
+# the launcher's message; empty when it does not. The two checks the
+# launcher has always made, named: the Wine version the prefix was last set
+# up for (.inventor-wine-version) and the runtime recorded in its state
+# (prefix_runtime_differs). The version alone ("wine-11.20") is the same
+# for winum-11.20-1, winum-11.20-2 and a system Wine 11.20, so the message
+# used to show no difference at all (maintainer's everyday prefix,
+# 2026-11-16).
+prefix_update_reason() {
+    local now ver rec id
+    now="$(wine --version 2>/dev/null)"
+    ver="$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)"
+    if [ "$ver" != "$now" ]; then
+        echo "the prefix was last set up for ${ver:-an unknown Wine} (.inventor-wine-version), now $now"
+        return 0
+    fi
+    rec="$(sed -n 's/^runtime=//p' "$WINEPREFIX/.inventor-on-linux/state" 2>/dev/null | tail -1)"
+    id="$(wine_runtime_id)"
+    if [ -n "$rec" ]; then
+        [ "$rec" = "$id" ] || echo "the prefix was last updated for \"$rec\", now \"$id\" (runtime= in .inventor-on-linux/state)"
+        return 0
+    fi
+    if prefix_runtime_differs; then
+        echo "Wine's DLLs in the prefix (ntdll.dll) are not the ones of $id"
+    fi
+    return 0
+}
+
 # `wineboot -u` [LOGFILE]. With Microsoft's mscoree.dll in the prefix (.NET
 # Framework installed in place of wine-mono), the update's 64-bit
 # `rundll32 setupapi,InstallHinfSection DefaultInstall ... wine.inf` loads
