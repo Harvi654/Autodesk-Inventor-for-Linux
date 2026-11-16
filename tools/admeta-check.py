@@ -49,6 +49,34 @@ def image_expander(image):
     return inst.expand
 
 
+_PLAN = {}
+
+
+def plan_mappings(image, lang):
+    """{package file name (lower case): InstallPathMappings} from the plan
+    install-from-image.py makes of this image - every application with
+    optional packages for a product image, the bundle for an update - so
+    the manifests are found however the image names and places them (the
+    2027.2 update's are not pkg.*.xml next to the packages)."""
+    if image not in _PLAN:
+        out = {}
+        try:
+            img = odis.Image(image)
+            if odis.image_kind(image) == "update":
+                steps = odis.plan_bundle(img, odis.bundle_manifest(image), lang, include_all=True)[0]
+            else:
+                mdir = os.path.join(image, "manifest")
+                apps = [f[4:-4] for f in os.listdir(mdir) if f.startswith("app.") and f.endswith(".xml")]
+                steps = odis.plan(img, apps, lang, include_all=True)[0]
+            for st in steps:
+                if st.get("file"):
+                    out[os.path.basename(st["file"].replace("\\", "/")).lower()] = st.get("pathMappings") or {}
+        except (OSError, SystemExit, Exception):  # noqa: BLE001 - fall back to the manifest search
+            pass
+        _PLAN[image] = out
+    return _PLAN[image]
+
+
 _MANIFESTS = {}
 
 
@@ -237,7 +265,10 @@ def main():
         files = json.load(open(m, encoding="utf-8-sig")).get("files", [])
         pm = pd = 0
         # where ODIS puts them: the package's InstallPathMappings
-        mapper = odis.PathMapper(package_mappings(m, sib[0], a.image) if sib else {}, expand)
+        maps = plan_mappings(a.image, a.lang).get(os.path.basename(sib[0]).lower()) if sib else None
+        if maps is None and sib:
+            maps = package_mappings(m, sib[0], a.image)
+        mapper = odis.PathMapper(maps or {}, expand)
         for e in files:
             total += 1
             rel = e["path"].replace("\\", "/")

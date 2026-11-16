@@ -90,5 +90,32 @@ class AdmetaCheckMapping(unittest.TestCase):
             self.assertIn("total 1: same 1", out)
 
 
+class AdmetaCheckUpdateImage(unittest.TestCase):
+    def test_manifest_found_through_the_bundle(self):
+        # an update: Bundle setup.xml, the manifest not named pkg.*.xml
+        with tempfile.TemporaryDirectory(prefix="inventor-admeta-bundle-") as d:
+            d = Path(d)
+            img, pfx = d / "image", d / "prefix"
+            fx.write(img, "setup.xml",
+                     '<Bundle xmlns="%s"><Identity><DisplayName>Inventor 2027.2 Update</DisplayName></Identity>'
+                     '<Properties><Property property="INV_INSTALL_PATH" defaultValue="%%INSTALL_DEST%%\\Inventor 2027\\"/>'
+                     '</Properties><Packages><Package name="ACE" path="meta/aceinvaddin_update.xml"/></Packages></Bundle>'
+                     % fx.NS)
+            maps = "".join('<InstallPathMapping source="%s" target="%s"/>' % kv for kv in MAP.items())
+            fx.write(img, "meta/aceinvaddin_update.xml",
+                     '<Package xmlns="%s"><Identity><DisplayName>Ace</DisplayName></Identity><Configuration>'
+                     '<InstallFile type="ADIX" file="x64/ace/AceInvAddIn.adix"/><AdditionalPackageInfo><Customizations>'
+                     '<InstallPathMappings>%s</InstallPathMappings></Customizations></AdditionalPackageInfo>'
+                     '</Configuration></Package>' % (fx.NS, maps))
+            fx.write(img, "x64/ace/AceInvAddIn.adix", adix())
+            fx.write(img, "x64/ace/AceInvAddIn.admeta", json.dumps({"files": [{"path": NAME.replace("/", "\\")}]}))
+            fx.write(pfx, "drive_c/Program Files/Autodesk/Inventor 2027/Bin/InventorElectrical/AceInvAddIn.dll",
+                     b"MZ ace")
+            (pfx / "drive_c/users/user").mkdir(parents=True)
+            out = subprocess.run(["python3", "-I", str(fx.ROOT / "tools/admeta-check.py"), str(img), str(pfx)],
+                                 capture_output=True, text=True, check=True).stdout
+            self.assertIn("total 1: same 1", out)
+
+
 if __name__ == "__main__":
     unittest.main()
