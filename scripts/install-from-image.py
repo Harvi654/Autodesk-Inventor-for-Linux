@@ -365,6 +365,37 @@ class Installer:
             self.log("var    %%%s%% = %s (setup.xml%s)" % (pr["name"], self.expand(value),
                                                           "; " + "; ".join(notes) if notes else ""))
 
+    # Settings of ODIS's setup dialog, one file per application
+    # (SetupRes/locale/<lang>/<app>.xml): CONTENT_PATH, where the Content
+    # Center libraries go (DCLibrary64.msi: installLocation
+    # %CONTENT_PATH%\Inventor 2027) - "Needed" 3. Used with their defaults,
+    # as when nobody changes them in the dialog. A variable no settings file
+    # names gets ODIS's default from here.
+    UI_DEFAULTS = {"CONTENT_PATH": r"%PROGRAMDATA%\Autodesk"}
+
+    def load_setup_ui_settings(self, img, apps):
+        rels = [a for a in apps] + sorted(
+            f[4:-4] for f in os.listdir(os.path.join(img.root, "manifest"))
+            if f.startswith("app.") and f.endswith(".xml") and f[4:-4] not in apps) \
+            if os.path.isdir(os.path.join(img.root, "manifest")) else list(apps)
+        for app in rels:
+            path, found, unnamed = odis.setup_ui_settings(img, app, self.a.lang)
+            if not path:
+                continue
+            src = os.path.relpath(path, img.root)
+            for name, default in found:
+                if name.lower() in self.vars:
+                    continue
+                self.vars[name.lower()] = default
+                self.log("var    %%%s%% = %s (setup UI default, %s)" % (name, self.expand(default), src))
+            if unnamed:
+                self.log("note   %s: settings without a variable name (not used): %s" % (src, ", ".join(unnamed)))
+        for name, default in self.UI_DEFAULTS.items():
+            if name.lower() not in self.vars:
+                self.vars[name.lower()] = default
+                self.log("var    %%%s%% = %s (ODIS default; no setup UI settings file names it)"
+                         % (name, self.expand(default)))
+
     # --- package types ------------------------------------------------------
     def do_msi(self, s, logname, media=None):
         winlog = r"C:\odis-logs\%s.msi.log" % os.path.splitext(logname)[0]
@@ -681,6 +712,8 @@ class Installer:
         done = self.state()
         self.log("image  %s\nprefix %s\nlogs   %s" % (self.image, self.prefix, self.logdir))
         self.load_setup_properties(self.image)
+        if kind != "update":
+            self.load_setup_ui_settings(img, apps)
         for n, why in skipped:
             self.log("skip   %s: %s" % (n, why))
         for i, s in enumerate(steps, 1):

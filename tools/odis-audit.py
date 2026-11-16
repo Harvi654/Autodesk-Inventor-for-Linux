@@ -69,6 +69,17 @@ def main():
         print("- %s = %s%s" % (pr["name"], pr["default"], "".join(
             "; RegistrySearch %s\\%s -> %s" % (x["root"], x["key"], x["name"] or "(default)") if x["root"] and x["key"]
             else "; RegistrySearch not understood (attributes: %s)" % ", ".join(x["attrs"]) for x in pr["searches"])))
+    print("\n## Setup UI settings (SetupRes/locale/<lang>/<app>.xml, defaultVal)")
+    mdir0 = os.path.join(img.root, "manifest")
+    for app in sorted(f[4:-4] for f in os.listdir(mdir0) if f.startswith("app.") and f.endswith(".xml")):
+        path, found, unnamed = odis.setup_ui_settings(img, app, a.lang)
+        if not path:
+            continue
+        print("- %s: %s%s" % (os.path.relpath(path, img.root), ", ".join("%s = %s" % x for x in found) or "-",
+                               "; without a variable name: %s" % ", ".join(unnamed) if unnamed else ""))
+        for name, default in found:
+            if name.lower() not in KNOWN:
+                IMAGE_VARS.setdefault(name.lower(), default)
     print("\n## Applications in the image")
     print("manifest/app.*.xml: %s (our installer plans only 'inventor' unless --app is given)" % ", ".join(apps))
     for app in apps:

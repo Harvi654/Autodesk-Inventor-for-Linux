@@ -340,6 +340,41 @@ def setup_properties(root):
     return out
 
 
+VARNAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+def setup_ui_settings(img, app, lang="en-US"):
+    """Settings of the setup UI for one application,
+    SetupRes/locale/<lang>/<app>.xml (en-US when the language has none):
+    every element with a defaultVal, e.g. CONTENT_PATH = %PROGRAMDATA%\\Autodesk
+    for dclibrary - the folder the user could change in ODIS's dialog.
+    Returns (file or None, [(name, default)], [unnamed element tags]); the
+    name is the first attribute (or the tag) that looks like an ODIS
+    variable (CONTENT_PATH)."""
+    for lg in dict.fromkeys((lang, "en-US")):
+        path = img.find("SetupRes/locale/%s/%s.xml" % (lg, app))
+        if path:
+            break
+    else:
+        return None, [], []
+    try:
+        tree = ET.parse(path).getroot()
+    except ET.ParseError:
+        return path, [], []
+    found, unnamed = [], []
+    for el in tree.iter():
+        default = _attr(el, "defaultVal")
+        if default is None:
+            continue
+        names = [_attr(el, n) for n in ("property", "name", "id", "variable", "var", "key", "propertyName")]
+        name = next((n for n in names + [el.tag.rsplit("}", 1)[-1]] if n and VARNAME.match(n)), None)
+        if name:
+            found.append((name, default))
+        else:
+            unnamed.append(el.tag.rsplit("}", 1)[-1])
+    return path, found, unnamed
+
+
 def find_package(img, display_name, lang="en-US"):
     """A package that no application manifest of the image names - on
     Windows a prerequisite such as the .NET Framework 4.8, which Setup
