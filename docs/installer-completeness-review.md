@@ -501,7 +501,12 @@ calls, errors), and whether the target folder is created at all.
     The `.asc` is signed by the key with fingerprint
     `A5A45B12AD92D964B89EEE2DEC560C81CEC2276E` (the same key signs
     `libarchive-3.5.3.tar.gz`); the maintainer verifies it with
-    libarchive's release key.
+    libarchive's release key. Verified (maintainer, 2026-11-16, key from
+    keyserver.ubuntu.com): both `.asc` "Good signature from Martin Matuska
+    <mm@FreeBSD.org>", made 2022-02-08, primary key fingerprint
+    `A5A4 5B12 AD92 D964 B89E EE2D EC56 0C81 CEC2 276E`; the key has expired
+    since (gpg: "[expired]"), which does not affect signatures it made
+    while valid. SHA-256 of both files as pinned.
   - Contents of the zip: `bin/bsdtar.exe`, `bsdcpio.exe`, `bsdcat.exe`,
     `archive.dll`, headers, import/static libraries, man pages - no
     license file. `bsdtar.exe` is statically linked with libarchive
