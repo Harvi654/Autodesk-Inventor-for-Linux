@@ -18,6 +18,8 @@ names, SIDs and long hex IDs masked.
 | `pml-who-wrote.py` | Linux, `pip install procmon-parser` | Which process (command line, parents) wrote a registry key or file, from a Process Monitor capture. |
 | `pml-process-context.py` | Linux, `procmon-parser` | Which installer files (.msi, .mst, ...) the parent of a process had opened before it started it ("which package's action ran this"). |
 | `admeta-check.py` | Linux | File integrity of a prefix: every file the image's `.admeta` lists for an ADIX package is present and identical (size, SHA-256) to the file inside the package. |
+| `installdir-check.py` | Linux | Per MSI package of the image: its `installLocation` next to the `INSTALLDIR` Windows' command line had (does ODIS pass `%INSTALL_DEST%` to MSIs without an `installLocation`?). |
+| `adix-registry-names.py` | Linux | ADIX packages with a `Registry.reg` next to `Registry.dat`: key and value NAMES of both compared (never the data) - does the `.reg` hold anything the imported `.dat` does not? |
 
 ## How the 2026-11-15 comparison was made
 
