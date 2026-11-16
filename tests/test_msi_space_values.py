@@ -11,6 +11,7 @@ import unittest
 from pathlib import Path
 
 import image_fixture as fx
+from shell_fixture import fixture_path, shell_script
 
 FAKE_WINE = r"""#!/bin/sh
 printf '%s\n' "$*" >> "$WINEPREFIX/calls.log"
@@ -34,13 +35,13 @@ class MsiSpaceValues(unittest.TestCase):
         (self.prefix / "drive_c").mkdir(parents=True)
         b = t / "bin"
         b.mkdir()
-        (b / "wine").write_text(FAKE_WINE)
+        (b / "wine").write_text(shell_script(FAKE_WINE))
         (b / "wine").chmod(0o755)
         saved = os.environ.get("INV_LOGDIR")
         self.addCleanup(lambda: os.environ.pop("INV_LOGDIR", None) if saved is None
                         else os.environ.__setitem__("INV_LOGDIR", saved))
         self.mod, self.inst = fx.installer(t / "image", self.prefix, t / "logs", dry_run=False)
-        self.inst.env["PATH"] = "%s:%s" % (b, os.environ.get("PATH", "/usr/bin:/bin"))
+        self.inst.env["PATH"] = fixture_path(b)
 
     def calls(self):
         p = self.prefix / "calls.log"

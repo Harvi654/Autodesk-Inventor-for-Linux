@@ -325,14 +325,31 @@
               nativeBuildInputs = [
                 pkgs.python3
                 pkgs.bash
+                # Process-liveness tests set sleep's argv[0] to a Windows
+                # image name; multicall coreutils would dispatch on it.
+                (pkgs.coreutils.override { singleBinary = false; })
+                pkgs.findutils
+                pkgs.gnugrep
+                pkgs.gnused
+                pkgs.gawk
+                pkgs.util-linux
+                pkgs.glibc.bin # iconv for the synthetic .NET setup logs
               ];
             }
             ''
               export PYTHONPYCACHEPREFIX="$TMPDIR/pycache"
-              mkdir -p tests
-              cp ${./tests/test_declarative_installer.py} tests/test_declarative_installer.py
+              cp -R ${./tests} tests
               cp -R ${./scripts} scripts
-              python3 tests/test_declarative_installer.py
+              cp -R ${./tools} tools
+              cp -R ${./nix} nix
+              cp -R ${./wine} wine
+              mkdir registry
+              chmod -R u+w tests scripts tools nix wine
+              for script in scripts/*.sh scripts/lib/*.sh; do
+                bash -n "$script"
+              done
+              python3 -m compileall -q scripts tools tests
+              python3 -m unittest discover -s tests
               touch "$out"
             '';
         # Runs the adskidmgr dispatcher with stub launchers.

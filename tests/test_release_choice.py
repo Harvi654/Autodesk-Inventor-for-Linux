@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 import unittest
 
+from shell_fixture import fixture_path
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -37,7 +39,7 @@ class ReleaseChoice(unittest.TestCase):
         (d / "config.env").write_text(text)
 
     def env(self, **extra):
-        e = {"HOME": str(self.home), "USER": "test", "PATH": "/usr/bin:/bin",
+        e = {"HOME": str(self.home), "USER": "test", "PATH": fixture_path(),
              "XDG_CONFIG_HOME": str(self.cfg), "XDG_DATA_HOME": str(self.home / "data")}
         e.update(extra)
         return e

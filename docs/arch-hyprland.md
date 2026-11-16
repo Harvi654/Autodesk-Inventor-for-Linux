@@ -1625,6 +1625,15 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-16 - Nix: complete installer regression suite in the sandbox:**
+The fixtures now resolve their shell interpreters and preserve the supplied
+PATH instead of assuming /bin and /usr/bin. The `installer` flake check runs
+all 202 tests, which passed in the Nix sandbox, with iconv for synthetic .NET logs and standalone coreutils for
+the tests that give sleep a Windows process name. CI builds this synthetic
+check after evaluation; no Autodesk media is needed. Application installation
+and prefix contents are unchanged. Details and the check command:
+`docs/nixos.md`.
+
 **2026-11-16 - Installer completeness review: points 1-8 fixed (branch
 `installer-review`):** Inventor's registration (`Inventor.exe /install 0`,
 also migration 0005), the image's `setup.xml` properties and setup UI
