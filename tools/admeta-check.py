@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "scripts", "lib"))
 import odis  # noqa: E402
 
 
-def image_expander(image):
+def image_expander(image, prefix="/nonexistent"):
     """expand(text) with the variables install-from-image.py uses for this
     image (its folders, setup.xml properties and settings) - for the
     targets of the packages' InstallPathMappings."""
@@ -41,7 +41,10 @@ def image_expander(image):
                                                   os.path.join(HERE, "..", "scripts", "install-from-image.py"))
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    inst = mod.Installer(argparse.Namespace(image=image, prefix="/nonexistent", lang="en-US", dry_run=True))
+    # the prefix itself: an update's setup.xml finds INV_INSTALL_PATH with
+    # a RegistrySearch in the installed prefix (2027.2: no usable default),
+    # and the Catalog Browser's mapping goes to that folder
+    inst = mod.Installer(argparse.Namespace(image=image, prefix=prefix, lang="en-US", dry_run=True))
     inst.log = lambda msg: None
     inst.load_setup_properties(image)
     if os.path.isdir(os.path.join(image, "manifest")):
@@ -254,7 +257,7 @@ def main():
         return
     total = ok = missing = differ = unknown = nopkg = off = 0
     lines = []
-    expand = image_expander(a.image)
+    expand = image_expander(a.image, a.prefix)
     for m in metas:
         pk = os.path.basename(m)
         stem = os.path.splitext(pk)[0].lower()

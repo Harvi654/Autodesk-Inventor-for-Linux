@@ -84,6 +84,10 @@ class AdmetaCheckMapping(unittest.TestCase):
                      '</Customizations></AdditionalPackageInfo></Configuration></Package>' % (fx.NS, maps))
             fx.write(pfx, "drive_c/Program Files/Autodesk/Inventor 2027/Bin/InventorElectrical/AceInvAddIn.dll",
                      b"MZ ace")
+            # as in the 2027.2 update: no usable default, the folder found in the prefix
+            fx.write(pfx, "system.reg", "WINE REGISTRY Version 2\n\n"
+                     "[Software\\\\Autodesk\\\\Inventor\\\\RegistryVersion31.0] 1\n"
+                     "\"InstallLocation\"=\"C:\\\\Program Files\\\\Autodesk\\\\Inventor 2027\\\\\"\n")
             (pfx / "drive_c/users/user").mkdir(parents=True)
             out = subprocess.run(["python3", "-I", str(fx.ROOT / "tools/admeta-check.py"), str(img), str(pfx)],
                                  capture_output=True, text=True, check=True).stdout
@@ -98,8 +102,9 @@ class AdmetaCheckUpdateImage(unittest.TestCase):
             img, pfx = d / "image", d / "prefix"
             fx.write(img, "setup.xml",
                      '<Bundle xmlns="%s"><Identity><DisplayName>Inventor 2027.2 Update</DisplayName></Identity>'
-                     '<Properties><Property property="INV_INSTALL_PATH" defaultValue="%%INSTALL_DEST%%\\Inventor 2027\\"/>'
-                     '</Properties><Packages><Package name="ACE" path="meta/aceinvaddin_update.xml"/></Packages></Bundle>'
+                     '<Properties><Property property="INV_INSTALL_PATH" defaultValue="">'
+                     '<RegistrySearch root="HKLM" key="SOFTWARE\\Autodesk\\Inventor\\RegistryVersion31.0" '
+                     'name="InstallLocation"/></Property></Properties><Packages><Package name="ACE" path="meta/aceinvaddin_update.xml"/></Packages></Bundle>'
                      % fx.NS)
             maps = "".join('<InstallPathMapping source="%s" target="%s"/>' % kv for kv in MAP.items())
             fx.write(img, "meta/aceinvaddin_update.xml",
@@ -111,6 +116,10 @@ class AdmetaCheckUpdateImage(unittest.TestCase):
             fx.write(img, "x64/ace/AceInvAddIn.admeta", json.dumps({"files": [{"path": NAME.replace("/", "\\")}]}))
             fx.write(pfx, "drive_c/Program Files/Autodesk/Inventor 2027/Bin/InventorElectrical/AceInvAddIn.dll",
                      b"MZ ace")
+            # as in the 2027.2 update: no usable default, the folder found in the prefix
+            fx.write(pfx, "system.reg", "WINE REGISTRY Version 2\n\n"
+                     "[Software\\\\Autodesk\\\\Inventor\\\\RegistryVersion31.0] 1\n"
+                     "\"InstallLocation\"=\"C:\\\\Program Files\\\\Autodesk\\\\Inventor 2027\\\\\"\n")
             (pfx / "drive_c/users/user").mkdir(parents=True)
             out = subprocess.run(["python3", "-I", str(fx.ROOT / "tools/admeta-check.py"), str(img), str(pfx)],
                                  capture_output=True, text=True, check=True).stdout
