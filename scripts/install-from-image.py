@@ -323,6 +323,48 @@ class Installer:
         with open(self.state_file, "w") as f:
             json.dump(st, f, indent=1)
 
+    # --- variables of the image -------------------------------------------
+    # ODIS fills in more variables than the folders above: the image's
+    # setup.xml defines properties (INV_INSTALL_PATH = %INSTALL_DEST%\Inventor
+    # 2027\, used by InvCore's NGEN action and as INSTALLDIR of
+    # InvPrivate.msi), each with a default and possibly a RegistrySearch for
+    # an existing installation (docs/installer-completeness-review.md,
+    # "Needed" 2). A found value wins over the default, as in ODIS.
+    def registry_search(self, search):
+        """(value, how) of a RegistrySearch in this prefix's registry files;
+        value None when nothing is found or the search is not understood."""
+        if not search["root"] or not search["key"]:
+            return None, "search not understood (attributes: %s)" % ", ".join(search["attrs"])
+        key = search["key"]
+        if search["root"] == "HKLM" and not search["win64"] and key.lower().startswith("software\\") \
+                and not key.lower().startswith("software\\wow6432node\\"):
+            key = "Software\\Wow6432Node\\" + key[len("software\\"):]
+        reg = WineReg(os.path.join(self.prefix, "system.reg" if search["root"] == "HKLM" else "user.reg"))
+        where = "%s\\%s%s" % (search["root"], key, (" -> " + search["name"]) if search["name"] else "")
+        if not reg.has_key(key):
+            return None, "%s: not in the prefix" % where
+        v = reg.value(key, search["name"])
+        if not v:
+            return None, "%s: no such value" % where
+        return v, "%s: found" % where
+
+    def load_setup_properties(self, root):
+        for pr in odis.setup_properties(root):
+            name = pr["name"].lower()
+            if name in self.vars:
+                self.log("var    %%%s%% from setup.xml ignored: already %s" % (pr["name"], self.vars[name]))
+                continue
+            value, notes = pr["default"], []
+            for search in pr["searches"]:
+                found, how = self.registry_search(search)
+                notes.append(how)
+                if found is not None:
+                    value = found
+                    break
+            self.vars[name] = value
+            self.log("var    %%%s%% = %s (setup.xml%s)" % (pr["name"], self.expand(value),
+                                                          "; " + "; ".join(notes) if notes else ""))
+
     # --- package types ------------------------------------------------------
     def do_msi(self, s, logname, media=None):
         winlog = r"C:\odis-logs\%s.msi.log" % os.path.splitext(logname)[0]
@@ -638,6 +680,7 @@ class Installer:
         only = {int(x) for x in self.a.only.split(",")} if self.a.only else None
         done = self.state()
         self.log("image  %s\nprefix %s\nlogs   %s" % (self.image, self.prefix, self.logdir))
+        self.load_setup_properties(self.image)
         for n, why in skipped:
             self.log("skip   %s: %s" % (n, why))
         for i, s in enumerate(steps, 1):

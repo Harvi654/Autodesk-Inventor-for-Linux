@@ -271,6 +271,75 @@ def _step(root, name, install_as, rel, img, lang):
     }
 
 
+def _local(tag):
+    return tag.rsplit("}", 1)[-1].lower()
+
+
+def _attr(el, *names):
+    """First of these attributes (case-insensitive), or None."""
+    low = {k.lower(): v for k, v in el.attrib.items()}
+    for n in names:
+        if n.lower() in low:
+            return low[n.lower()]
+    return None
+
+
+HIVES = {"hklm": "HKLM", "hkey_local_machine": "HKLM", "hkcu": "HKCU", "hkey_current_user": "HKCU"}
+
+
+def _registry_search(el):
+    """A <RegistrySearch> element -> {"root", "key", "name", "win64", "attrs"}.
+    The attribute names are not documented; the usual spellings are tried,
+    and a root given as the first part of the key (HKLM\\SOFTWARE\\...) is
+    split off. "root"/"key" stay None when they cannot be told; "attrs"
+    lists the attribute names as found, for the log."""
+    root = _attr(el, "root", "hive", "rootKey", "registryRoot")
+    key = _attr(el, "key", "path", "subKey", "keyPath", "registryKey")
+    name = _attr(el, "name", "valueName", "value", "entry")
+    if key:
+        key = key.replace("/", "\\").strip("\\")
+        first = key.split("\\", 1)[0].lower()
+        if first in HIVES:
+            root = root or first
+            key = key.split("\\", 1)[1] if "\\" in key else ""
+    root = HIVES.get((root or "").lower())
+    bits = (_attr(el, "win64", "is64", "x64", "bitness", "view", "registryView") or "").lower()
+    win64 = not (bits in ("false", "no", "0", "32", "x86", "registry32", "wow64"))
+    return {"root": root, "key": key or None, "name": name or "", "win64": win64,
+            "attrs": sorted(el.attrib)}
+
+
+def setup_properties(root):
+    """<Properties><Property property="X" defaultValue="..."> of an image's
+    setup.xml (or bundleManifest.xml): ODIS variables of the whole image,
+    e.g. INV_INSTALL_PATH = %INSTALL_DEST%\\Inventor 2027\\, which package
+    manifests use in action parameters and install locations. Each
+    property: {"name", "default", "searches": [_registry_search(...)]}.
+    Read without the namespace (setup.xml of a product image is not a
+    Bundle). Empty list when there is no such file."""
+    out, seen = [], set()
+    for fn in ("setup.xml", "bundleManifest.xml"):
+        path = os.path.join(root, fn)
+        if not os.path.isfile(path):
+            continue
+        try:
+            tree = ET.parse(path).getroot()
+        except ET.ParseError:
+            continue
+        for props in tree.iter():
+            if _local(props.tag) != "properties":
+                continue
+            for pr in props:
+                name = _attr(pr, "property") if _local(pr.tag) == "property" else None
+                if not name or name.lower() in seen:
+                    continue
+                seen.add(name.lower())
+                out.append({"name": name, "default": _attr(pr, "defaultValue") or "",
+                            "searches": [_registry_search(x) for x in pr.iter()
+                                         if _local(x.tag) == "registrysearch"]})
+    return out
+
+
 def find_package(img, display_name, lang="en-US"):
     """A package that no application manifest of the image names - on
     Windows a prerequisite such as the .NET Framework 4.8, which Setup

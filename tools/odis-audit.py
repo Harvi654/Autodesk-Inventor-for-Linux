@@ -27,12 +27,16 @@ KNOWN = {"commonprogramfiles", "commonprogramfiles(x86)", "programfiles", "progr
          "temp", "tmp", "inv_locale", "media_root", "install_source"}
 RUN_KINDS = {"preInstall", "postInstall"}
 VAR = re.compile(r"%([A-Za-z0-9_()]+)%")
+# the image's own variables install-from-image.py reads (setup.xml
+# properties); filled in by main()
+IMAGE_VARS = {}
 
 
 def unknown(s, step):
     if not s:
         return []
-    props = {k.lower(): v for k, v in (step.get("properties") or {}).items()}
+    props = dict(IMAGE_VARS)
+    props.update({k.lower(): v for k, v in (step.get("properties") or {}).items()})
     out = []
     for _ in range(5):   # properties may refer to other variables
         changed = False
@@ -55,9 +59,17 @@ def main():
     ap.add_argument("--lang", default="en-US")
     a = ap.parse_args()
     img = odis.Image(a.image)
+    for pr in odis.setup_properties(img.root):
+        if pr["name"].lower() not in KNOWN:
+            IMAGE_VARS[pr["name"].lower()] = pr["default"]
     mdir = os.path.join(img.root, "manifest")
     apps = sorted(f[4:-4] for f in os.listdir(mdir) if f.startswith("app.") and f.endswith(".xml"))
-    print("## Applications in the image")
+    print("## Variables from setup.xml (<Properties>)")
+    for pr in odis.setup_properties(img.root):
+        print("- %s = %s%s" % (pr["name"], pr["default"], "".join(
+            "; RegistrySearch %s\\%s -> %s" % (x["root"], x["key"], x["name"] or "(default)") if x["root"] and x["key"]
+            else "; RegistrySearch not understood (attributes: %s)" % ", ".join(x["attrs"]) for x in pr["searches"])))
+    print("\n## Applications in the image")
     print("manifest/app.*.xml: %s (our installer plans only 'inventor' unless --app is given)" % ", ".join(apps))
     for app in apps:
         steps, skipped, missing = odis.plan(img, (app,), a.lang)
