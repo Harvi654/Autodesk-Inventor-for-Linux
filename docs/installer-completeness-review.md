@@ -470,7 +470,8 @@ capture):
   unpacking, and an already installed newer package then removes what it
   dropped; the base image alone on an updated prefix removes nothing.
   Result on the update prefix (repair run `install.sh BASE UPDATE`,
-  2026-11-16): the base packages' lists recorded, then 215 files of
+  2026-11-16): **compare-reference afterwards: "removed by the install on
+  Windows: 0"**. The base packages' lists recorded, then 215 files of
   Inventor Core 31.0.19200 and 2 of its en-US language pack removed; no
   `DevExpress.*.v25.1.dll` left. Windows removed 216 - whether all 217 of
   ours are files Windows does not have after the update: to be checked
