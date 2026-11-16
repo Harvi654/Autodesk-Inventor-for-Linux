@@ -449,9 +449,14 @@ capture):
   update image); fixed in the tool. The 5 different are the shared files
   in `Common Files\Autodesk Shared` (4 of InvCore, 1 of InvCoreLP): DWG
   TrueView 26.0.60 came after InvCore in our update plan and replaced
-  them. Which copy Windows has after the update: the order of the
-  update's packages on Windows (log times) - to be checked; the sizes are
-  equal, so compare-reference cannot tell.
+  them. Order on Windows (log times): the old InvCore 31.0.19200
+  uninstalled 23:04:42, then InvCoreLP en-US 31.20 23:06:28, DWG TrueView
+  26.0.60 23:06:45, InvCore 31.20 23:06:51 - so Windows has InvCore's
+  copies of its 4 shared files (ours: TrueView's, wrong) and TrueView's
+  copy of InvCoreLP's `AcShellExtensionRes.dll` (ours too). Our update
+  plan installs InvCore before TrueView. The whole order of the update's
+  packages on Windows is needed to follow it (ODIS's order, not only these
+  three).
 - **Removed by the update on Windows, still in the prefix: 216** - 43 in
   `Inventor 2027\Bin` (`AutodeskAssistant\*`, `DevExpress.*.v25.1.dll`,
   ...), 173 `ProgramData\Autodesk\Inventor 2027\iLogic Codeblocks\*.bundle.js`,
@@ -464,7 +469,14 @@ capture):
   `install.sh BASE UPDATE` records the base packages' lists without
   unpacking, and an already installed newer package then removes what it
   dropped; the base image alone on an updated prefix removes nothing.
-  Result on the update prefix: pending.
+  Result on the update prefix (repair run `install.sh BASE UPDATE`,
+  2026-11-16): the base packages' lists recorded, then 215 files of
+  Inventor Core 31.0.19200 and 2 of its en-US language pack removed; no
+  `DevExpress.*.v25.1.dll` left. Windows removed 216 - whether all 217 of
+  ours are files Windows does not have after the update: to be checked
+  against Windows' "after" list. `Bin\AutodeskAssistant` is still there
+  (something in it is in no list, or in another package's): to be looked
+  at.
 - REX Framework, REX Inventor, RSA Engine are not in the update image:
   ODIS re-registered the installed ones; no file of theirs differs. Not a
   gap.
