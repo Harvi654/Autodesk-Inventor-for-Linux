@@ -626,14 +626,24 @@ install_bsdtar() {
     source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
     local zip="$DOWNLOAD_DIR/$BSDTAR_ZIP" d doc
     mkdir -p "$DOWNLOAD_DIR"
+    # Run by migration 0006 at a launcher start, which must not need the
+    # network: a download that fails or a file that does not match returns
+    # MIG_DEFER (75) - the runner puts the step off and Inventor starts.
+    # tar.exe is only needed to install the Electrical Catalog Browser, and
+    # install-from-image.py puts it in place itself before the packages.
     if [ ! -f "$zip" ]; then
         info "downloading $BSDTAR_URL"
-        curl -fL --retry 3 -o "$zip.part" "$BSDTAR_URL" || die "bsdtar download failed"
+        if ! curl -fL --connect-timeout 15 --max-time 300 -o "$zip.part" "$BSDTAR_URL"; then
+            rm -f "$zip.part"
+            warn "bsdtar download failed (offline?) - tar.exe is needed only to install the Electrical Catalog Browser"
+            return 75
+        fi
         mv "$zip.part" "$zip"
     fi
     if ! echo "$BSDTAR_SHA256  $zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
         rm -f "$zip"
-        die "$BSDTAR_ZIP checksum mismatch - file deleted"
+        warn "$BSDTAR_ZIP checksum mismatch - file deleted"
+        return 75
     fi
     ok "bsdtar $BSDTAR_VER sha256 verified"
     for d in system32 syswow64; do

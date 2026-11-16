@@ -262,14 +262,53 @@ class Migrations(unittest.TestCase):
         lic = (p / ".inventor-on-linux/doc/libarchive-3.5.3/COPYING").read_text()
         self.assertIn("Tim Kientzle", lic)
 
-    def test_tar_exe_with_a_wrong_checksum_is_refused(self):
+    def test_tar_exe_with_a_wrong_checksum_is_put_off(self):
         p = self.prefix(runtime="winum")
         self.bsdtar_env.write_text(self.bsdtar_env.read_text().replace("BSDTAR_SHA256=", "BSDTAR_SHA256=0"))
         out = self.migrate(p)
-        self.assertNotEqual(out.returncode, 0)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("checksum mismatch", out.stdout + out.stderr)
+        self.assertIn("0006-bsdtar-tar-exe put off", out.stderr)
         self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
         self.assertNotIn("done.0006-bsdtar-tar-exe", self.state(p))
+
+    def test_offline_start_is_not_stopped_by_the_tar_exe_download(self):
+        # what the launcher runs at every start (run_migrations), with no
+        # zip in downloads/ and the server not reachable
+        (self.downloads / "libarchive-test-win64.zip").rename(self.downloads.parent / "zip-away")
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("bsdtar download failed (offline?)", out.stderr)
+        self.assertIn("0006-bsdtar-tar-exe put off", out.stderr)
+        st = self.state(p)
+        self.assertNotIn("done.0006-bsdtar-tar-exe", st)
+        self.assertIn("deferred.0006-bsdtar-tar-exe", st)
+        # the steps after it still ran
+        self.assertIn("done.0007-public-documents-paths", st)
+        self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
+        # the next start does not try the download again
+        t0 = time.monotonic()
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("put off earlier (cannot be done now) - not tried again yet", out.stdout)
+        self.assertNotIn("downloading", out.stdout)
+        self.assertLess(time.monotonic() - t0, 30)
+        # online again: by name at once
+        (self.downloads.parent / "zip-away").rename(self.downloads / "libarchive-test-win64.zip")
+        out = self.migrate(p, "--run", "0006")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+        self.assertEqual((p / "drive_c/windows/system32/tar.exe").read_bytes(), self.fake_tar)
+
+    def test_put_off_step_is_tried_again_later(self):
+        (self.downloads / "libarchive-test-win64.zip").rename(self.downloads.parent / "zip-away")
+        p = self.prefix(runtime="winum")
+        self.migrate(p)
+        (self.downloads.parent / "zip-away").rename(self.downloads / "libarchive-test-win64.zip")
+        out = self.migrate(p, MIG_DEFER_HOURS="0")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
 
     # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
     def test_public_paths_in_autodesk_strings(self):

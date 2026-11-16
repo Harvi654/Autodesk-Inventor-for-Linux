@@ -32,7 +32,14 @@ cd scripts/lib/migrations && sha256sum [0-9][0-9][0-9][0-9]-*.sh > SHA256SUMS
 - `MIG_OPTIONAL=1` - run only when asked for by name
   (`migrate-prefix.sh --run NNNN`), never from the launcher or an update.
 
-If a step fails, what was saved is put back and the run stops. The state
+If a step fails, what was saved is put back and the run stops. A step
+whose `mig_apply` returns 75 (`MIG_DEFER`) cannot be done now for a reason
+outside the prefix - a download while offline (0006): what was saved is
+put back, the step is not recorded as done, the run (and the launcher)
+goes on, and automatic runs try it again after 24 hours
+(`MIG_DEFER_HOURS`); `--run NNNN` tries it at once. The launcher runs the
+migrations at every start, so a step there must never need the network to
+let Inventor start. The state
 is `<prefix>/.inventor-on-linux/state` (`done.<step>=<date> applied|already
 so|adopted`, `runtime=` the Wine the prefix was last updated for); the
 backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
