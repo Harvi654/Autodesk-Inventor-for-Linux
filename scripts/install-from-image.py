@@ -138,6 +138,53 @@ ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
              "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
 
 
+class WineReg:
+    """A Wine registry file (system.reg, user.reg) read as text, without
+    starting Wine (also works in --dry-run and in tests). Keys relative to
+    the hive, case-insensitive: r"Software\\Autodesk\\Inventor"."""
+
+    def __init__(self, path):
+        self.keys = {}
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            return
+        cur = None
+        for line in text.splitlines():
+            if line.startswith("["):
+                end = line.rfind("]")
+                cur = self.keys.setdefault(line[1:end].replace("\\\\", "\\").lower(), {})
+            elif cur is not None and (line.startswith('"') or line.startswith("@=")):
+                if line.startswith("@="):
+                    name, raw = "", line[2:]
+                else:
+                    m = re.match(r'"((?:[^"\\]|\\.)*)"=(.*)', line)
+                    if not m:
+                        continue
+                    name, raw = self.unescape(m.group(1)), m.group(2)
+                cur[name.lower()] = raw
+
+    @staticmethod
+    def unescape(s):
+        return re.sub(r"\\(.)", r"\1", s)
+
+    def has_key(self, key):
+        """The key exists: its own section, or one of a subkey (Wine writes
+        no section for a key that has only subkeys)."""
+        k = key.lower().strip("\\")
+        return k in self.keys or any(x.startswith(k + "\\") for x in self.keys)
+
+    def value(self, key, name):
+        """String data of a value (REG_SZ, REG_EXPAND_SZ unexpanded), the
+        default value for name "" - or None (missing, or not a string)."""
+        raw = self.keys.get(key.lower().strip("\\"), {}).get((name or "").lower())
+        if raw is None:
+            return None
+        m = re.match(r'(?:str\(2\):)?"((?:[^"\\]|\\.)*)"$', raw)
+        return self.unescape(m.group(1)) if m else None
+
+
 class Installer:
     def __init__(self, a):
         self.a = a
@@ -149,6 +196,12 @@ class Installer:
         self.state_file = os.path.join(self.prefix, ".odis-install-state.json")
         self.env = dict(os.environ, WINEPREFIX=self.prefix,
                         WINEDEBUG=os.environ.get("WINEDEBUG", "fixme-all"))
+        # No Linux menu entries or file associations from Autodesk's
+        # installers or Inventor's registration (common.sh does the same for
+        # the shell scripts; set here too when this runs on its own).
+        overrides = self.env.get("WINEDLLOVERRIDES", "")
+        if "winemenubuilder.exe=" not in overrides.lower():
+            self.env["WINEDLLOVERRIDES"] = (overrides + ";" if overrides else "") + "winemenubuilder.exe=d"
         self.vars = {
             "commonprogramfiles": r"C:\Program Files\Common Files",
             "commonprogramfiles(x86)": r"C:\Program Files (x86)\Common Files",
@@ -612,6 +665,8 @@ class Installer:
             self.log("\nStopped at the .NET Framework 4.8 step. Fix it and rerun the same command to continue "
                      "(or --no-dotnet48 to leave it out).")
             sys.exit(1)
+        if kind != "update":
+            self.register_inventor()
         self.log("\nAll steps finished.")
 
     # --- .NET Framework 4.8 ---------------------------------------------------
@@ -917,6 +972,63 @@ class Installer:
             return False
         self.mark_done(key)
         self.log("     done in %ds (clr.dll in Framework64 and Framework, mscoree native)" % (time.time() - t0))
+        return True
+
+    # --- Inventor's own registration ----------------------------------------
+    # On Windows, during the install, the Windows Installer service starts
+    # `Inventor.exe /install 0` once Inventor's files are in place
+    # (docs/installer-completeness-review.md, "Needed" 1). It registers the
+    # COM server Inventor.Application, the document types
+    # (Inventor.PartDocument, ...) and type libraries. No package action of
+    # ours starts it (our package order differs), so it runs once here, after
+    # the product's packages. It shows no window and ends by itself; helper
+    # processes it starts keep the wineserver alive, so the prefix is stopped
+    # afterwards. winemenubuilder is off (self.env): run by hand it created
+    # wine-extension-*.desktop files for the prefix.
+    REGISTRATION_KEYS = (r"Software\Classes\Inventor.Application", r"Software\Classes\Inventor.PartDocument")
+
+    def inventor_exe(self):
+        """Windows path of the installed Inventor.exe, or None."""
+        year = self.installed_release()
+        if not year:
+            return None
+        return r"C:\Program Files\Autodesk\Inventor %s\Bin\Inventor.exe" % year
+
+    def desktop_files(self):
+        d = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "applications")
+        return set(glob.glob(os.path.join(d, "wine-*.desktop")))
+
+    def register_inventor(self):
+        key = "registration:inventor"
+        if key in self.state() and not self.a.redo:
+            self.log("Inventor registration (Inventor.exe /install 0) - already done")
+            return True
+        exe = self.inventor_exe()
+        if self.a.dry_run:
+            self.log("Inventor registration: wine %s /install 0 (winemenubuilder off), then wineserver -k"
+                     % (exe or r"C:\Program Files\Autodesk\Inventor <year>\Bin\Inventor.exe"))
+            return True
+        if not exe:
+            self.log("WARN   Inventor registration skipped: no Inventor.exe in the prefix")
+            return False
+        self.log("Inventor registration (COM server, document types; up to %d s)" % ACTION_TIMEOUT)
+        before = self.desktop_files()
+        rc = self.run(["wine", exe, "/install", "0"], "inventor-registration.log", timeout=ACTION_TIMEOUT)
+        subprocess.call(["wineserver", "-k"], env=self.env)
+        subprocess.call(["wineserver", "-w"], env=self.env)
+        new = sorted(self.desktop_files() - before)
+        if new:
+            self.log("      WARN new Linux menu entries (winemenubuilder was off - not expected): %s"
+                     % ", ".join(os.path.basename(p) for p in new))
+        reg = WineReg(os.path.join(self.prefix, "user.reg"))
+        missing = [k for k in self.REGISTRATION_KEYS if not reg.has_key(k)]
+        if missing:
+            self.log("      WARN Inventor registration incomplete (exit code %d), missing in user.reg: %s - "
+                     "Inventor runs without it; to try again: bash scripts/migrate-prefix.sh --run 0005"
+                     % (rc, ", ".join(missing)))
+            return False
+        self.mark_done(key)
+        self.log("      registered: %s" % ", ".join(k.rsplit("\\", 1)[-1] for k in self.REGISTRATION_KEYS))
         return True
 
     def installed_release(self):

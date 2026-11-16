@@ -45,6 +45,7 @@ backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
 | 0002-winum-runtime | `wineboot -u` for the Wine in use when the prefix was last updated for another one (this project's `wine-inventor-*`, the system's Wine), and the record of the runtime | 2026-11-11 |
 | 0003-x11-driver-inventor | `UseEGL=N`, `ClientSideWithRender=N` for `Inventor.exe` (GPU ray tracing on GLX; the status bar text) | 2026-11-11 |
 | 0004-enable-hydra | **optional** (`--run 0004` only): `EnableHydra=1` in Inventor's driver preferences (`RegistryVersion30.0` for 2026, `31.0` for 2027) - for a GPU with ray tracing hardware only; on an RX 580 it moved ray tracing to the CPU (~1200 % CPU, 2026-10-21) | 2026-11-11 |
+| 0005-inventor-registration | `Inventor.exe /install 0` once, with winemenubuilder off, then `wineserver -k`: the COM server `Inventor.Application` and the document types (`Inventor.PartDocument`, ...) that Windows' install registers (`docs/installer-completeness-review.md`, "Needed" 1); a registration that does not finish is a warning (Inventor runs without it), try again with `--run 0005` | 2026-11-16 |
 
 ## Tested
 

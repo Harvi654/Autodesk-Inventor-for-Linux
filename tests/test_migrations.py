@@ -20,6 +20,19 @@ echo "$*" >> "$WINEPREFIX/calls.log"
 regfile() { case "${1^^}" in HKLM*) echo "$WINEPREFIX/system.reg" ;; *) echo "$WINEPREFIX/user.reg" ;; esac; }
 case "$1" in
     --version) echo wine-11.20; exit 0 ;;
+    *'\Bin\Inventor.exe')
+        # Inventor's registration (step 0005): its keys in user.reg, the
+        # menu entry a run with winemenubuilder on would leave
+        echo "registration WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-}" >> "$WINEPREFIX/calls.log"
+        [ "$2 $3" = "/install 0" ] || exit 1
+        [ -n "${FAIL_REGISTRATION:-}" ] && exit 1
+        if [[ ";${WINEDLLOVERRIDES:-};" != *";winemenubuilder.exe=d;"* ]]; then
+            mkdir -p "$HOME/.local/share/applications"; touch "$HOME/.local/share/applications/wine-extension-ipt.desktop"
+        fi
+        for k in Inventor.Application Inventor.PartDocument; do
+            printf 'HKCU\\Software\\Classes\\%s||\n' "$k" >> "$WINEPREFIX/user.reg"
+        done
+        exit 0 ;;
     wineboot)
         # like Wine: the builtin DLL copies in system32 stay as they are
         echo 1794413159 > "$WINEPREFIX/.update-timestamp"
@@ -173,7 +186,9 @@ class Migrations(unittest.TestCase):
     def test_prefix_with_everything_has_nothing_to_do(self):
         p = self.prefix(runtime="winum")
         k = "HKCU\\Software\\Wine\\AppDefaults\\Inventor.exe\\X11 Driver"
-        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k))
+        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k)
+                                    + "[Software\\\\Classes\\\\Inventor.Application] 1\n"
+                                    + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n")
         before = (p / "user.reg").read_text()
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
@@ -181,6 +196,44 @@ class Migrations(unittest.TestCase):
         self.assertTrue(all("already so" in v for k, v in self.state(p).items()
                             if k.startswith("done.") and k != "done.0001-base-setup"))
         self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    # --- 0005: Inventor's registration ----------------------------------------
+    def test_registration_runs_once_without_menu_entries(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0005-inventor-registration"])
+        user = (p / "user.reg").read_text()
+        self.assertIn("Classes\\Inventor.Application|", user)
+        self.assertIn("Classes\\Inventor.PartDocument|", user)
+        calls = (p / "calls.log").read_text()
+        self.assertEqual(calls.count("registration "), 1)
+        self.assertIn("winemenubuilder.exe=d", calls.split("registration ")[1].splitlines()[0])
+        self.assertEqual(list((self.home / ".local/share/applications").glob("wine-*.desktop"))
+                         if (self.home / ".local/share/applications").exists() else [], [])
+        # done: the next run does not start Inventor again
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+        self.assertEqual((p / "calls.log").read_text().count("registration "), 1)
+
+    def test_registration_that_fails_is_a_warning_only(self):
+        # Inventor runs without these keys: the launcher must not stop
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p, FAIL_REGISTRATION="1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("did not finish", out.stderr)
+        self.assertIn("--run 0005", out.stderr)
+        # trying again by name
+        out = self.migrate(p, "--run", "0005")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Inventor.Application|", (p / "user.reg").read_text())
+
+    def test_registration_sees_real_user_reg_sections(self):
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("[Software\\\\Classes\\\\Inventor.ApplicationX] 1\n")
+        self.migrate(p, "--run", "0003")
+        out = self.migrate(p)
+        self.assertIn("applied", self.state(p)["done.0005-inventor-registration"], out.stdout + out.stderr)
 
     # --- failure and restore ------------------------------------------------
     def test_failing_step_is_restored_and_stops(self):
