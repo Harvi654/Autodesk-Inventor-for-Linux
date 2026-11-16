@@ -59,6 +59,15 @@ forced: no .NET shim window with `mscoree=d`, wine-mono not back, Property
 Mapping and 3D PDF Publish OK). Details: `docs/arch-hyprland.md`, "Prefix
 migrations".
 
+Steps 0005-0008 on a copy of the maintainer's everyday 2027 prefix
+(2026-11-16): 0005 "already so" (the keys were there - untested on a
+prefix without them), 0006-0008 applied, no new `wine-*.desktop`; Inventor
+starts. After testing on a copy, the everyday prefix may need a new
+Autodesk sign-in: signing in in one copy invalidates the session of the
+others ("Licensing Error" -> "Change license type"). Details:
+`docs/installer-completeness-review.md`, "Migrations on a copy of the
+everyday prefix".
+
 ## Planned, not written yet
 
 - **0004 as a normal step** - waits for a check of the GPU (ray tracing

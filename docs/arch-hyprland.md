@@ -1554,6 +1554,10 @@ palette); the NixOS build of the winum series (@krokosik).
 - `class {cfe9f29b-...} not registered`: not registered on Windows either.
 - `class {1060954f-...} not registered`: the Fusion interop add-in, disabled by
   default (`scripts/addins.sh enable translatorfusion` to try it).
+- `clr_optimization_v4.0.30319_32` / `_64` "failed to start" (`mscorsvw.exe`,
+  an `mscoree` import): the .NET Framework's native image service, which
+  Wine's service manager cannot start; seen on working prefixes too
+  (maintainer, 2026-11-16). Inventor does not need it.
 
 ## Result log
 
