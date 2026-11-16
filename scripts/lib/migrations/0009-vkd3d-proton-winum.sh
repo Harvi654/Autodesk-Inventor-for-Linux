@@ -7,13 +7,18 @@
 # d3d12core.dll. Before 2026-11-16 the installer put upstream's 3.0.1
 # release in place.
 # Only with INV_VKD3D=pinned (the default): INV_VKD3D=off keeps Wine's own
-# d3d12, and a prefix whose DLLs are already the pinned ones is left alone.
+# d3d12, and a prefix whose DLLs are already the pinned ones is left alone,
+# as is one where VKD3D_VER was changed by the user without the hashes of
+# its DLLs (VKD3D_DLL_SHA256_VER differs): vkd3d_ok could never pass there,
+# and the step would run at every start.
 # The old DLLs go to the backup. Offline at a launcher start the step is
 # put off (MIG_DEFER), never blocking Inventor's start.
 MIG_DESC="vkd3d-proton: winum's build of 3.0.1 (d3d12, d3d12core), as in the NixOS package"
 MIG_BACKUP="drive_c/windows/system32/d3d12.dll drive_c/windows/system32/d3d12core.dll drive_c/windows/syswow64/d3d12.dll drive_c/windows/syswow64/d3d12core.dll"
 
-mig_needed() { [ "$INV_VKD3D" = pinned ] && ! vkd3d_ok; }
+mig_needed() {
+    [ "$INV_VKD3D" = pinned ] && [ "$VKD3D_DLL_SHA256_VER" = "$VKD3D_VER" ] && ! vkd3d_ok
+}
 
 mig_apply() {
     fetch_vkd3d || return $?

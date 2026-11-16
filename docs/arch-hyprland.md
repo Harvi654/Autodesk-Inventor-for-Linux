@@ -1649,10 +1649,15 @@ download it. Patch, tests, review and validation: winum
 (L4 in Inventor 2027 on an RX 6400, an RTX 5080 and an RX 9060 XT, the last
 with the released DLLs; open review points P2-2, an inherited `float2x2`
 payload limitation of 3.0.1, and P3, fixtures not yet covering every
-payload shape). Checked here: 5 new tests in `tests/test_migrations.py`
-(winum DLLs with a backup and the native overrides, already winum,
-`INV_VKD3D=off` untouched, offline put off and then `--run 0009`, wrong
-checksum put off). Open: the maintainer's smoke test on a prefix copy.
+payload shape). A `VKD3D_VER` set by the user leaves the prefix alone:
+the DLL hashes belong to one release (`VKD3D_DLL_SHA256_VER`), and without
+that check the step would fail at every start (maintainer's review). The
+real archive's layout was listed once (`tar --zstd -tvf`): top folder
+`vkd3d-proton-3.0.1-winum-1/` with `x64/`, `x86/`, as `install_vkd3d`
+expects. Checked here: 6 new tests in `tests/test_migrations.py` (winum
+DLLs with a backup and the native overrides, already winum, `INV_VKD3D=off`
+untouched, another `VKD3D_VER` untouched and nothing downloaded, offline
+put off and then `--run 0009`, wrong checksum put off). Open: the maintainer's smoke test on a prefix copy.
 
 **2026-11-16 - Nix: complete installer regression suite in the sandbox:**
 The fixtures now resolve their shell interpreters and preserve the supplied

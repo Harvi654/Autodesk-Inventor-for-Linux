@@ -132,7 +132,7 @@ class Migrations(unittest.TestCase):
                 info.size = len(data)
                 tf.addfile(info, io.BytesIO(data))
         self.vkd3d_env = {
-            "VKD3D_VER": "9.9-test", "VKD3D_URL": "http://127.0.0.1:9/none",
+            "VKD3D_VER": "9.9-test", "VKD3D_DLL_SHA256_VER": "9.9-test", "VKD3D_URL": "http://127.0.0.1:9/none",
             "VKD3D_SHA256": hashlib.sha256(self.vkd3d_tzst.read_bytes()).hexdigest(),
             "VKD3D_DLL_SHA256": " ".join("%s=%s" % (n, hashlib.sha256(d).hexdigest()) for n, d in self.vkd3d.items())}
 
@@ -374,6 +374,20 @@ class Migrations(unittest.TestCase):
         self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
         self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
         self.assertNotIn("DllOverrides|d3d12|", (p / "user.reg").read_text())
+
+    def test_vkd3d_proton_version_of_the_user_is_left_alone(self):
+        # VKD3D_VER changed in config.env without the DLL hashes: the pinned
+        # hashes are of another release, so 0009 must not run (it would fail
+        # at vkd3d_ok at every start) and downloads nothing
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p, VKD3D_VER="3.0.2", VKD3D_SHA256="1" * 64)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
+        for text in ("downloading", "vkd3d-proton 3.0.2", "put off"):
+            self.assertNotIn(text, out.stdout + out.stderr)
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+        self.assertIn("nothing to do", self.migrate(p, VKD3D_VER="3.0.2", VKD3D_SHA256="1" * 64).stdout)
 
     def test_offline_start_is_not_stopped_by_the_vkd3d_proton_download(self):
         self.vkd3d_tzst.rename(self.downloads.parent / "vkd3d-away")

@@ -206,7 +206,9 @@ DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # winum's build of upstream 3.0.1 with its ray tracing payload fix
 # (github.com/Harvi654/winum, gpu/vkd3d-proton/README.md), the same archive
 # the NixOS package uses; SHA-256 of the release file, and of the four DLLs
-# in it (migration 0009 compares a prefix with them). Same layout as
+# in it (migration 0009 compares a prefix with them; VKD3D_DLL_SHA256_VER
+# names the release they belong to, so a VKD3D_VER set by the user without
+# its DLL hashes makes 0009 leave the prefix alone). Same layout as
 # upstream's (vkd3d-proton-<ver>/x64, x86). INV_VKD3D=off keeps Wine's
 # builtin d3d12.
 INV_VKD3D="${INV_VKD3D:-pinned}"
@@ -214,6 +216,7 @@ VKD3D_VER="${VKD3D_VER:-3.0.1-winum-1}"
 VKD3D_SHA256="${VKD3D_SHA256:-7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7}"
 VKD3D_URL="${VKD3D_URL:-https://github.com/Harvi654/winum/releases/download/vkd3d-proton-$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst}"
 VKD3D_DLL_SHA256="${VKD3D_DLL_SHA256:-x64/d3d12.dll=ca19255e0985320498403876a58a84501b9cae6df486c9db51f3ea5ec85b56fd x64/d3d12core.dll=abd0ab2a1d92fd09205672c3e4105b722f160084141d6ee39eb04a1fe565f39e x86/d3d12.dll=0f513ff7961e85470ce0330e0a22b4c2bd87e89a768fad5da8e8234504f273f9 x86/d3d12core.dll=4ec01f6de1b098a1efe20068d30705b9a4a79fafef168c2f25dc84dba70209e5}"
+VKD3D_DLL_SHA256_VER="${VKD3D_DLL_SHA256_VER:-3.0.1-winum-1}"
 VKD3D_DLLS=(d3d12 d3d12core)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
