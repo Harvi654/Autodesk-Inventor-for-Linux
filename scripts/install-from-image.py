@@ -471,15 +471,19 @@ class Installer:
             if k not in given:
                 argv.append("%s=%s" % (k, v))
         # ODIS passes the package's install location to every MSI that has
-        # one (Windows' logs: InvPrivate.msi, adsk-hive-host.msi,
-        # DCLibrary64.msi) - "Needed" 4.
+        # one (Windows' logs: InvPrivate.msi, InvPrivateLoc.msi,
+        # DCLibrary64.msi, Autodesk Genuine Service.msi) - "Needed" 4 - and
+        # %INSTALL_DEST% to every MSI without one (adsk-hive-host.msi, cer.msi,
+        # AceInvAddIn-ca.msi: C:\Program Files\Autodesk; installdir-check.py,
+        # 2026-11-16).
         given = {a.split("=", 1)[0].upper() for a in argv[8:] if "=" in a}
-        if s.get("installLocation") and "INSTALLDIR" not in given:
-            loc = self.expand(s["installLocation"], extra, s)
+        if "INSTALLDIR" not in given:
+            raw = s.get("installLocation") or "%INSTALL_DEST%"
+            loc = self.expand(raw, extra, s)
             unknown = unknown_variables(loc)
             if unknown:
                 self.log("      WARN INSTALLDIR not passed: unknown %s in installLocation %s - the MSI uses "
-                         "its own default folder" % (", ".join("%%%s%%" % v for v in unknown), s["installLocation"]))
+                         "its own default folder" % (", ".join("%%%s%%" % v for v in unknown), raw))
             else:
                 argv.append("INSTALLDIR=" + loc)
         rc = self.run_msiexec(argv, logname)

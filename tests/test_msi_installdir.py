@@ -72,8 +72,11 @@ class MsiInstallDir(unittest.TestCase):
     def test_installdir_from_the_manifest_is_kept(self):
         self.assertEqual([a for a in self.props("Given") if a.startswith("INSTALLDIR=")], ["INSTALLDIR=C:\\Mine"])
 
-    def test_package_without_location(self):
-        self.assertFalse(any(a.startswith("INSTALLDIR=") for a in self.props("NoLoc")))
+    def test_package_without_location_gets_install_dest(self):
+        # as ODIS on Windows: adsk-hive-host.msi, cer.msi, AceInvAddIn-ca.msi
+        # have no installLocation and got C:\Program Files\Autodesk
+        self.assertEqual([a for a in self.props("NoLoc") if a.startswith("INSTALLDIR=")],
+                         [r"INSTALLDIR=C:\Program Files\Autodesk"])
 
 
 if __name__ == "__main__":
