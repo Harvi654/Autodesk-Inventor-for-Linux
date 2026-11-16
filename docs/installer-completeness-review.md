@@ -560,7 +560,23 @@ calls, errors), and whether the target folder is created at all.
     which the image's VC++ 2015-2022 redistributable and Wine provide).
     So only `bsdtar.exe` goes into the prefix, as `tar.exe` (the name
     Windows uses) in `system32` and, in a WoW64 prefix, `syswow64` too
-    (Windows 10 has a `tar.exe` in both). libarchive's `COPYING` comes from
+    (Windows 10 has a `tar.exe` in both). **Deviation:** Windows'
+    `SysWOW64\tar.exe` is a 32-bit program; ours there is the same 64-bit
+    `bsdtar.exe` (libarchive publishes win64 builds only). A 32-bit program
+    that starts `tar` finds it and can start it (a 32-bit process may start
+    a 64-bit one), but loading it as a 32-bit module or comparing its
+    machine type would differ from Windows. Kept: no 32-bit build exists
+    from libarchive, the only known caller is 64-bit
+    (`AceInvAddIn-ca.msi`'s action, run from the 64-bit msiexec).
+  - **Offline launcher start:** migration 0006 needs the zip; the launcher
+    runs the migrations at every start, and a failed step used to stop it
+    (maintainer's review, 2026-11-16). Now a download that fails (or a zip
+    that does not match) puts 0006 off instead: Inventor starts, the step
+    is not recorded as done and is tried again after 24 hours or with
+    `migrate-prefix.sh --run 0006` (`MIG_DEFER` in `migrations.sh`;
+    `install_bsdtar` with a bounded download time). For a new installation
+    `install-from-image.py` puts `tar.exe` in place itself - the
+    installation needs the network anyway. libarchive's `COPYING` comes from
     the signed 3.5.3 source release (`libarchive-3.5.3.tar.gz`, SHA-256
     `72788e5f58d16febddfa262a5215e05fc9c79f2670f641ac039e6df44330ef51`),
     kept in `scripts/lib/licenses/libarchive-3.5.3-COPYING` and copied to
