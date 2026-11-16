@@ -205,13 +205,22 @@ DXVK_SHA256="${DXVK_SHA256:-d85ce7c79f57ecd765aaa1b9e7007cb875e6fde9f6d331df799b
 DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # vkd3d-proton: Direct3D 12 on Vulkan (works with DXVK's dxgi). Inventor 2027
 # tests for Direct3D 12 and warns when Wine's own d3d12 (vkd3d) is not enough.
-# Pinned release from github.com/HansKristian-Work/vkd3d-proton, SHA-256 of
-# the release file. INV_VKD3D=off keeps Wine's builtin d3d12. INV_VKD3D=none
-# installs nothing and sets no override (vkd3d-proton comes from elsewhere,
-# as with INV_DXVK=none).
+# winum's build of upstream 3.0.1 with its ray tracing payload fix
+# (github.com/Harvi654/winum, gpu/vkd3d-proton/README.md), the same archive
+# the NixOS package uses; SHA-256 of the release file, and of the four DLLs
+# in it (migration 0009 compares a prefix with them; VKD3D_DLL_SHA256_VER
+# names the release they belong to, so a VKD3D_VER set by the user without
+# its DLL hashes makes 0009 leave the prefix alone). Same layout as
+# upstream's (vkd3d-proton-<ver>/x64, x86). INV_VKD3D=off keeps Wine's
+# builtin d3d12. INV_VKD3D=none installs nothing and sets no override
+# (vkd3d-proton comes from elsewhere, as with INV_DXVK=none: the NixOS
+# package adds the same archive as a layer at launch).
 INV_VKD3D="${INV_VKD3D:-pinned}"
-VKD3D_VER="${VKD3D_VER:-3.0.1}"
-VKD3D_SHA256="${VKD3D_SHA256:-3cf2315522af5e43605ef6d3c41dad91387040bf97199934f3f7ab76caaa2f0c}"
+VKD3D_VER="${VKD3D_VER:-3.0.1-winum-1}"
+VKD3D_SHA256="${VKD3D_SHA256:-7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7}"
+VKD3D_URL="${VKD3D_URL:-https://github.com/Harvi654/winum/releases/download/vkd3d-proton-$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst}"
+VKD3D_DLL_SHA256="${VKD3D_DLL_SHA256:-x64/d3d12.dll=ca19255e0985320498403876a58a84501b9cae6df486c9db51f3ea5ec85b56fd x64/d3d12core.dll=abd0ab2a1d92fd09205672c3e4105b722f160084141d6ee39eb04a1fe565f39e x86/d3d12.dll=0f513ff7961e85470ce0330e0a22b4c2bd87e89a768fad5da8e8234504f273f9 x86/d3d12core.dll=4ec01f6de1b098a1efe20068d30705b9a4a79fafef168c2f25dc84dba70209e5}"
+VKD3D_DLL_SHA256_VER="${VKD3D_DLL_SHA256_VER:-3.0.1-winum-1}"
 VKD3D_DLLS=(d3d12 d3d12core)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
@@ -612,18 +621,7 @@ install_vkd3d() {
         return 0
     fi
     local tzst="$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" tmp
-    local url="https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst"
-    mkdir -p "$DOWNLOAD_DIR"
-    if [ ! -f "$tzst" ]; then
-        info "downloading $url"
-        curl -fL --retry 3 -o "$tzst.part" "$url" || die "vkd3d-proton download failed"
-        mv "$tzst.part" "$tzst"
-    fi
-    if ! echo "$VKD3D_SHA256  $tzst" | sha256sum -c --quiet - >/dev/null 2>&1; then
-        rm -f "$tzst"
-        die "vkd3d-proton $VKD3D_VER checksum mismatch - file deleted. (Changed VKD3D_VER? Set VKD3D_SHA256 too.)"
-    fi
-    ok "vkd3d-proton $VKD3D_VER sha256 verified"
+    fetch_vkd3d || die "vkd3d-proton $VKD3D_VER: no verified download (offline? Changed VKD3D_VER? Set VKD3D_SHA256 and VKD3D_URL too.)"
     tmp="$(mktemp -d)"
     tar --zstd -xf "$tzst" -C "$tmp" || { rm -rf "$tmp"; die "unpacking vkd3d-proton failed (zstd missing?)"; }
     for d in "${VKD3D_DLLS[@]}"; do
@@ -633,6 +631,42 @@ install_vkd3d() {
     rm -rf "$tmp"
     for d in "${VKD3D_DLLS[@]}"; do
         wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d native
+    done
+}
+
+# The archive in DOWNLOAD_DIR, downloaded if needed and SHA-256 checked.
+# Returns MIG_DEFER (75) when it cannot be had: migration 0009 runs at a
+# launcher start, which must not need the network (install_vkd3d dies).
+fetch_vkd3d() {
+    local tzst="$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst"
+    mkdir -p "$DOWNLOAD_DIR"
+    if [ ! -f "$tzst" ]; then
+        info "downloading $VKD3D_URL"
+        if ! curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$tzst.part" "$VKD3D_URL"; then
+            rm -f "$tzst.part"
+            warn "vkd3d-proton download failed (offline?)"
+            return 75
+        fi
+        mv "$tzst.part" "$tzst"
+    fi
+    if ! echo "$VKD3D_SHA256  $tzst" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$tzst"
+        warn "vkd3d-proton $VKD3D_VER checksum mismatch - file deleted"
+        return 75
+    fi
+    ok "vkd3d-proton $VKD3D_VER sha256 verified"
+}
+
+vkd3d_ok() {   # 0 when the prefix's d3d12/d3d12core are those of the pinned vkd3d-proton
+    local e n f
+    for e in $VKD3D_DLL_SHA256; do
+        n="${e%%=*}"
+        case "$n" in
+            x64/*) f="$P_C/windows/system32/${n#x64/}" ;;
+            x86/*) [ -d "$P_C/windows/syswow64" ] || continue; f="$P_C/windows/syswow64/${n#x86/}" ;;
+            *) continue ;;
+        esac
+        [ -f "$f" ] && echo "${e#*=}  $f" | sha256sum -c --quiet - >/dev/null 2>&1 || return 1
     done
 }
 

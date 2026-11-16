@@ -98,7 +98,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
-| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and an NVIDIA RTX 5080. Needs a card with hardware ray tracing and a Vulkan driver that supports it; a Wine and vkd3d-proton fix and three settings, set by hand for now - the next release sets them up. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
+| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and an NVIDIA RTX 5080. Needs a card with hardware ray tracing and a Vulkan driver that supports it; a Wine fix and a vkd3d-proton fix (both in winum's builds the installer uses; vkd3d-proton since 2026-11-16, migration 0009) and three settings, partly by hand for now. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
@@ -370,7 +370,9 @@ Python, no compiled programs are in this repository. What they do:
   winum's `patches/series`, published from a signed tag, checked against the
   SHA-256 in `wine/SHA256SUMS` (`scripts/get-wine.sh --build` says how to
   build it yourself), DXVK
-  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked),
+  2.7.1 from its GitHub release (SHA-256 checked), vkd3d-proton
+  3.0.1-winum-1 from [winum's releases](https://github.com/Harvi654/winum/releases/tag/vkd3d-proton-3.0.1-winum-1)
+  (SHA-256 checked; see below),
   libarchive's signed Windows build of bsdtar 3.5.3 (`libarchive-v3.5.3-win64.zip`,
   SHA-256 checked) as `tar.exe` in the prefix - Windows 10 ships the same
   program as `System32\tar.exe`, and the Electrical Catalog Browser's
@@ -411,9 +413,23 @@ Inventor itself is not modified. The work is in three places:
   reads Autodesk's install image and runs its packages in the right order
   under Wine, in place of Autodesk's Windows installer front end.
 - **Prefix setup** (`scripts/finish-install.sh`): DXVK for Direct3D 11,
-  vkd3d-proton for Direct3D 12 (Inventor 2027 checks for it),
+  vkd3d-proton for Direct3D 12 (Inventor 2027 checks for it; see below),
   WebView2 for the home page and sign-in, free fonts in place of Windows fonts,
   browser sign-in, and isolation of the Wine prefix from your home folder.
+
+**vkd3d-proton (Direct3D 12):** the installer uses winum's build
+`vkd3d-proton-3.0.1-winum-1`: upstream's 3.0.1 (same source commit) plus one
+fix in its shader converter, dxil-spirv, so that ray payloads with matrices
+compile - without it Inventor 2027's GPU ray tracing fails on Vulkan. The
+NixOS package uses the same archive, so both run the same `d3d12.dll` and
+`d3d12core.dll`. It is built in public by winum's workflow; what the patch
+does, its tests and its review are in winum's
+[gpu/vkd3d-proton/README.md](https://github.com/Harvi654/winum/blob/main/gpu/vkd3d-proton/README.md)
+(tested in Inventor 2027 on an RX 6400, an RTX 5080 and an RX 9060 XT; open
+review points P2-2, an inherited `float2x2` payload limitation of 3.0.1,
+and P3, more fixtures). Existing prefixes get it through migration 0009 at
+the next start (put off while offline); `INV_VKD3D=off` keeps Wine's own
+d3d12.
 
 Details, background and every problem found on the way:
 [docs/arch-hyprland.md](docs/arch-hyprland.md).
