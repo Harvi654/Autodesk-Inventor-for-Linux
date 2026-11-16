@@ -129,17 +129,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1794592980,
-        "narHash": "sha256-3+ZKGnvBCIWgYIdjxv+EzXkP9Fmp33HFbypvBVqtV1c=",
+        "lastModified": 1794830249,
+        "narHash": "sha256-lce5BrZVJN3wjjxcGiSobquoe05+UUca7GSUA+9GlaI=",
         "owner": "krokosik",
         "repo": "nix-overlayfs",
-        "rev": "2ab77438a316be6d59b81cc1570e06dce1827621",
+        "rev": "0a00454d018d61414c97fb8042cc86a925932067",
         "type": "github"
       },
       "original": {
         "owner": "krokosik",
         "repo": "nix-overlayfs",
-        "rev": "2ab77438a316be6d59b81cc1570e06dce1827621",
+        "rev": "0a00454d018d61414c97fb8042cc86a925932067",
         "type": "github"
       }
     },
@@ -228,10 +228,28 @@
       "inputs": {
         "nix-overlayfs": "nix-overlayfs",
         "nixpkgs": "nixpkgs_3",
-        "winum": "winum"
+        "winum": "winum",
+        "winum-candidates": "winum-candidates"
       }
     },
     "winum": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794502212,
+        "narHash": "sha256-K+jZcFdBcg4gqD38Y/d6o5NSv/6afSwgqi7goSt/4hU=",
+        "owner": "Harvi654",
+        "repo": "winum",
+        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Harvi654",
+        "repo": "winum",
+        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
+        "type": "github"
+      }
+    },
+    "winum-candidates": {
       "flake": false,
       "locked": {
         "lastModified": 1794502212,
