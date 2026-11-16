@@ -95,6 +95,29 @@ class AdmetaCheckMapping(unittest.TestCase):
 
 
 class AdmetaCheckUpdateImage(unittest.TestCase):
+    def test_target_from_the_package_manifest_properties(self):
+        # the mapping's variable defined in the package's own manifest
+        with tempfile.TemporaryDirectory(prefix="inventor-admeta-props-") as d:
+            d = Path(d)
+            img, pfx = d / "image", d / "prefix"
+            fx.write(img, "setup.xml", '<Bundle xmlns="%s"><Identity><DisplayName>U</DisplayName></Identity>'
+                     '<Packages><Package name="ACE" path="meta/ace.xml"/></Packages></Bundle>' % fx.NS)
+            fx.write(img, "meta/ace.xml",
+                     '<Package xmlns="%s"><Identity><DisplayName>Ace</DisplayName></Identity><Configuration>'
+                     '<InstallFile type="ADIX" file="x64/ace/AceInvAddIn.adix"/><AdditionalPackageInfo><Customizations>'
+                     '<InstallPathMappings><InstallPathMapping source="[{ProgramFilesX64}]\\Autodesk\\AutoCAD 2027\\" '
+                     'target="%%ACE_TARGET%%"/></InstallPathMappings></Customizations></AdditionalPackageInfo>'
+                     '<Properties><Property property="ACE_TARGET" defaultValue="%%INSTALL_DEST%%\\Inventor 2027\\"/>'
+                     '</Properties></Configuration></Package>' % fx.NS)
+            fx.write(img, "x64/ace/AceInvAddIn.adix", adix())
+            fx.write(img, "x64/ace/AceInvAddIn.admeta", json.dumps({"files": [{"path": NAME.replace("/", "\\")}]}))
+            fx.write(pfx, "drive_c/Program Files/Autodesk/Inventor 2027/Bin/InventorElectrical/AceInvAddIn.dll",
+                     b"MZ ace")
+            (pfx / "drive_c/users/user").mkdir(parents=True)
+            out = subprocess.run(["python3", "-I", str(fx.ROOT / "tools/admeta-check.py"), str(img), str(pfx)],
+                                 capture_output=True, text=True, check=True).stdout
+            self.assertIn("total 1: same 1", out)
+
     def test_manifest_found_through_the_bundle(self):
         # an update: Bundle setup.xml, the manifest not named pkg.*.xml
         with tempfile.TemporaryDirectory(prefix="inventor-admeta-bundle-") as d:

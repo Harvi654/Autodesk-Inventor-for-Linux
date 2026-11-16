@@ -73,7 +73,9 @@ def plan_mappings(image, lang):
                 steps = odis.plan(img, apps, lang, include_all=True)[0]
             for st in steps:
                 if st.get("file"):
-                    out[os.path.basename(st["file"].replace("\\", "/")).lower()] = st.get("pathMappings") or {}
+                    # the step too: its own <Properties> fill in the mapping
+                    # targets, as in the installer (expand(..., step=s))
+                    out[os.path.basename(st["file"].replace("\\", "/")).lower()] = (st.get("pathMappings") or {}, st)
         except (OSError, SystemExit, Exception) as e:  # noqa: BLE001 - fall back to the manifest search
             print("note: the installer's plan of this image failed (%s: %s) - looking for manifests instead"
                   % (type(e).__name__, e))
@@ -269,10 +271,12 @@ def main():
         files = json.load(open(m, encoding="utf-8-sig")).get("files", [])
         pm = pd = 0
         # where ODIS puts them: the package's InstallPathMappings
-        maps = plan_mappings(a.image, a.lang).get(os.path.basename(sib[0]).lower()) if sib else None
-        if maps is None and sib:
-            maps = package_mappings(m, sib[0], a.image)
-        mapper = odis.PathMapper(maps or {}, expand)
+        found = plan_mappings(a.image, a.lang).get(os.path.basename(sib[0]).lower()) if sib else None
+        if found is not None:
+            maps, step = found
+        else:
+            maps, step = (package_mappings(m, sib[0], a.image) if sib else {}), None
+        mapper = odis.PathMapper(maps or {}, lambda v, step=step: expand(v, None, step))
         for e in files:
             total += 1
             rel = e["path"].replace("\\", "/")
@@ -320,8 +324,9 @@ def main():
                 lines.append("%s\tdifferent\t%s" % (pk, shown))
         print("%-32s files %5d  missing %4d  different %4d%s%s" % (
             pk, len(files), pm, pd, "" if z else "  (no package next to it)",
-            "  (path mappings: %d%s)" % (len(mapper.rules), ", %d not understood" % len(mapper.unread)
-                                         if mapper.unread else "") if (mapper.rules or mapper.unread) else ""))
+            "  (path mappings: %d%s)" % (len(mapper.rules), ", not understood: %s" % "; ".join(
+                "%s -> %s" % u for u in mapper.unread) if mapper.unread else "")
+            if (mapper.rules or mapper.unread) else ""))
     print("total %d: same %d, turned off on purpose %d, missing %d, different %d, not in package %d, unknown path %d"
           % (total, ok, off, missing, differ, nopkg, unknown))
     if a.details:
