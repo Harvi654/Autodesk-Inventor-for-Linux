@@ -59,6 +59,13 @@ class AdixUpdate(unittest.TestCase):
         removed = Path(self.inst.logdir, "31.20.33400.0-removed.txt").read_text()
         self.assertIn("DevExpress.Data.v25.1.dll", removed)
 
+    def test_own_files_of_the_old_version_are_replaced_silently(self):
+        self.install(["Inventor.exe"], "1")
+        (self.bin / "Inventor.exe").write_bytes(b"MZ older build")   # differs from version 2's copy
+        self.install(["Inventor.exe"], "2")
+        self.assertNotIn("shared file", self.log())
+        self.assertEqual((self.bin / "Inventor.exe").read_bytes(), b"x Inventor.exe")
+
     def test_a_file_another_package_lists_stays(self):
         self.install(["Inventor.exe", "Shared.dll"], "1")
         self.install(["Shared.dll"], "1", identity="Autodesk.Other", name="Other")

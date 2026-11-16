@@ -739,9 +739,13 @@ class Installer:
         """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
         written = 0
         identity, files, regs, dropped, mapper = self.adix_entries(s, path)
+        # files of this package's installed version: an update replaces
+        # them, as Windows replaces the package - no version check, no
+        # "shared file" line (2027.2 logged 1 685 of them)
+        own = {w.lower() for w in (self.read_adix_records().get(identity) or {}).get("files", [])}
         for name, win, read in files:
             dst = self.unix(win)
-            if os.path.isfile(dst) and not self.keep_or_replace(dst, read):
+            if os.path.isfile(dst) and win.lower() not in own and not self.keep_or_replace(dst, read):
                 written += 1
                 continue
             if not self.a.dry_run:

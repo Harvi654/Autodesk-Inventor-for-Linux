@@ -71,8 +71,9 @@ def plan_mappings(image, lang):
             for st in steps:
                 if st.get("file"):
                     out[os.path.basename(st["file"].replace("\\", "/")).lower()] = st.get("pathMappings") or {}
-        except (OSError, SystemExit, Exception):  # noqa: BLE001 - fall back to the manifest search
-            pass
+        except (OSError, SystemExit, Exception) as e:  # noqa: BLE001 - fall back to the manifest search
+            print("note: the installer's plan of this image failed (%s: %s) - looking for manifests instead"
+                  % (type(e).__name__, e))
         _PLAN[image] = out
     return _PLAN[image]
 
@@ -314,7 +315,10 @@ def main():
                 differ += 1
                 pd += 1
                 lines.append("%s\tdifferent\t%s" % (pk, shown))
-        print("%-32s files %5d  missing %4d  different %4d%s" % (pk, len(files), pm, pd, "" if z else "  (no package next to it)"))
+        print("%-32s files %5d  missing %4d  different %4d%s%s" % (
+            pk, len(files), pm, pd, "" if z else "  (no package next to it)",
+            "  (path mappings: %d%s)" % (len(mapper.rules), ", %d not understood" % len(mapper.unread)
+                                         if mapper.unread else "") if (mapper.rules or mapper.unread) else ""))
     print("total %d: same %d, turned off on purpose %d, missing %d, different %d, not in package %d, unknown path %d"
           % (total, ok, off, missing, differ, nopkg, unknown))
     if a.details:
