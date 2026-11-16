@@ -348,36 +348,68 @@ def setup_properties(root):
 VARNAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
 
 
-def setup_ui_settings(img, app, lang="en-US"):
-    """Settings of the setup UI for one application,
-    SetupRes/locale/<lang>/<app>.xml (en-US when the language has none):
-    every element with a defaultVal, e.g. CONTENT_PATH = %PROGRAMDATA%\\Autodesk
-    for dclibrary - the folder the user could change in ODIS's dialog.
-    Returns (file or None, [(name, default)], [unnamed element tags]); the
-    name is the first attribute (or the tag) that looks like an ODIS
-    variable (CONTENT_PATH)."""
-    for lg in dict.fromkeys((lang, "en-US")):
-        path = img.find("SetupRes/locale/%s/%s.xml" % (lg, app))
-        if path:
-            break
-    else:
-        return None, [], []
+UI_NAME_ATTRS = ("property", "name", "id", "variable", "var", "key", "propertyName")
+
+
+def ui_settings_of(path):
+    """([(name, default)], [unnamed element tags]) of one setup UI file:
+    every element with a defaultVal; the name is the first attribute (or
+    the tag) that looks like an ODIS variable. A file the XML parser
+    rejects is read with a plain pattern instead (Inventor 2027's
+    <Setting name="CONTENT_PATH" defaultVal="%PROGRAMDATA%\\Autodesk" ...>
+    was in the image but not found by the first version)."""
+    found, unnamed = [], []
     try:
         tree = ET.parse(path).getroot()
-    except ET.ParseError:
-        return path, [], []
-    found, unnamed = [], []
+    except (ET.ParseError, OSError):
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+        except OSError:
+            return found, unnamed
+        text = raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8", "replace")
+        for m in re.finditer(r"<([A-Za-z_][\w.-]*)\b([^>]*?)\bdefaultVal\s*=\s*\"([^\"]*)\"([^>]*)>", text):
+            attrs = dict((k.lower(), v) for k, v in re.findall(r"([\w.-]+)\s*=\s*\"([^\"]*)\"", m.group(2) + m.group(4)))
+            names = [attrs.get(n.lower()) for n in UI_NAME_ATTRS] + [m.group(1)]
+            name = next((n for n in names if n and VARNAME.match(n)), None)
+            (found.append((name, m.group(3))) if name else unnamed.append(m.group(1)))
+        return found, unnamed
     for el in tree.iter():
         default = _attr(el, "defaultVal")
         if default is None:
             continue
-        names = [_attr(el, n) for n in ("property", "name", "id", "variable", "var", "key", "propertyName")]
+        names = [_attr(el, n) for n in UI_NAME_ATTRS]
         name = next((n for n in names + [el.tag.rsplit("}", 1)[-1]] if n and VARNAME.match(n)), None)
         if name:
             found.append((name, default))
         else:
             unnamed.append(el.tag.rsplit("}", 1)[-1])
-    return path, found, unnamed
+    return found, unnamed
+
+
+def setup_ui_settings(img, app, lang="en-US"):
+    """Settings of the setup UI for one application,
+    SetupRes/locale/<lang>/<app>.xml (en-US when the language has none),
+    e.g. CONTENT_PATH = %PROGRAMDATA%\\Autodesk for dclibrary - the folder
+    the user could change in ODIS's dialog. Returns (file or None,
+    [(name, default)], [unnamed element tags])."""
+    for lg in dict.fromkeys((lang, "en-US")):
+        path = img.find("SetupRes/locale/%s/%s.xml" % (lg, app))
+        if path:
+            return (path,) + ui_settings_of(path)
+    return None, [], []
+
+
+def setup_ui_files(img, lang="en-US"):
+    """Every .xml in the image's SetupRes/locale/<lang>/ folders (en-US
+    when the language has none), wherever they are in the image."""
+    for lg in dict.fromkeys((lang, "en-US")):
+        want = "/setupres/locale/%s/" % lg.lower()
+        out = sorted(p for paths in img.index().values() for p in paths
+                     if p.lower().endswith(".xml") and want in p.replace(os.sep, "/").lower())
+        if out:
+            return out
+    return []
 
 
 def find_package(img, display_name, lang="en-US"):

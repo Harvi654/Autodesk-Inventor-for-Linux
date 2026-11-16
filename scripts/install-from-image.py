@@ -418,10 +418,12 @@ class Installer:
             f[4:-4] for f in os.listdir(os.path.join(img.root, "manifest"))
             if f.startswith("app.") and f.endswith(".xml") and f[4:-4] not in apps) \
             if os.path.isdir(os.path.join(img.root, "manifest")) else list(apps)
-        for app in rels:
-            path, found, unnamed = odis.setup_ui_settings(img, app, self.a.lang)
-            if not path:
-                continue
+        # the applications' own files first, then any other settings file
+        # of the setup UI (a setting need not sit in its application's file)
+        files = [p for p in (odis.setup_ui_settings(img, app, self.a.lang)[0] for app in rels) if p]
+        files += [p for p in odis.setup_ui_files(img, self.a.lang) if p not in files]
+        for path in files:
+            found, unnamed = odis.ui_settings_of(path)
             src = os.path.relpath(path, img.root)
             for name, default in found:
                 if name.lower() in self.vars:
