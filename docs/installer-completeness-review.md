@@ -433,7 +433,19 @@ packages while Windows has it from the start. Check: the DLLs the run
 loaded (`mscoree`, `clr`), the COM classes it asked for (`+ole`), and the
 same MSI again once .NET 4.8 is in the prefix. If (c), the cause is our
 order, not Wine: the decision for (a)/(b) does not apply and is asked
-again.
+again. Result (maintainer's trace): after the action's DLL
+(`msiXXXX.tmp`) only the usual MFC/GUI dependencies load (winex11,
+msimg32, compstui, winspool, gdiplus, oleacc, msacm32, winmm) - no
+mscoree/clr, and no cabinet, shell32 or zipfldr (those were loaded earlier
+by msiexec itself): a native action that unzips with its own code, so (c)
+is ruled out and (a) unlikely. Hypothesis (d), the maintainer's: the
+CustomActionData also carries the user's SID (`S-1-5-21-0-0-0-1000`) and
+the product code, so the action probably sets permissions on the library
+folder for that user, before or after unzipping, and a Wine security call
+fails (the action returns 1359, ERROR_INTERNAL_ERROR). Next: one msiexec
+run with `+loaddll,+advapi,+security,+file,+seh`, filtered to the thread
+that loaded the action's DLL (its last calls before it returns, security
+calls, errors), and whether the target folder is created at all.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
