@@ -173,10 +173,18 @@ def main():
     ap.add_argument("prefix")
     ap.add_argument("--probe", action="store_true")
     ap.add_argument("--details")
+    ap.add_argument("--lang", default="en-US",
+                    help="the language installed: .admeta files in a folder of another language "
+                         "(x64/de-DE/...) are left out, as the installer leaves those packages out")
     a = ap.parse_args()
     drive_c = os.path.join(a.prefix, "drive_c")
     user = prefix_user(drive_c)
     metas = sorted(glob.glob(os.path.join(a.image, "**", "*.admeta"), recursive=True))
+    other = [m for m in metas if any(odis.LOCALE.match(part) and part != a.lang
+                                     for part in os.path.relpath(m, a.image).split(os.sep))]
+    if other:
+        print("left out: %d .admeta of other languages than %s" % (len(other), a.lang))
+    metas = [m for m in metas if m not in other]
     if not metas:
         sys.exit("no .admeta in the image")
     if a.probe:

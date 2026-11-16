@@ -216,6 +216,43 @@ class CompareChanged(unittest.TestCase):
             self.assertIn("Inventor.exe (Windows 20, prefix 10 bytes)", (d / "details.md").read_text())
 
 
+class CompareRemoved(unittest.TestCase):
+    """Files Windows had before and an update removed, still in the prefix."""
+
+    def test_removed_by_the_update(self):
+        with tempfile.TemporaryDirectory(prefix="inventor-compare-removed-") as d:
+            d = Path(d)
+            b = d / "pfx/drive_c/Program Files/Autodesk/Inventor 2027/Bin"
+            b.mkdir(parents=True)
+            (d / "cap/after/logs").mkdir(parents=True)
+            (d / "cap/before").mkdir(parents=True)
+            row = "C:\\Program Files\\Autodesk\\Inventor 2027\\Bin\\%s\t1\tx\n"
+            (d / "cap/before/files.tsv").write_text("Path\tLength\tTime\n" + row % "DevExpress.Data.v25.1.dll")
+            (d / "cap/after/files.tsv").write_text("Path\tLength\tTime\n" + row % "DevExpress.Data.v25.2.dll")
+            for n in ("DevExpress.Data.v25.1.dll", "DevExpress.Data.v25.2.dll", "Ours.dll"):
+                (b / n).write_bytes(b"x")
+            out = subprocess.run(["python3", "-I", str(fx.ROOT / "tools/compare-reference.py"), str(d / "cap"),
+                                  str(d / "pfx"), "--details", str(d / "details.md")],
+                                 capture_output=True, text=True, check=True).stdout
+            text = (d / "details.md").read_text()
+            self.assertIn("in the prefix, removed by the install on Windows: 1", out)
+            self.assertIn("DevExpress.Data.v25.1.dll", text.split("removed by the install")[1])
+            self.assertIn("Ours.dll", text.split("removed by the install")[0])
+
+
+class AdmetaLanguages(unittest.TestCase):
+    def test_other_languages_left_out(self):
+        with tempfile.TemporaryDirectory(prefix="inventor-admeta-lang-") as d:
+            d = Path(d)
+            for lang in ("en-US", "de-DE"):
+                fx.write(d / "img", "x64/%s/InvCoreLP/InvCoreLP.admeta" % lang, '{"files": []}')
+            (d / "pfx/drive_c/users/user").mkdir(parents=True)
+            out = subprocess.run(["python3", "-I", str(fx.ROOT / "tools/admeta-check.py"), str(d / "img"),
+                                  str(d / "pfx")], capture_output=True, text=True, check=True).stdout
+            self.assertIn("left out: 1 .admeta of other languages than en-US", out)
+            self.assertEqual(out.count("InvCoreLP.admeta"), 1)
+
+
 class CompareSizes(unittest.TestCase):
     """tools/compare-reference.py lists files both sides have in a different
     size - how the shared files are checked against Windows."""

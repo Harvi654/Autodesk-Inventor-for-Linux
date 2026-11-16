@@ -518,12 +518,17 @@ def main():
 
     r.h("3b. Autodesk files only in the prefix")
     win_all = {windows_to_prefix(v, wine_user) for v in fa.values()}
-    ours_only = []
+    win_before = {windows_to_prefix(v, wine_user) for v in fb.values()}
+    ours_only, removed = [], []
     for k, v in pf.items():
         if re.match(r"(program files( \(x86\))?/(autodesk|common files/autodesk shared)|programdata/autodesk)/", k) \
                 and k not in win_all:
-            ours_only.append("C:\\" + v.replace("/", "\\"))
+            # Windows had it before and the install removed it (an update
+            # that drops files of the old version), or it never had it
+            (removed if k in win_before else ours_only).append("C:\\" + v.replace("/", "\\"))
     r.groups("only in the prefix", ours_only, lambda p: file_group(p, group_depth(p)))
+    r.groups("in the prefix, removed by the install on Windows", removed,
+             lambda p: file_group(p, group_depth(p)), everything=True)
 
     # 4. Registry
     r.h("4. Registry keys and value names the Windows install added, missing in the prefix")
