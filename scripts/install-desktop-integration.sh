@@ -64,26 +64,13 @@ fi
 mkdir -p "$APPS" "$ICONS" "$BIN"
 chmod +x "$SCRIPTS_DIR"/*.sh
 
-# Entries Wine's menu builder made for this prefix before it was turned off
-# (lib/common.sh): Autodesk's Start-menu shortcuts and file associations that
-# (Exec=env "WINEPREFIX=/path" wine ...)
-# start the programs without the launcher. Other Wine programs are left alone.
-removed=0
-while IFS= read -r -d '' f; do
-    rm -f "$f"; removed=$((removed + 1))
-done < <(grep -rlZF -e "WINEPREFIX=$INV_PREFIX\"" -e "WINEPREFIX=\"$INV_PREFIX\"" "$APPS" 2>/dev/null || true)
-find "$APPS/wine" -type d -empty -delete 2>/dev/null || true
-[ "$removed" -eq 0 ] || ok "removed $removed Wine menu entries of $INV_PREFIX"
-# ...and the file types it registered for Inventor's own extensions: same
-# patterns as ours below, but Wine's icons and no default app
-oldtypes=0
-for e in ipt iam idw ipn ipj; do
-    for f in "$MIME_DIR/packages/x-wine-extension-$e.xml" \
-             "${XDG_DATA_HOME:-$HOME/.local/share}"/icons/hicolor/*/apps/application-x-wine-extension-$e.png; do
-        [ -e "$f" ] && { rm -f "$f"; oldtypes=$((oldtypes + 1)); }
-    done
-done
-[ "$oldtypes" -eq 0 ] || ok "removed Wine's own registrations of .ipt/.iam/.idw/.ipn/.ipj ($oldtypes files)"
+# Entries Wine's menu builder made for this prefix (Autodesk's Start-menu
+# shortcuts, file associations, the adskidmgr:// protocol - they start the
+# programs without the launcher) and Wine's own registrations of
+# .ipt/.iam/.idw/.ipn/.ipj; other Wine programs are left alone
+# (remove_wine_menu_entries, lib/common.sh; migration 0011 does the same).
+removed="$(remove_wine_menu_entries)"
+[ "$removed" -eq 0 ] || ok "removed $removed Wine menu entries and file types of $INV_PREFIX"
 
 # OAuth2 callback handler
 ln -sfn "$SCRIPTS_DIR/adskidmgr-callback.sh" "$BIN/adskidmgr-callback"
