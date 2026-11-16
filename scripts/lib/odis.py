@@ -34,10 +34,11 @@ NS = {"m": "https://emsfs.autodesk.com/schema/manifest/1/0"}
 # phone home, watch for "non-genuine" installs, or are Autodesk's own
 # installer/updater - none of them are needed to run Inventor. A name given
 # with --with is installed all the same.
-# Autodesk Genuine Service: the maintainer decided (2026-11-16) to install
-# it as Windows does; it stays here until its test on a prefix copy
-# (docs/installer-completeness-review.md, "Autodesk Genuine Service") has
-# shown that it runs under Wine without problems.
+# Autodesk Genuine Service: the maintainer wanted it installed as Windows
+# does, but its installer's killBeacon action needs Windows PowerShell,
+# which Wine does not have (1603 on a prefix copy, 2026-11-16); it stays
+# here, --with ags still tries it (docs/installer-completeness-review.md,
+# "On purpose").
 SKIP = {
     "ags": "Autodesk Genuine Service (licence-compliance watcher)",
     "cer": "Customer Error Reporting (crash upload)",

@@ -219,7 +219,28 @@ for existing prefixes, into a migration.
      home page compared with the working prefix, `top -b -n1 | grep -i
      genuine` after a minute (CPU), Inventor's smoke test, and a crash or
      message box from AGS.
-  Result: pending.
+  **Result (maintainer, 2026-11-16, on a copy of `-review2-upd`): not
+  installable under Wine - stays off.** `install-from-image.py IMAGE
+  --with ags` ran only its step (7/33, AGS 7.6.0.229, through the batch
+  file, `INSTALLDIR` with a space) and failed after 0.8 s with 1603.
+  Wine's MSI log: the custom action `killBeacon` ("Return value 0"); the
+  InstallShield managed helper (`ClrPsHelper`) throws
+  `System.ArgumentNullException` in `System.Version.Parse(null)` and the
+  install ends. The .NET Framework is fine (`NDP\v4\Full` and `\Client`:
+  Version 4.8.03761, Release 528049), and a `+reg` trace shows no registry
+  read that comes back empty. Windows' log of the same package (reference
+  VM): after `ClrPsHelper` loads, `killBeacon` runs a PowerShell script
+  (`killBeacon.ps1`) and loads `Microsoft.PowerShell.*` assemblies;
+  "Return value 1". So Genuine Service's installer needs Windows
+  PowerShell, which Windows 10 has and Wine does not; which value it
+  parses is not known (nothing inside InstallShield is looked at).
+  **Decision (maintainer, 2026-11-16): stop here** after three rounds:
+  installing Microsoft's PowerShell in the prefix is a project of its own,
+  and skipping the action would be working around Autodesk's anti-piracy
+  component, which this project does not do. Genuine Service stays off by
+  default (skip list), `--with ags` stays for a later attempt; Inventor
+  licenses without it (tested). Not a Wine bug report as it stands: a
+  missing component, not a wrong return value of a Wine function.
 - `AdskLicensingService` start type Manual instead of Auto (the launcher
   starts it).
 
@@ -279,7 +300,7 @@ yet checked on a real install** - the results of the maintainer's run
 | 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | run 4: all four applications; Catalog Browser in Inventor's folder (InstallPathMappings), its library via `tar.exe`; shared files and fonts as on Windows (TrueView first). The Catalog Browser asks at start for Microsoft 365 Access Runtime (64-bit), not in the image - future work |
 | 7 ADIX root files | listed as `not installed (outside VFS, not package metadata): ...` | - | install.log line for InvCore (`SharedComponents.json`) - decide per file | run 4: listed (`SharedComponents.json`, MSIX metadata, Material Library's `Registry.reg` - same names as `Registry.dat`, nothing to add) |
 | 8 Standard MSI properties | `MSIFASTINSTALL=7`, `REBOOT=ReallySuppress`, `ARPSYSTEMCOMPONENT=1` on every MSI (not on MSP patches) unless the manifest gives one | none: only `SystemComponent=1` in the parts' uninstall entries, nothing reads it | compare-reference section 2: these three no longer "Windows passes ..." | run 4: the same as Windows for every MSI |
-| Genuine Service | `--with ags` installs it; default without it until the test above | - | the test on a prefix copy ("On purpose") | pending |
+| Genuine Service | `--with ags` installs it on request; off by default | - | the test on a prefix copy ("On purpose") | not installable under Wine: its installer's `killBeacon` action needs Windows PowerShell (1603); stays off - maintainer's decision 2026-11-16 |
 
 Open, to be decided with the results:
 
@@ -581,6 +602,13 @@ UPI2 keys, the product's Programs and Features entry, `dotnet` in `PATH`:
   `PATH` or `InstalledVersions`; Inventor's .NET 10 parts run.
 Revisited if a program is found that needs one of them.
 
+### Small items for later
+
+- `--dry-run` prints the .NET Framework 4.8 step even when 4.8 is
+  installed; the real run checks `dotnet48_missing()` first and says
+  "already installed". The dry run could check too (read-only, only when
+  the prefix exists).
+
 ### Wine bug: msiexec and a property value with a space
 
 Worth a report on bugs.winehq.org. A program that passes an MSI property
@@ -800,9 +828,9 @@ calls, errors), and whether the target folder is created at all.
     `DOWNLOAD_DIR`; `install-from-image.py` writes `tar.exe` into the
     prefix before the packages. The package also gets DWG TrueView and the
     Electrical Catalog Browser by default now (`--no-app` leaves one out).
-  - Result: pending (the next install: `AceInvAddIn-ca.msi` exit code 0,
-    20 files in `Public Documents\Autodesk\Inventor Electrical Library
-    2027`, as on Windows).
+  - Result (runs 3 and 4, 2026-11-16): `AceInvAddIn-ca.msi` exit code 0,
+    the same 20 files in `Public Documents\Autodesk\Inventor Electrical
+    Library 2027` as on Windows.
 
 **Run 3 (2026-11-16, same prefix, resumed at step 31, Catalog Browser on
 again):** `tar.exe` (bsdtar 3.5.3) went into `system32` and `syswow64`
