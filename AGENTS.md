@@ -33,6 +33,13 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
 ## Rules
 - **One Autodesk release per Wine prefix**, never a second program or release
   into an existing prefix. Default prefix `~/.wine-inventor<year>`.
+- **Supported releases** (maintainer, 2026-11-16): the newest Inventor
+  release (now 2027) is fully supported - Windows comparisons, update tests
+  and new work target it; the previous one (now 2026) is maintained - it
+  stays working through the shared code, but is not compared with Windows
+  or tested after each change. When a new release comes out, the oldest
+  drops out and its specific notes move to `docs/archive/`. README:
+  "Supported releases".
 - **Every change to what a prefix gets is a new migration file**
   (`scripts/lib/migrations/NNNN-<what>.sh`, listed in its `SHA256SUMS`),
   never an edit of an old one and never a change made only in

@@ -12,9 +12,14 @@ with one command. Both releases can be installed side by side.
 > and RX 6400, and an Intel UHD 630 + NVIDIA GTX 1050 laptop; testers report
 > on other machines, e.g. an NVIDIA RTX 5080). **Ubuntu 26.04** installs and
 > runs too (two clean installations in a virtual machine, the second with 3D
-> PDF and Stress Analysis), **Fedora 44** in a first test. Inventor 2027 is
-> newer here and less tested than 2026. NixOS: a declarative flake (see
-> [NixOS](#nixos)).
+> PDF and Stress Analysis), **Fedora 44** in a first test. NixOS: a
+> declarative flake (see [NixOS](#nixos)).
+>
+> **Use Inventor 2027 for new installations.** It is the release this
+> project develops and tests against: its installation was compared file by
+> file with Autodesk's installer on Windows, base and update. Inventor 2026
+> keeps working and is maintained, but no longer actively tested - see
+> [Supported releases](#supported-releases).
 >
 > New features are added and tested all the time - see
 > [What works](#what-works) and the [Roadmap](#roadmap). Items marked 🧪
@@ -89,7 +94,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Sketch, dimensions, constraints | ✅ | |
 | Part modelling (extrude, hole, ...) | ✅ | |
 | Assemblies | ✅ | |
-| Content Center (screws, nuts, profiles, ...) | ✅ | ~12.7 GB, installed by default |
+| Content Center (screws, nuts, profiles, ...) | ✅ | about 7.5 GB (2027), installed by default |
 | DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
 | Electrical Catalog Browser | ⚠️ | as on Windows: needs Microsoft 365 Access Runtime (64-bit, not in Autodesk's image - Windows asks for it too, the user installs it there). It works on AutoCAD Electrical's catalog database; without AutoCAD Electrical it is empty on Windows too. Installed by default like on Windows (`--no-electrical` leaves it out). Tested: with Microsoft Access Database Engine 2016 (its `aceredist.msi`, installed by hand) the Browser opens and reads a catalog database; an optional installer step for it is planned |
 | Design Accelerator (shafts, ...) | ✅ | |
@@ -129,10 +134,49 @@ Found something that does not work? See [Reporting problems](#reporting-problems
   (`apt`) or **Fedora 44** (`dnf`) - Ubuntu tested in two clean VM
   installations, Fedora in a first test; Wayland or X11
 - tested desktops: **Hyprland**, **KDE Plasma** and **GNOME** (Wayland); others will likely work too
-- a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
-- **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
-- an Autodesk account with an Inventor 2026 or 2027 license
+- an Autodesk account with an Inventor 2027 (or 2026) license, and internet
+  access: for signing in (Autodesk's licensing checks the account) and, while
+  installing, for Wine, DXVK and vkd3d-proton (pinned downloads)
 - about an hour, most of it waiting
+
+Hardware - Autodesk's own requirements for Inventor on Windows are the
+starting point; under Wine they are the same or a little higher:
+
+- **Processor:** 64-bit x86 (x86_64). Autodesk asks for at least 2.5 GHz and
+  recommends 3.0 GHz or more with 4 or more cores.
+- **Memory: 16 GB minimum, 32 GB recommended.** 16 GB is Autodesk's own
+  minimum (for assemblies under 500 parts). Inventor itself, its background
+  services (licensing, sign-in, WebView2), Wine and the Linux desktop share
+  it. On an 8 GB machine Inventor starts and opens a part, but only about
+  0.5-1 GB stays free with a browser open, so it swaps and is not usable for
+  work. The installer warns below 16 GB but does not stop.
+- **Graphics:** a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the
+  proprietary driver). Autodesk asks for at least 2 GB of video memory and
+  recommends 8 GB. GPU ray tracing (Inventor 2027) needs a card with
+  hardware ray tracing and a Vulkan driver that supports it.
+- **Disk:** about **32 GB** free while installing Inventor 2027 with its
+  update and Content Center (about 25 GB without Content Center): the
+  installation itself is about 20 GB (Content Center about 7.5 GB of it),
+  the unpacked download about 11 GB, Wine about 1 GB. The unpacked download
+  in `~/.cache/inventor-on-linux/media` can be deleted afterwards (it is
+  needed again only for a repair), leaving about 21 GB. Plan for **40 GB**,
+  so that updates and your own files fit; an SSD makes opening and saving
+  much faster. Measured 2026-11-16 on a full installation of Inventor 2027.2;
+  a full 2026 installation is about the same size.
+- **Mouse** with a wheel: Inventor pans the view with the middle button.
+
+### Supported releases
+
+- **Inventor 2027 - fully supported:** compared with Autodesk's installer on
+  Windows, updates tested, new features and fixes go here first.
+- **Inventor 2026 - maintained:** it stays in the installer and the NixOS
+  package, and fixes in the shared code reach it too, but it is no longer
+  compared with Windows or tested after each change. Since v0.4 (2026-11-16)
+  we recommend 2027 for new installations: keeping two releases costs time
+  and disk space (each prefix is about 20 GB).
+- When Inventor 2028 comes out, it becomes the fully supported release,
+  2027 is maintained, and 2026 is no longer supported (its notes move to
+  `docs/archive/`).
 
 ## Installation
 
@@ -166,7 +210,8 @@ The folder then looks like this (its name does not matter):
   small `.exe` is the Windows unpacker (not used here, but keep it with the
   `.7z`). With another language, `English` in the names is different.
 - Keep the downloaded names; don't unpack anything yourself - the installer
-  does it (into `~/.cache/inventor-on-linux/media`, ~15 GB).
+  does it (into `~/.cache/inventor-on-linux/media`, about 11 GB for 2027
+  with its update; you can delete it after the installation).
 - An already unpacked install image (a folder with `setup.xml` /
   `manifest/`) works too.
 - The installer reads the version from the file names, or for an unpacked
