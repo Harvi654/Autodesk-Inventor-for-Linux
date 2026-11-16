@@ -480,6 +480,16 @@ calls, errors), and whether the target folder is created at all.
   existing prefixes, `fetchurl` in `nix/inventor.nix` (@krokosik to be
   told) - and then the Catalog Browser back on by default. A `tar.exe` in
   winum (option 2) only if libarchive has no usable Windows build.
+  Measured (maintainer, 2026-11-16): Windows 10 19045.6456 has
+  `C:\Windows\System32\tar.exe`, `tar --version`: `bsdtar 3.5.2 -
+  libarchive 3.5.2 zlib/1.2.5.f-ipp` - the program option 3 would put in
+  the prefix. libarchive's latest release (v3.8.11, GitHub API) has only
+  source archives (`libarchive-3.8.11.tar.gz`/`.tar.xz`/`.zip`, each with
+  an `.asc` signature), no Windows build. Older releases: to be checked.
+  If none has a usable one, the choice is between building bsdtar.exe
+  ourselves from the pinned, signature-checked source (MinGW, in public
+  CI, the source next to the binary - as winum does with Wine) and
+  option 2; the maintainer decides.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
