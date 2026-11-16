@@ -137,6 +137,8 @@ MSI_RC = {
     106: " (= 1642, patch does not apply to the installed product)",
 }
 
+ODIS_MSI_PROPERTIES = (("MSIFASTINSTALL", "7"), ("REBOOT", "ReallySuppress"), ("ARPSYSTEMCOMPONENT", "1"))
+
 # an ODIS variable (%INV_INSTALL_PATH%, %ProgramFiles(x86)%)
 VARIABLE = re.compile(r"%([A-Za-z0-9_()]+)%")
 
@@ -443,6 +445,15 @@ class Installer:
                 dropped.append("%s (%s)" % (k, ", ".join("%%%s%%" % x for x in unknown_variables(v)) or v))
         if dropped:
             self.log("      MSI properties left out (unknown variable): %s" % ", ".join(dropped))
+        # ODIS's standard properties on every MSI command line (Windows'
+        # logs) - "Needed" 8: no restore point and less costing
+        # (MSIFASTINSTALL=7), never a reboot, and each part kept out of
+        # Programs and Features (ARPSYSTEMCOMPONENT=1; the product gets one
+        # entry of its own from ODIS). A value the manifest gives wins.
+        given = {a.split("=", 1)[0].upper() for a in argv[8:] if "=" in a}
+        for k, v in ODIS_MSI_PROPERTIES:
+            if k not in given:
+                argv.append("%s=%s" % (k, v))
         # ODIS passes the package's install location to every MSI that has
         # one (Windows' logs: InvPrivate.msi, adsk-hive-host.msi,
         # DCLibrary64.msi) - "Needed" 4.
