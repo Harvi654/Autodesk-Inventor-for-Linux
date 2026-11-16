@@ -400,6 +400,57 @@
             ! LOG=/dev/null ${dispatcher} 2>/dev/null
             touch "$out"
           '';
+        # DXVK and vkd3d-proton are layers above the installation, not in it.
+        # Builds only the two layers; the installation is compared by evaluation.
+        graphics-layers =
+          let
+            inherit (pkgs) lib;
+            drv = package: package.drvPath;
+            otherDxvk = modules.dxvk_2_6_2;
+            withOtherDxvk = releases.mkInventor {
+              year = "2027";
+              inherit (mediaSources2027) media;
+              updates = [ mediaSources2027.update ];
+              version = "2027.1";
+              dxvkLayer = otherDxvk;
+            };
+            withUpstreamVkd3d = releases.mkInventor {
+              year = "2027";
+              inherit (mediaSources2027) media;
+              updates = [ mediaSources2027.update ];
+              version = "2027.1";
+              vkd3dLayer = modules.vkd3d-proton;
+            };
+            # The layers the launcher mounts (passthru of nix-overlayfs).
+            mounted = map drv inventor2027.overlayDependencies;
+            graphics = lib.filter (
+              layer: lib.hasPrefix "dxvk" layer.name || lib.hasPrefix "vkd3d-proton" layer.name
+            ) inventor2027.overlayDependencies;
+            checks = {
+              "another DXVK leaves the installation as it is" =
+                drv withOtherDxvk.basePackage == drv inventor2027.basePackage;
+              "another DXVK changes the launcher" = drv withOtherDxvk != drv inventor2027;
+              "the launcher mounts the other DXVK" = lib.elem (drv otherDxvk) (
+                map drv withOtherDxvk.overlayDependencies
+              );
+              "the launcher mounts one DXVK and one vkd3d-proton layer" =
+                map (layer: lib.head (lib.splitString "-2" (lib.removeSuffix "-3.0.1-winum-1" layer.name))) graphics
+                == [
+                  "dxvk"
+                  "vkd3d-proton"
+                ];
+              "the default vkd3d-proton is winum's build" = lib.any (
+                layer: layer.name == "vkd3d-proton-3.0.1-winum-1"
+              ) graphics;
+              "another vkd3d-proton leaves the installation as it is" =
+                drv withUpstreamVkd3d.basePackage == drv inventor2027.basePackage
+                && drv withUpstreamVkd3d != drv inventor2027;
+              "both layers are mounted" = lib.all (layer: lib.elem (drv layer) mounted) graphics;
+            };
+            failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
+          in
+          assert lib.assertMsg (failed == [ ]) "graphics-layers: ${lib.concatStringsSep "; " failed}";
+          pkgs.runCommand "inventor-graphics-layers" { } "touch $out";
         # Evaluates the module with both releases; builds nothing from Autodesk.
         nixos-module =
           let
