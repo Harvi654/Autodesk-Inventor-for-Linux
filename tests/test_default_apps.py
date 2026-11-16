@@ -9,6 +9,7 @@ import struct
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 from pathlib import Path
 
@@ -66,18 +67,21 @@ class DefaultApps(unittest.TestCase):
         return Path(inst.logdir, "install.log").read_text()
 
     def test_every_application_like_odis(self):
-        # the Electrical Catalog Browser is off for now (needs tar.exe)
         mod, inst = self.inst()
         apps, left = inst.choose_apps(mod.odis.Image(str(self.image)))
-        self.assertEqual(apps, ["inventor", "dclibrary", "dwgtrueview"])
-        self.assertEqual(left[0], ("aceinvaddin", "off by default: needs Windows' tar.exe, which Wine lacks "
-                                                  "(AceInvAddIn-ca.msi fails) - install it with --include-app aceinvaddin"))
-        self.assertEqual(left[1], ("inventor.ui", "the setup's UI description, not an application"))
+        self.assertEqual(apps, ["inventor", "dclibrary", "aceinvaddin", "dwgtrueview"])
+        self.assertEqual(left, [("inventor.ui", "the setup's UI description, not an application")])
 
     def test_off_by_default_can_be_included(self):
-        mod, inst = self.inst(include_app=["aceinvaddin"])
-        apps, left = inst.choose_apps(mod.odis.Image(str(self.image)))
-        self.assertEqual(apps, ["inventor", "dclibrary", "aceinvaddin", "dwgtrueview"])
+        mod, inst = self.inst()
+        with mock.patch.dict(inst.DEFAULT_OFF, {"aceinvaddin": "needs something"}):
+            apps, left = inst.choose_apps(mod.odis.Image(str(self.image)))
+            self.assertNotIn("aceinvaddin", apps)
+            self.assertIn(("aceinvaddin", "off by default: needs something - install it with --include-app "
+                                          "aceinvaddin"), left)
+            inst.a.include_app = ["aceinvaddin"]
+            apps, left = inst.choose_apps(mod.odis.Image(str(self.image)))
+            self.assertIn("aceinvaddin", apps)
 
     def test_each_can_be_left_out(self):
         mod, inst = self.inst(no_app=["dwgtrueview", "AceInvAddin"], no_content=True)
@@ -101,13 +105,11 @@ class DefaultApps(unittest.TestCase):
         mod, inst = self.inst()
         inst.main()
         log = self.log(inst)
-        self.assertIn("apps   inventor, dclibrary, dwgtrueview", log)
-        self.assertIn("skip   app aceinvaddin: off by default", log)
+        self.assertIn("apps   inventor, dclibrary, aceinvaddin, dwgtrueview", log)
         self.assertIn("skip   app inventor.ui: the setup's UI description, not an application", log)
         self.assertIn("skip   dotnet48: installed by the .NET Framework 4.8 step after the packages", log)
-        for f in ("InvCore.msi", "DCLibrary64.msi", "dwgviewr.msi"):
+        for f in ("InvCore.msi", "DCLibrary64.msi", "ace.msi", "dwgviewr.msi"):
             self.assertIn(f, log)
-        self.assertNotIn("ace.msi", log)
         self.assertNotIn("ndp48.exe", log)
         # a dry run leaves the prefix alone: install.sh refuses a prefix
         # with drive_c that this installer did not finish setting up

@@ -920,8 +920,8 @@ class Installer(Gtk.ApplicationWindow):
                                   "Autodesk's DWG viewer and converter. Autodesk's own installer adds it "
                                   "with Inventor on Windows.", True)
         self.sw_electrical = option("Electrical Catalog Browser",
-                                    "Inventor's electrical catalog add-in and its library. Off for now: its "
-                                    "installer needs Windows' tar.exe, which Wine does not have yet.", False)
+                                    "Inventor's electrical catalog add-in and its library. Autodesk's own "
+                                    "installer adds it with Inventor on Windows.", True)
         self.sw_desktop = option("App launcher and file types",
                                  "\"Autodesk Inventor\" in your app menu, sign-in through your browser, "
                                  ".ipt/.iam/.idw files open in Inventor with a double-click.", True)
@@ -1248,8 +1248,8 @@ class Installer(Gtk.ApplicationWindow):
             args.append("--no-content")
         if not self.sw_trueview.get_active():
             args.append("--no-trueview")
-        if self.sw_electrical.get_active():
-            args.append("--with-electrical")
+        if not self.sw_electrical.get_active():
+            args.append("--no-electrical")
         if not self.sw_desktop.get_active():
             args.append("--no-desktop")
         year, prefix = self.target()

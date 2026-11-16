@@ -25,9 +25,8 @@
 #                      from the download names, or INV_YEAR=2027)
 #   --no-content       leave out the Content Center libraries (~12.7 GB)
 #   --no-trueview      leave out DWG TrueView (installed with Inventor on Windows)
-#   --no-electrical    leave out the Electrical Catalog Browser (off by default
-#                      for now: it needs Windows' tar.exe, which Wine lacks)
-#   --with-electrical  install the Electrical Catalog Browser anyway (fails today)
+#   --no-electrical    leave out the Electrical Catalog Browser (likewise)
+#   --with-electrical  install it (the default; kept for older command lines)
 #   --skip-packages    don't install system packages (already there)
 #   --skip-wine        don't install/check Wine
 #   --no-desktop       no app-launcher entry (e.g. for a test prefix)
