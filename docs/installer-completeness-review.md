@@ -456,7 +456,29 @@ capture):
   copy of InvCoreLP's `AcShellExtensionRes.dll` (ours too). Our update
   plan installs InvCore before TrueView. The whole order of the update's
   packages on Windows is needed to follow it (ODIS's order, not only these
-  three).
+  three). The whole order (maintainer, 2026-11-16): after the other
+  languages' packs, InvCoreLP en-US 23:06:28, Catalog Browser 23:06:32,
+  Nastran 23:06:36, InvPro 23:06:40, DWG TrueView 23:06:45, InvCore
+  23:06:51, InvProLP en-US 23:06:55, Anark 23:07:00 - about 4-5 s apart,
+  neither the bundle manifest's order nor its dependencies. Which copy of
+  a shared file wins depends on that order; whether the copies differ in
+  version (then it matters) or only in their bytes (signing, time stamp):
+  to be read from the update's install log.
+- `INVPROSA-2027.0.0.F-background.png`: in neither image (only the
+  licensing data `INVPROSA202700F_*_Adlm.asr` of `InvPrivate.msi`) -
+  written at run time; the prefix was started, the Windows capture was
+  taken without a start. Not a gap.
+- `Bin\AutodeskAssistant` keeps `InvMcpStdio.*`, which are files of the
+  new Inventor Core (in its list) - right.
+- The capture's logs also hold the base install's (07:50) and an ODIS
+  run at 12:05 that uninstalled every ADIX package before the "before"
+  capture (presumably the new ODIS re-provisioning them): moving the base
+  logs aside after "before" did not work. compare-reference's "REX/RSA
+  only on Windows" came from those logs, not from the update.
+- The update logged 1 685 "shared file" lines - its own files over the
+  old version's copies; fixed: a package's own files of its installed
+  version are replaced without the version check (Windows replaces the
+  package).
 - **Removed by the update on Windows, still in the prefix: 216** - 43 in
   `Inventor 2027\Bin` (`AutodeskAssistant\*`, `DevExpress.*.v25.1.dll`,
   ...), 173 `ProgramData\Autodesk\Inventor 2027\iLogic Codeblocks\*.bundle.js`,
