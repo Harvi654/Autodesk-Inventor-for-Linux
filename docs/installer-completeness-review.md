@@ -561,6 +561,41 @@ already so. `CONTENT_PATH` was still not found in a setup UI file (the
 `<Setting name="CONTENT_PATH">` is elsewhere in the image - its file to
 be named; the value equals ODIS's default).
 
+**Comparison after run 3 (2026-11-16; the prefix of runs 1-3, so with
+the installer of three different commits - a fresh install with the final
+branch is still to come):**
+- Electrical Catalog Browser library: the same 20 files as on Windows.
+- `tools/admeta-check.py`: 13 527 ADIX files, 13 511 identical, 9 turned
+  off on purpose, 0 missing, 7 different (InvCore 4, RealDWG Shared 2,
+  InvCore language pack 1) - which ones: to be listed.
+- MSI properties: `adsk-hive-host.msi` still without `INSTALLDIR` (installed
+  in run 1, before INSTALL_DEST for MSIs without a location); `DC_GOST`
+  and `STANDALONE_LP` passed by us, not by Windows - fixed (setup options
+  are not passed); `CURRENTDIRECTORY`, `CLIENTUILEVEL`,
+  `MSICLIENTUSESEXTERNALUI`, `CLIENTPROCESSID` are the Windows Installer
+  client's own (now ignored by the tool); `TRANSFORMS` for
+  `InvPrivateLoc.msi` as known.
+- Files: Windows added 17 260, 1 400 not in the prefix - AdODIS, CER,
+  Genuine Service, ODIS, Uninstallers (on purpose); Inventor 2027 (34),
+  Common Files\Autodesk Shared (1), ADPSDK, IDSDK, AdskLicensingService
+  and the user's AppData (first start?), the shortcuts
+  `Public\Desktop\Autodesk Inventor Professional 2027.lnk` and
+  `Documents\Inventor\Inventor Eletrical Project 2027.lnk`: to be listed.
+- Different size: `AIGDT___.TTF` and `AMGDT___.ttf` - **Windows has the
+  copies that were in the prefix before DWG TrueView** (36 520 and 25 964
+  bytes); our rule (unversioned: the later package's copy) gave
+  TrueView's. Whether Windows installs TrueView earlier or keeps an
+  existing unversioned file: to be found (package order on Windows).
+  `Inventor.ini` and `InvRO.ini` 3 bytes shorter than on Windows: open.
+  The rest (licensing log, `uninstall.dat`, `UserConsent\en.json`) is
+  written at run time.
+- Only in the prefix: `Program Files\Autodesk\AutoCAD 2027` (25 files),
+  `ProgramData\Autodesk\ODIS` (94, our extract of Shared Components),
+  `Inventor 2027` (9, `Addins.disabled`), licensing and IDSDK files: the
+  AutoCAD folder to be explained.
+- Registry: 21 400 keys missing in 10 900 groups (AdODIS/DDA, COM
+  interfaces, ...): to be grouped.
+
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
   `inventor.ui` left out.
