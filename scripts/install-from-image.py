@@ -110,15 +110,6 @@ VFS = {
 # Installers that end with an error under Wine although their files are in
 # place. name -> (exit codes to accept, glob of a file that must exist,
 # name of an Installer method that finishes what the installer skipped)
-# MSI packages whose custom actions fail when the package is read from the
-# image's drive M: under Wine: installed from a copy of the package's folder
-# on C: instead (the actions stay as they are; only the place they read
-# from changes). Package name (lower case) -> why. Decided by the
-# maintainer on 2026-11-16 for AceInvAddIn-ca.msi IF the diagnosis shows the
-# drive is the cause (docs/installer-completeness-review.md, run 2); empty
-# until then.
-MSI_FROM_C = {}
-
 QUIRKS = {
     # Installs its files, then starts AdskLicensingService as a Windows
     # service. The service does start (its log shows "HTTP server running")
@@ -453,11 +444,8 @@ class Installer:
         if not self.a.dry_run:
             os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
         extra = {"media_root": media} if media else None
-        package = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
-        copy = None
-        if s["name"].lower() in MSI_FROM_C:
-            copy, package = self.copy_package_to_c(s, package)
-        argv = ["wine", "msiexec", "/i", package, "/qn", "/norestart", "/l*v", winlog]
+        argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
+                if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
         params = self.expand(s["params"], extra, s)
         self.warn_unknown_params(s, params)
         argv += win_split(params)
@@ -500,26 +488,8 @@ class Installer:
                          "its own default folder" % (", ".join("%%%s%%" % v for v in unknown), raw))
             else:
                 argv.append("INSTALLDIR=" + loc)
-        try:
-            rc = self.run_msiexec(argv, logname)
-        finally:
-            if copy and not self.a.dry_run:
-                shutil.rmtree(copy, ignore_errors=True)
-                self.log("      copy removed: %s" % os.path.relpath(copy, self.c))
+        rc = self.run_msiexec(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
-
-    def copy_package_to_c(self, s, package):
-        """(unix folder of the copy, Windows path of the MSI in it): the
-        package's folder copied to C:\\odis-media\\<name>; the copy is removed
-        after msiexec (MSI_FROM_C)."""
-        src = os.path.dirname(self.unix(package))
-        win_dir = "C:\\odis-media\\%s" % s["name"]
-        dst = self.unix(win_dir)
-        self.log("      %s from a copy on C: (%s): %s" % (s["name"], MSI_FROM_C[s["name"].lower()], win_dir))
-        if not self.a.dry_run:
-            shutil.rmtree(dst, ignore_errors=True)
-            shutil.copytree(src, dst)
-        return dst, win_dir + "\\" + ntpath.basename(package)
 
     # Wine's msiexec cannot take a property value with a space as an
     # argument: Wine puts the whole argument in quotes
