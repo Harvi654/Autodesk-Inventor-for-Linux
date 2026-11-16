@@ -640,6 +640,51 @@ branch is still to come):**
   `.netframework`, 27 `classes\installer`, 21 UPI2, 18 DDA (Autodesk
   Access), 16 services: to be read after the next comparison.
 
+**Fresh install with the finished branch (run 4, 2026-11-16,
+`.wine-inventor2027-review2`, commit `4799f3c`):** all 32 steps and the
+nested Shared Components bundle with exit code 0 (the licensing
+installer's known 84 handled), tar.exe before the packages, .NET 4.8,
+Inventor's registration in 10.7 s (`Inventor.Application`,
+`Inventor.PartDocument` in `user.reg`, no new `wine-*.desktop`),
+migrations 0005-0008 "already so". The Catalog Browser is in
+`Inventor 2027\Bin\InventorElectrical` (no `AutoCAD 2027` folder), no
+`%PUBLIC%` left in Autodesk's plain strings. Shared files: TrueView first,
+then RealDWG Shared, InvCore and InvCoreLP replaced its copies, as on
+Windows. Comparison with Windows:
+- admeta-check: 13 511 of 13 527 identical, 9 turned off on purpose, 0
+  missing, 7 different - expected to be TrueView's list now, whose copies
+  the later packages replaced as on Windows (to be confirmed).
+- MSI properties: the same as on Windows for every MSI we run, except
+  `TRANSFORMS` of `InvPrivateLoc.msi` (known, not looked into); "only on
+  Windows" are AGS and CER (on purpose) and the MSIs inside the VC++ and
+  .NET 10 bootstrappers (we run the bootstrappers; Windows logs their
+  inner MSIs).
+- Files Windows added and the prefix lacks: 1 374 - AdODIS, CER, Genuine
+  Service, ODIS, Uninstallers (on purpose); Inventor 2027: 9 (turned off
+  on purpose); RSA Engine's `Cfg\USER_cfg.lnk` and the two shortcuts
+  (open); ADPSDK 12, IDSDK 7, AdskLicensingService 2, the user's
+  AppData Local 52 / Roaming 38 (probably written at run time - to be
+  compared after the first start); Windows' own groups.
+- Different size: the two fonts no longer; left are `Inventor.ini` and
+  `InvRO.ini` (2 bytes shorter, open), `uninstall.dat` of licensing and
+  Identity Manager and the licensing log and `UserConsent\en.json`
+  (written at run time), and `LiberationSans-*.ttf` (an Autodesk package
+  installs them, the prefix setup's Linux fonts replace them - harmless).
+- Registry: 918 keys missing (21 400 before the fixes): DDA, ODIS, CER,
+  Access (on purpose), 21 UPI2 + UPI (point 9, postponed), dotnet
+  `InstalledVersions` (point 9), `classes\wow6432node\appid\rex.exe`
+  (REX's 32-bit AppID - open); by path also 1 088
+  `hklm:software\microsoft\windows` (Windows Installer bookkeeping and
+  uninstall entries - to be grouped), 86 `.netframework` (about the 84
+  `NGenService` keys: `InvAcNGEN.exe` now runs with real paths, exit 0
+  after 0.7 s, but makes no native images - open), 16 services.
+  12 046 keys Windows wrote per user (`HKCU\Software\Classes`: Interface,
+  TypeLib, Wow6432Node of Inventor's registration) are machine-wide in the
+  prefix (`HKLM\Software\Classes`) - both are `HKEY_CLASSES_ROOT`, so COM
+  finds them; probable cause Wine's per-user type library registration
+  (to be checked before a Wine bug report).
+- Smoke test: pending.
+
 **Dry run with the finished branch (2026-11-16, fresh prefix
 `.wine-inventor2027-review2`):** order `dwgtrueview, inventor, dclibrary,
 aceinvaddin`; `CONTENT_PATH` and further settings now from `setup.xml`
