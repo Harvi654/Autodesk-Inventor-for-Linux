@@ -469,8 +469,16 @@ capture):
   sizes). Ours: 26.0.60.0 (TrueView after InvCore, and the newer version
   kept anyway). On Windows InvCore came after TrueView: if ODIS lets the
   last package win, Windows has 26.0.59.0, if it keeps the newer version,
-  26.0.60.0 - to be read in the VM (file version of the seven files);
-  that also decides the rule for shared files of ADIX packages.
+  26.0.60.0 - read in the VM (maintainer, 2026-11-16): **all seven
+  26.0.60.0** on Windows. So Windows keeps the newer version although the
+  older InvCore was installed after TrueView - the installer's rule
+  (different versions: the newer stays; equal versions: the later
+  package's copy stays, as in the base install) gives the same result as
+  Windows in both cases, and the order of TrueView and InvCore in an
+  update does not matter for these files. Confirmed.
+- **Smoke test on the updated prefix (L4, maintainer, 2026-11-16):
+  passed** (iLogic only opened - a new rule shows the iLogic editor; no
+  rule run).
 - The 217 files the repair run removed: none of them is on Windows after
   the update (compared with the capture's file list). Correct.
 - admeta-check's 19 "missing" Catalog Browser files: the update's
