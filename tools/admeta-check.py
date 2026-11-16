@@ -95,6 +95,9 @@ def disabled_copy(path):
     m = re.match(r"^(.*/Inventor 20\d\d)/Bin/Addins/([^/]+)$", path, re.I)
     if m:
         return find_ci(os.path.join(m.group(1), "Addins.disabled", m.group(2)))
+    m = re.match(r"^(.*/Inventor 20\d\d)/Bin/(?:[a-z]{2}-[A-Z]{2}/)?([^/]+\.dll)$", path)
+    if m:   # crash sources moved to Addins.disabled/libs/ (cfg_crash_sources)
+        return find_ci(os.path.join(m.group(1), "Addins.disabled", "libs", m.group(2)))
     return None
 
 

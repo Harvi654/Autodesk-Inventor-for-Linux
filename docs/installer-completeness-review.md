@@ -205,7 +205,16 @@ for existing prefixes, into a migration.
   for one-block files). `tools/admeta-check.py` therefore uses the list and
   compares every listed file in a prefix with the same file inside the
   package (present, size, SHA-256): a file integrity check without a
-  Windows reference.
+  Windows reference. First run on the reference prefix: all 11 782
+  installed ADIX files identical; nine files turned off on purpose by the
+  prefix setup (six add-ins, `InteractiveTutorial.dll` and its resources,
+  `CER\senddmp.exe`); the rest missing belongs to the two applications not
+  installed (TrueView, Electrical Catalog Browser). Seven TrueView files in
+  `Common Files\Autodesk Shared` (`AcInetEngine26.dll`,
+  `AcInetEngineps26.dll`, `AcSignCore16.dll`, `AcShellEx\*`,
+  `en-US\AcAxDb26res.dll`) are already in the prefix from another package
+  in a different build; which one wins once TrueView is installed has to
+  match Windows (package order, file versions).
 - The order of the packages differs from ODIS (e.g. adsk-hive-host before
   InvCore, see point 1). Worth comparing as a whole once the fixes are in.
 - `wineserver -k` cannot reach a wineserver whose prefix folder was moved
