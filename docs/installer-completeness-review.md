@@ -189,9 +189,13 @@ for existing prefixes, into a migration.
 - Autodesk Access (`AdODIS`, Access service), CER (crash reporting and its
   service), ODIS itself with its metadata and `Uninstallers`.
 - **Autodesk Genuine Service** is installed by Windows by default (the
-  manifest marks it optional). It is part of Autodesk's licensing checks;
-  the goal is that licensing works as on Windows, so whether to install it
-  needs a decision.
+  manifest marks it optional). It is Autodesk's check for non-genuine
+  software, not the licensing itself (Inventor licenses without it).
+  Decision (maintainer, 2026-11-16): install it as Windows does, so that
+  nothing of Autodesk's own protection is left out - first as a test on a
+  prefix copy (does its service run under Wine, start-up time, crashes,
+  CPU); kept unless it causes problems, and then the reason is written
+  here.
 - `AdskLicensingService` start type Manual instead of Auto (the launcher
   starts it).
 
