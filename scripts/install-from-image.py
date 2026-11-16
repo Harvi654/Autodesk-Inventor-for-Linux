@@ -9,6 +9,7 @@ the manifest, ZIP/7Z/ADIX archives unpacked to their target folders.
 Usage:
   install-from-image.py IMAGE [--prefix DIR] [--lang en-US]
                         [--from N] [--only N,M] [--redo] [--dry-run]
+                        [--no-app APP] [--no-content] [--with PACKAGE]
 
   IMAGE     the unpacked image (folder with Setup.exe and manifest/), or an
             update: its .exe as downloaded from Autodesk (e.g.
@@ -19,7 +20,9 @@ Usage:
             prefix, so your working one is never touched)
   --from N  start at step N;  --only N,M  run just these steps
   --redo    run steps again even if they finished before
-  --dry-run print what would run
+  --dry-run print what would run, and everything left out, with the reason
+  --no-app  leave out an application of the image (default: all of them, as
+            ODIS - inventor, dclibrary, dwgtrueview, aceinvaddin)
 
 Finished steps are remembered in PREFIX/.odis-install-state.json, so after a
 failure you can fix things and simply rerun - it continues where it stopped.
@@ -40,6 +43,16 @@ import sys
 import time
 import urllib.parse
 import zipfile
+
+
+def cmd_arg(a):
+    """One msiexec argument for a batch file line: a property value with a
+    space as NAME="value" (as ODIS passes it), another argument with a space
+    in quotes; % doubled for cmd."""
+    if (" " in a or "\t" in a) and '"' not in a:
+        k, eq, v = a.partition("=")
+        a = '%s="%s"' % (k, v) if eq and re.match(r"^[A-Za-z_][A-Za-z0-9_.]*$", k) else '"%s"' % a
+    return a.replace("%", "%%")
 
 
 def win_split(cmdline):
@@ -134,8 +147,143 @@ MSI_RC = {
     106: " (= 1642, patch does not apply to the installed product)",
 }
 
+ODIS_MSI_PROPERTIES = (("MSIFASTINSTALL", "7"), ("REBOOT", "ReallySuppress"), ("ARPSYSTEMCOMPONENT", "1"))
+
+# an ODIS variable (%INV_INSTALL_PATH%, %ProgramFiles(x86)%)
+VARIABLE = re.compile(r"%([A-Za-z0-9_()]+)%")
+
+
+def unknown_variables(s):
+    """Names of the %VARIABLES% still in an expanded text."""
+    return list(dict.fromkeys(VARIABLE.findall(s or "")))
+
+
+def pe_file_version(data):
+    """File version (a, b, c, d) of a PE file's VS_FIXEDFILEINFO, or None.
+    Clean room: an explicit exception decided by the maintainer on
+    2026-11-16 (docs/installer-completeness-review.md) - only this version
+    stamp is read from Autodesk files, nothing else."""
+    if data[:2] != b"MZ":
+        return None
+    i = data.find(b"\xbd\x04\xef\xfe")
+    if i < 0 or i + 16 > len(data):
+        return None
+    ms, ls = struct.unpack_from("<II", data, i + 8)
+    return (ms >> 16, ms & 0xffff, ls >> 16, ls & 0xffff)
+
+
+def find_ci(path):
+    """The path as it is on disk, matched without case as Windows does, or
+    None."""
+    if os.path.lexists(path):
+        return path
+    cur = os.sep
+    for part in path.strip(os.sep).split(os.sep):
+        try:
+            hit = next((n for n in os.listdir(cur) if n.lower() == part.lower()), None)
+        except OSError:
+            return None
+        if hit is None:
+            return None
+        cur = os.path.join(cur, hit)
+    return cur
+
+
+def disabled_copy(path):
+    """The copy of a file the prefix setup turned off (scripts/lib/
+    configure.sh; the same rules as tools/admeta-check.py): <file>.disabled,
+    an add-in moved to <Inventor>/Addins.disabled/, a crash source moved to
+    <Inventor>/Addins.disabled/libs/ - or None."""
+    f = find_ci(path + ".disabled")
+    if f:
+        return f
+    m = re.match(r"^(.*/Inventor 20\d\d)/Bin/Addins/([^/]+)$", path, re.I)
+    if m:
+        return find_ci(os.path.join(m.group(1), "Addins.disabled", m.group(2)))
+    m = re.match(r"^(.*/Inventor 20\d\d)/Bin/(?:[a-z]{2}-[A-Z]{2}/)?([^/]+\.dll)$", path)
+    if m:
+        return find_ci(os.path.join(m.group(1), "Addins.disabled", "libs", m.group(2)))
+    return None
+
+
+def version_key(v):
+    """(31, 20, 33400, 0) for "31.20.33400.0"; () when there is none."""
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
+
+
+def sha256_file(path):
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def read_env_file(path):
+    """KEY=VALUE lines of a small settings file (comments and blank lines
+    skipped) - scripts/lib/bsdtar.env, which common.sh sources too."""
+    out = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip().strip('"')
+    return out
+
+
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
              "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
+
+
+class WineReg:
+    """A Wine registry file (system.reg, user.reg) read as text, without
+    starting Wine (also works in --dry-run and in tests). Keys relative to
+    the hive, case-insensitive: r"Software\\Autodesk\\Inventor"."""
+
+    def __init__(self, path):
+        self.keys = {}
+        try:
+            with open(path, encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except OSError:
+            return
+        cur = None
+        for line in text.splitlines():
+            if line.startswith("["):
+                end = line.rfind("]")
+                cur = self.keys.setdefault(line[1:end].replace("\\\\", "\\").lower(), {})
+            elif cur is not None and (line.startswith('"') or line.startswith("@=")):
+                if line.startswith("@="):
+                    name, raw = "", line[2:]
+                else:
+                    m = re.match(r'"((?:[^"\\]|\\.)*)"=(.*)', line)
+                    if not m:
+                        continue
+                    name, raw = self.unescape(m.group(1)), m.group(2)
+                cur[name.lower()] = raw
+
+    @staticmethod
+    def unescape(s):
+        return re.sub(r"\\(.)", r"\1", s)
+
+    def has_key(self, key):
+        """The key exists: its own section, or one of a subkey (Wine writes
+        no section for a key that has only subkeys)."""
+        k = key.lower().strip("\\")
+        return k in self.keys or any(x.startswith(k + "\\") for x in self.keys)
+
+    def value(self, key, name):
+        """String data of a value (REG_SZ, REG_EXPAND_SZ unexpanded), the
+        default value for name "" - or None (missing, or not a string)."""
+        raw = self.keys.get(key.lower().strip("\\"), {}).get((name or "").lower())
+        if raw is None:
+            return None
+        m = re.match(r'(?:str\(2\):)?"((?:[^"\\]|\\.)*)"$', raw)
+        return self.unescape(m.group(1)) if m else None
 
 
 class Installer:
@@ -149,6 +297,15 @@ class Installer:
         self.state_file = os.path.join(self.prefix, ".odis-install-state.json")
         self.env = dict(os.environ, WINEPREFIX=self.prefix,
                         WINEDEBUG=os.environ.get("WINEDEBUG", "fixme-all"))
+        # No Linux menu entries or file associations from Autodesk's
+        # installers or Inventor's registration (common.sh does the same for
+        # the shell scripts; set here too when this runs on its own).
+        overrides = self.env.get("WINEDLLOVERRIDES", "")
+        if "winemenubuilder.exe=" not in overrides.lower():
+            self.env["WINEDLLOVERRIDES"] = (overrides + ";" if overrides else "") + "winemenubuilder.exe=d"
+        # names of the variables the image itself defines (setup.xml
+        # properties and settings, setup UI defaults)
+        self.image_vars = set()
         self.vars = {
             "commonprogramfiles": r"C:\Program Files\Common Files",
             "commonprogramfiles(x86)": r"C:\Program Files (x86)\Common Files",
@@ -156,6 +313,9 @@ class Installer:
             "programfiles(x86)": r"C:\Program Files (x86)",
             "programdata": r"C:\ProgramData",
             "allusersprofile": r"C:\ProgramData",   # e.g. the 2027.2 Update's MCP Server
+            # Windows' %PUBLIC%: the target of the [{Common Documents}]
+            # InstallPathMapping of Inventor's ADIX packages
+            "public": r"C:\users\Public",
             "install_dest": r"C:\Program Files\Autodesk",
             "adsk_odis_metadata_base_location": r"C:\ProgramData\Autodesk\ODIS",
             "temp": r"C:\users\%s\AppData\Local\Temp" % USER,
@@ -214,8 +374,10 @@ class Installer:
         with open(os.path.join(self.logdir, "install.log"), "a") as f:
             f.write(msg + "\n")
 
-    def run(self, argv, logname, timeout=None):
-        self.log("      $ " + " ".join(shlex.quote(x) for x in argv))
+    def run(self, argv, logname, timeout=None, show=None):
+        """show: the command as logged, when argv only carries it (an
+        msiexec line run through a batch file)"""
+        self.log("      $ " + (show or " ".join(shlex.quote(x) for x in argv)))
         if self.a.dry_run:
             return 0
         with open(os.path.join(self.logdir, logname), "ab") as out:
@@ -233,7 +395,7 @@ class Installer:
                 proc.kill()
                 proc.wait()
                 rc = -1
-        hint = MSI_RC.get(rc, "") if argv[1:2] == ["msiexec"] else ""
+        hint = MSI_RC.get(rc, "") if argv[1:2] == ["msiexec"] or (show or "").startswith("wine msiexec") else ""
         self.log("        exit code %d%s after %.1fs" % (rc, hint, time.time() - t0))
         return rc
 
@@ -270,28 +432,200 @@ class Installer:
         with open(self.state_file, "w") as f:
             json.dump(st, f, indent=1)
 
+    # --- variables of the image -------------------------------------------
+    # ODIS fills in more variables than the folders above: the image's
+    # setup.xml defines properties (INV_INSTALL_PATH = %INSTALL_DEST%\Inventor
+    # 2027\, used by InvCore's NGEN action and as INSTALLDIR of
+    # InvPrivate.msi), each with a default and possibly a RegistrySearch for
+    # an existing installation (docs/installer-completeness-review.md,
+    # "Needed" 2). A found value wins over the default, as in ODIS.
+    def registry_search(self, search):
+        """(value, how) of a RegistrySearch in this prefix's registry files;
+        value None when nothing is found or the search is not understood."""
+        if not search["root"] or not search["key"]:
+            return None, "search not understood (attributes: %s)" % ", ".join(search["attrs"])
+        key = search["key"]
+        if search["root"] == "HKLM" and not search["win64"] and key.lower().startswith("software\\") \
+                and not key.lower().startswith("software\\wow6432node\\"):
+            key = "Software\\Wow6432Node\\" + key[len("software\\"):]
+        reg = WineReg(os.path.join(self.prefix, "system.reg" if search["root"] == "HKLM" else "user.reg"))
+        where = "%s\\%s%s" % (search["root"], key, (" -> " + search["name"]) if search["name"] else "")
+        if not reg.has_key(key):
+            return None, "%s: not in the prefix" % where
+        v = reg.value(key, search["name"])
+        if not v:
+            return None, "%s: no such value" % where
+        return v, "%s: found" % where
+
+    def load_setup_properties(self, root):
+        for pr in odis.setup_properties(root):
+            name = pr["name"].lower()
+            if name in self.vars:
+                self.log("var    %%%s%% from setup.xml ignored: already %s" % (pr["name"], self.vars[name]))
+                continue
+            value, notes = pr["default"], []
+            for search in pr["searches"]:
+                found, how = self.registry_search(search)
+                notes.append(how)
+                if found is not None:
+                    value = found
+                    break
+            self.vars[name] = value
+            self.image_vars.add(name)
+            self.log("var    %%%s%% = %s (setup.xml%s)" % (pr["name"], self.expand(value),
+                                                          "; " + "; ".join(notes) if notes else ""))
+
+    # Settings of ODIS's setup dialog, one file per application
+    # (SetupRes/locale/<lang>/<app>.xml): CONTENT_PATH, where the Content
+    # Center libraries go (DCLibrary64.msi: installLocation
+    # %CONTENT_PATH%\Inventor 2027) - "Needed" 3. Used with their defaults,
+    # as when nobody changes them in the dialog. A variable no settings file
+    # names gets ODIS's default from here.
+    UI_DEFAULTS = {"CONTENT_PATH": r"%PROGRAMDATA%\Autodesk"}
+
+    def load_setup_ui_settings(self, img, apps):
+        rels = [a for a in apps] + sorted(
+            f[4:-4] for f in os.listdir(os.path.join(img.root, "manifest"))
+            if f.startswith("app.") and f.endswith(".xml") and f[4:-4] not in apps) \
+            if os.path.isdir(os.path.join(img.root, "manifest")) else list(apps)
+        # the applications' own files first, then any other settings file
+        # of the setup UI (a setting need not sit in its application's file)
+        files = [p for p in (odis.setup_ui_settings(img, app, self.a.lang)[0] for app in rels) if p]
+        files += [p for p in odis.setup_ui_files(img, self.a.lang) if p not in files]
+        # ... and the <Setting name=... defaultVal=...> elements of the image's
+        # setup.xml itself, where Inventor 2027 keeps CONTENT_PATH
+        if os.path.isfile(os.path.join(img.root, "setup.xml")):
+            files.append(os.path.join(img.root, "setup.xml"))
+        for path in files:
+            found, unnamed = odis.ui_settings_of(path)
+            src = os.path.relpath(path, img.root)
+            for name, default in found:
+                if name.lower() in self.vars:
+                    continue
+                self.vars[name.lower()] = default
+                self.image_vars.add(name.lower())
+                self.log("var    %%%s%% = %s (setup UI default, %s)" % (name, self.expand(default), src))
+            if unnamed:
+                self.log("note   %s: settings without a variable name (not used): %s" % (src, ", ".join(unnamed)))
+        for name, default in self.UI_DEFAULTS.items():
+            if name.lower() not in self.vars:
+                self.vars[name.lower()] = default
+                self.image_vars.add(name.lower())
+                self.log("var    %%%s%% = %s (ODIS default; no setup UI settings file names it)"
+                         % (name, self.expand(default)))
+
     # --- package types ------------------------------------------------------
     def do_msi(self, s, logname, media=None):
         winlog = r"C:\odis-logs\%s.msi.log" % os.path.splitext(logname)[0]
-        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        if not self.a.dry_run:
+            os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
         extra = {"media_root": media} if media else None
         argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
                 if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
-        argv += win_split(self.expand(s["params"], extra, s))
+        params = self.expand(s["params"], extra, s)
+        self.warn_unknown_params(s, params)
+        argv += win_split(params)
         # Autodesk MSIs have the launch condition "ADSK_ODIS_SETUP OR Installed"
         # ("needs to be run from Setup.exe"); ODIS sets this property.
         argv.append("ADSK_ODIS_SETUP=1")
+        dropped, options = [], []
+        own = {k.lower() for k in (s.get("properties") or {})}
         for k, v in s["msiProperties"].items():
+            # a value that is one of the image's setup options (DC_GOST,
+            # STANDALONE_LP from setup.xml): Windows' command lines show that
+            # ODIS does not pass such properties (2026-11-16, run 3)
+            refs = [n for n in VARIABLE.findall(v) if n.lower() in self.image_vars and n.lower() not in own]
+            if refs:
+                options.append("%s (%s)" % (k, ", ".join("%%%s%%" % n for n in refs)))
+                continue
             v = self.expand(v, extra, s)
-            if "%" not in v:          # leave out ones only ODIS can fill in
+            if "%" not in v:
                 argv.append("%s=%s" % (k, v))
-        rc = self.run(argv, logname)
+            else:
+                # values only ODIS's dialog fills in; Windows' command line
+                # for InvPrivate.msi shows that ODIS does not pass them either
+                dropped.append("%s (%s)" % (k, ", ".join("%%%s%%" % x for x in unknown_variables(v)) or v))
+        if dropped:
+            self.log("      MSI properties left out (unknown variable): %s" % ", ".join(dropped))
+        if options:
+            self.log("      MSI properties left out (setup options, ODIS does not pass them): %s" % ", ".join(options))
+        # ODIS's standard properties on every MSI command line (Windows'
+        # logs) - "Needed" 8: no restore point and less costing
+        # (MSIFASTINSTALL=7), never a reboot, and each part kept out of
+        # Programs and Features (ARPSYSTEMCOMPONENT=1; the product gets one
+        # entry of its own from ODIS). A value the manifest gives wins.
+        given = {a.split("=", 1)[0].upper() for a in argv[8:] if "=" in a}
+        for k, v in ODIS_MSI_PROPERTIES:
+            if k not in given:
+                argv.append("%s=%s" % (k, v))
+        # ODIS passes the package's install location to every MSI that has
+        # one (Windows' logs: InvPrivate.msi, InvPrivateLoc.msi,
+        # DCLibrary64.msi, Autodesk Genuine Service.msi) - "Needed" 4 - and
+        # %INSTALL_DEST% to every MSI without one (adsk-hive-host.msi, cer.msi,
+        # AceInvAddIn-ca.msi: C:\Program Files\Autodesk; installdir-check.py,
+        # 2026-11-16).
+        given = {a.split("=", 1)[0].upper() for a in argv[8:] if "=" in a}
+        if "INSTALLDIR" not in given:
+            raw = s.get("installLocation") or "%INSTALL_DEST%"
+            loc = self.expand(raw, extra, s)
+            unknown = unknown_variables(loc)
+            if unknown:
+                self.log("      WARN INSTALLDIR not passed: unknown %s in installLocation %s - the MSI uses "
+                         "its own default folder" % (", ".join("%%%s%%" % v for v in unknown), raw))
+            else:
+                argv.append("INSTALLDIR=" + loc)
+        rc = self.run_msiexec(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
+
+    # msiexec takes a property value with a space only as NAME="value" -
+    # on Windows and under Wine alike (measured 2026-11-16,
+    # docs/wine-repro/msiexec-property-spaces). A property passed as one
+    # argument ("INSTALLDIR=C:\Program Files\...") is quoted as a whole by
+    # the usual argv convention, and msiexec rejects it with 1639 (exit
+    # code 103) on both. ODIS builds INSTALLDIR="C:\Program Files\...\";
+    # a Linux program cannot pass that form through `wine msiexec`, since
+    # Wine builds the command line from the arguments. Such a command line
+    # therefore goes into a batch file, which cmd hands to msiexec
+    # unchanged; cmd waits for it and returns its exit code. Everything
+    # else runs as before.
+    def run_msiexec(self, argv, logname):
+        if not any(" " in a or "\t" in a for a in argv[2:]):
+            return self.run(argv, logname)
+        line = "msiexec " + " ".join(cmd_arg(a) for a in argv[2:])
+        show = " ".join(shlex.quote(x) for x in argv)
+        if not line.isascii():
+            self.log("      WARN non-ASCII characters - msiexec run directly, values with spaces may fail")
+            return self.run(argv, logname)
+        bat = r"C:\odis-logs\%s.msi.cmd" % os.path.splitext(logname)[0]
+        self.log("      (a value with a space: through %s - %s)" % (bat, line.replace("%%", "%")))
+        if not self.a.dry_run:
+            os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+            with open(self.unix(bat), "w", encoding="ascii", newline="\r\n") as f:
+                f.write("@echo off\n%s\nexit /b %%errorlevel%%\n" % line)
+        return self.run(["wine", "cmd", "/c", bat], logname, show=show)
+
+    def warn_unknown_params(self, s, params):
+        """A package's install parameters cannot be left out; say which
+        variables go to the installer unexpanded."""
+        unknown = unknown_variables(params)
+        if unknown:
+            self.log("      WARN install parameters of %s keep unknown %s: %s"
+                     % (s["name"], ", ".join("%%%s%%" % v for v in unknown), params))
+
+    def log_unrun_actions(self, s):
+        """Custom actions of a type this installer never runs (it runs
+        preInstall and postInstall), listed so that nothing is dropped
+        silently."""
+        for act in s["actions"]:
+            if act["type"] not in ("preInstall", "postInstall"):
+                self.log("      skip action %s %s %s: action type not run by this installer"
+                         % (act["type"], act["path"] or "", act["params"]))
 
     def do_msp(self, s, logname, media=None):
         """Update patch for an installed product (msiexec finds the target)."""
         winlog = r"C:\odis-logs\%s.msp.log" % os.path.splitext(logname)[0]
-        os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
+        if not self.a.dry_run:
+            os.makedirs(os.path.join(self.c, "odis-logs"), exist_ok=True)
         patch = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         # Windows Installer reinstalls the features a patch touches on its
         # own; Wine's MsiApplyPatch only adds PATCH=... - without REINSTALL
@@ -305,7 +639,9 @@ class Installer:
     def do_exe(self, s, logname, media=None):
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
-        argv = ["wine", exe] + win_split(self.expand(s["params"], extra, s))
+        params = self.expand(s["params"], extra, s)
+        self.warn_unknown_params(s, params)
+        argv = ["wine", exe] + win_split(params)
         rc = self.run(argv, logname)
         if rc == 250 and quirk_key(s) == "adsklicensing":
             # Some filesystems cannot represent the installer's NTFS junction.
@@ -393,46 +729,237 @@ class Installer:
             raise RuntimeError("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
         return self.run([sevenzip, "x", "-y", "-o" + dest, path], logname) == 0
 
-    def do_adix(self, s, logname, path):
-        """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
-        written, regs = 0, []
-        def place(name, read):
-            nonlocal written
+    def adix_entries(self, s, path):
+        """What an ADIX package holds: (identity, [(member, Windows path,
+        reader)], registry hives [(member, reader)], dropped members,
+        mapper). The Windows path is where ODIS puts the file (VFS folder,
+        then the package's InstallPathMappings: AceInvAddIn's VFS folder
+        Program Files\\Autodesk\\AutoCAD 2027 belongs in Inventor's folder).
+        identity: the package's Identity Name from AppxManifest.xml, the
+        same for every version of the package; else the manifest's name."""
+        mapper = odis.PathMapper(s.get("pathMappings"), lambda v: self.expand(v, step=s))
+        files, regs, dropped, identity = [], [], [], None
+        if os.path.isdir(path):
+            members = []
+            for d, _, fs in os.walk(path):
+                for fn in fs:
+                    full = os.path.join(d, fn)
+                    members.append((os.path.relpath(full, path), lambda full=full: open(full, "rb").read()))
+            z = None
+        else:
+            z = zipfile.ZipFile(path)
+            members = [(i.filename, lambda i=i: z.read(i)) for i in z.infolist() if not i.is_dir()]
+        for name, read in members:
             parts = urllib.parse.unquote(name).replace("\\", "/").split("/")
             if len(parts) == 1 and parts[0].lower() in ADIX_META:
                 if parts[0].lower().endswith(".dat"):
-                    regs.append(parts[0])
-                    if not self.a.dry_run:
-                        with open(os.path.join(self.logdir, "%s-%s" % (s["name"], parts[0])), "wb") as f:
-                            f.write(read())
-                return
+                    regs.append((parts[0], read))
+                elif parts[0].lower() == "appxmanifest.xml":
+                    m = re.search(rb'<Identity\b[^>]*\bName="([^"]+)"', read())
+                    identity = m.group(1).decode("utf-8", "replace") if m else None
+                continue
             if parts[0] != "VFS" or len(parts) < 3 or not parts[-1]:
-                return
+                if parts[-1]:
+                    dropped.append("/".join(parts))
+                continue
             base = VFS.get(parts[1].lower())
             if base is None:
                 self.log("      WARN unknown VFS folder %r - skipped %s" % (parts[1], name))
-                return
-            dst = os.path.join(self.c, base, *parts[2:])
+                continue
+            win = "C:\\" + "\\".join([base.replace("/", "\\")] + parts[2:])
+            files.append((name, mapper.map(win), read))
+        return identity or s["name"], files, regs, dropped, mapper
+
+    def do_adix(self, s, logname, path):
+        """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
+        written = 0
+        identity, files, regs, dropped, mapper = self.adix_entries(s, path)
+        # files of this package's installed version: an update replaces
+        # them, as Windows replaces the package - no version check, no
+        # "shared file" line (2027.2 logged 1 685 of them)
+        own = {w.lower() for w in (self.read_adix_records().get(identity) or {}).get("files", [])}
+        for name, win, read in files:
+            dst = self.unix(win)
+            if os.path.isfile(dst) and win.lower() not in own and not self.keep_or_replace(dst, read):
+                written += 1
+                continue
             if not self.a.dry_run:
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "wb") as f:
                     f.write(read())
             written += 1
-        if os.path.isdir(path):
-            for d, _, files in os.walk(path):
-                for fn in files:
-                    full = os.path.join(d, fn)
-                    place(os.path.relpath(full, path), lambda full=full: open(full, "rb").read())
-        else:
-            with zipfile.ZipFile(path) as z:
-                for info in z.infolist():
-                    if not info.is_dir():
-                        place(info.filename, lambda info=info: z.read(info))
-        self.log("      %d files placed" % written)
-        for hive in regs:
+        self.log("      %d files %s" % (written, "to place (dry run)" if self.a.dry_run else "placed"))
+        for prefix, src, target in mapper.rules:
+            self.log("      path mapping %s -> %s: %d files" % (src, target, mapper.used.get(src, 0)))
+        for src, dst in mapper.unread:
+            self.log("      WARN path mapping %s -> %s not understood - files stay where the package's VFS puts them"
+                     % (src, dst))
+        # Files outside VFS/ that are not the package's metadata (InvCore's
+        # SharedComponents.json): nothing tells where Windows puts them, so
+        # they are listed, not guessed - "Needed" 7
+        if dropped:
+            self.log("      not installed (outside VFS, not package metadata): %s"
+                     % ", ".join(sorted(dropped, key=str.lower)))
+        self.replace_adix_record(identity, s, [w for _, w, _ in files], logname)
+        for hive, read in regs:
+            if not self.a.dry_run:
+                with open(os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), "wb") as f:
+                    f.write(read())
             if not self.import_hive(s, os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), logname):
                 return False
         return written > 0
+
+    # --- files of the installed ADIX packages ------------------------------
+    # On Windows an ADIX update replaces the package: files of the old
+    # version that the new one does not have are removed (2027.2: 43 in
+    # Inventor 2027\Bin - DevExpress v25.1, AutodeskAssistant - and 173
+    # iLogic Codeblocks scripts in ProgramData; compare-reference, "removed
+    # by the install on Windows"). Unpacking the new version over the old
+    # one left them. So the installer keeps the list of files it placed per
+    # package (<prefix>/.inventor-on-linux/adix/<identity>.json) and, when
+    # another version of the same package comes, removes what the new one
+    # no longer has - but never a file another package's list still holds.
+    def adix_record_dir(self):
+        return os.path.join(self.prefix, ".inventor-on-linux", "adix")
+
+    def adix_record_path(self, identity):
+        return os.path.join(self.adix_record_dir(), re.sub(r"[^A-Za-z0-9._-]", "_", identity) + ".json")
+
+    def read_adix_records(self):
+        out = {}
+        for p in glob.glob(os.path.join(self.adix_record_dir(), "*.json")):
+            try:
+                with open(p) as f:
+                    rec = json.load(f)
+                out[rec["identity"]] = rec
+            except (OSError, ValueError, KeyError):
+                continue
+        return out
+
+    def write_adix_record(self, identity, s, files):
+        if self.a.dry_run:
+            return
+        os.makedirs(self.adix_record_dir(), exist_ok=True)
+        with open(self.adix_record_path(identity), "w") as f:
+            json.dump({"identity": identity, "package": s.get("display") or s["name"], "version": s.get("version", ""),
+                       "files": sorted(set(files), key=str.lower)}, f, indent=0)
+
+    def replace_adix_record(self, identity, s, files, logname):
+        records = self.read_adix_records()
+        old = records.get(identity)
+        if old is not None:
+            now = {w.lower() for w in files}
+            others = {w.lower() for i, r in records.items() if i != identity for w in r.get("files", [])}
+            stale = [w for w in old.get("files", []) if w.lower() not in now and w.lower() not in others]
+            # the file where the package put it, or the copy the prefix
+            # setup moved aside (Addins.disabled, *.disabled)
+            found = []
+            for w in stale:
+                src = self.unix(w)
+                if not os.path.lexists(src):
+                    src = disabled_copy(src)
+                if src:
+                    found.append((w, src))
+            if found:
+                self.move_stale_files(identity, old, found, logname)
+        self.write_adix_record(identity, s, files)
+
+    def move_stale_files(self, identity, old, found, logname):
+        """Files of the old version that the new one does not have go out of
+        their place - into a backup, not deleted: 173 of 2027.2's 216 are
+        iLogic Codeblocks scripts in ProgramData, which users can edit, and
+        what Windows does with an edited one was not seen. The backup is
+        <prefix>/.inventor-on-linux/removed-by-update/<identity>-<old
+        version>/ with each file's path under drive_c, like the migrations'
+        backups. A file that cannot be moved is a warning; the rest go on."""
+        label = re.sub(r"[^A-Za-z0-9._-]", "_", "%s-%s" % (identity, old.get("version") or "unknown"))
+        backup = os.path.join(self.prefix, ".inventor-on-linux", "removed-by-update", label)
+        shown = os.path.relpath(backup, self.prefix)
+        what = "%s %s" % (old.get("package") or identity, old.get("version") or "")
+        if self.a.dry_run:
+            self.log("      would move %d files of %s that this version no longer has (as Windows does) to %s"
+                     % (len(found), what, shown))
+            for w, src in found[:20]:
+                self.log("        %s" % self.win_path(src))
+            if len(found) > 20:
+                self.log("        ... %d more" % (len(found) - 20))
+            return
+        listfile = os.path.splitext(logname)[0] + "-removed.txt"
+        moved = []
+        for w, src in found:
+            dst = os.path.join(backup, os.path.relpath(src, self.c))
+            try:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.move(src, dst)
+                moved.append(src)
+            except OSError as e:
+                self.log("      WARN could not move %s to the backup: %s - left in place" % (self.win_path(src), e))
+        os.makedirs(self.logdir, exist_ok=True)
+        with open(os.path.join(self.logdir, listfile), "w") as f:
+            f.write("".join(self.win_path(p) + "\n" for p in moved))
+        self.log("      moved %d files of %s that this version no longer has (as Windows does) to %s - list in %s"
+                 % (len(moved), what, shown, listfile))
+        self.remove_empty_dirs(moved)
+
+    def win_path(self, unix_path):
+        return "C:\\" + os.path.relpath(unix_path, self.c).replace("/", "\\")
+
+    def remove_empty_dirs(self, removed):
+        """Folders the moved files leave empty (AutodeskAssistant\\en-US,
+        AutodeskAssistant), never above C:\\<folder>\\<folder>."""
+        dirs = sorted({os.path.dirname(p) for p in removed}, key=len, reverse=True)
+        for d in dirs:
+            try:
+                while os.path.relpath(d, self.c).count(os.sep) >= 2 and os.path.isdir(d) and not os.listdir(d):
+                    os.rmdir(d)
+                    d = os.path.dirname(d)
+            except OSError:
+                continue
+
+    def record_installed_adix(self, s, img):
+        """A package installed before the installer kept file lists (or by
+        an earlier run): record its list from the package itself, without
+        unpacking, so that its next version can remove what it drops."""
+        if s["type"] != "ADIX" or self.a.dry_run:
+            return
+        path = img.find(s["file"])
+        if not path:
+            return
+        try:
+            identity, files, _, _, _ = self.adix_entries(s, path)
+        except (OSError, zipfile.BadZipFile):
+            return
+        rec = self.read_adix_records().get(identity)
+        if rec is None:
+            self.write_adix_record(identity, s, [w for _, w, _ in files])
+        elif version_key(s.get("version")) > version_key(rec.get("version")):
+            # an update installed before the lists existed, now run again
+            # after its base image (install.sh BASE UPDATE): remove what the
+            # base had and the update dropped. Never for an older version:
+            # the base image run again on an updated prefix changes nothing.
+            self.replace_adix_record(identity, s, [w for _, w, _ in files], "%s.log" % s["name"])
+
+    def keep_or_replace(self, dst, read):
+        """A file of this package is already in the prefix (another package
+        put it there, e.g. the seven DWG TrueView files in Common
+        Files\\Autodesk Shared): True to write ours. Same content: nothing
+        to do. Otherwise the higher file version stays, as Windows
+        Installer's file versioning rules keep it for an MSI package - so
+        the result does not depend on the order of the packages; without
+        versions ours replaces it. Every such file is logged."""
+        new = read()
+        with open(dst, "rb") as f:
+            old = f.read()
+        if old == new:
+            return False
+        ov, nv = pe_file_version(old), pe_file_version(new)
+        rel = os.path.relpath(dst, self.c)
+        fmt = lambda v: ".".join(map(str, v)) if v else "no version"
+        keep = ov is not None and nv is not None and ov > nv
+        self.log("      shared file %s: in the prefix %s, %d bytes; this package %s, %d bytes - %s"
+                 % (rel, fmt(ov), len(old), fmt(nv), len(new),
+                    "kept the newer one in the prefix" if keep else "replaced"))
+        return not keep
 
     def import_hive(self, s, path, logname):
         """Registry.dat of an ADIX package -> .reg -> wine regedit."""
@@ -465,12 +992,19 @@ class Installer:
             if "%INSTALLERPATH%" in path or "Installer.exe" in path:
                 ok = self.nested_bundle(act, logname, s) and ok
                 continue
-            exe = self.expand(path, {"install_source": media} if media else None, s)
-            if "%" in exe:
-                self.log("      skip action %s %s (unknown variable)" % (act["type"], path))
+            extra = {"install_source": media} if media else None
+            exe = self.expand(path, extra, s)
+            params = self.expand(act["params"], extra, s)
+            # a variable nobody filled in: Windows would get the program or
+            # its parameters right; passing the text on runs it wrongly
+            # (InvAcNGEN.exe with %INV_INSTALL_PATH%Bin) - "Needed" 6
+            unknown = unknown_variables(exe) + [v for v in unknown_variables(params) if v not in unknown_variables(exe)]
+            if unknown or "%" in exe:
+                self.log("      WARN skip action %s %s %s: unknown %s" % (
+                    act["type"], path, act["params"],
+                    ", ".join("%%%s%%" % v for v in unknown) or "variable in the path"))
                 continue
-            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(self.expand(act["params"], step=s)), logname,
-                          timeout=ACTION_TIMEOUT)
+            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(params), logname, timeout=ACTION_TIMEOUT)
             if rc != 0:
                 self.log("      WARN %s action returned %d" % (act["type"], rc))
         return ok
@@ -517,6 +1051,7 @@ class Installer:
         if not path:
             self.log("     ERROR %s not in image" % s["file"]); return False
         logname = tag + ".log"
+        self.log_unrun_actions(s)
         try:
             if self.use_preinstalled_webview2(s):
                 return True
@@ -533,7 +1068,7 @@ class Installer:
         # unpacking deleted the fresh AdpDesktopSDK\bin (AdpSDKCore.dll etc.).
         pre = lambda: self.do_actions(s, logname, media, ("preInstall",))
         post = lambda: self.do_actions(s, logname, media, ("postInstall",))
-        if self.a.dry_run and t in ("ZIP", "7Z", "ADIX"):
+        if self.a.dry_run and t in ("ZIP", "7Z"):
             self.log("      unpack %s (%s)" % (s["file"], t))
             return self.do_actions(s, logname, media)
         if t == "MSI":
@@ -557,6 +1092,55 @@ class Installer:
             self.log("     FAILED - see %s" % os.path.join(self.logdir, logname))
         return ok
 
+    # Applications of the image (manifest/app.<name>.xml) that ODIS installs
+    # by default: all of them - Inventor, the Content Center libraries
+    # (dclibrary, ~12.7 GB), DWG TrueView (dwgtrueview), the Electrical
+    # Catalog Browser (aceinvaddin) - "Needed" 5. In APP_ORDER, then the
+    # rest in name order; each can be left out.
+    # app.<name>.ui.xml (inventor.ui) describes the setup's UI, not an
+    # application.
+    # Order: DWG TrueView first - on Windows its package finished before
+    # RealDWG Shared, InvCoreLP and InvCore (times of their logs in the
+    # capture, 07:49:59 / :50:00 / :50:01 / :50:03), and those, installed
+    # after it, decided which copy of the shared files stays (Common
+    # Files\Autodesk Shared, AIGDT___.TTF, AMGDT___.ttf: Windows has theirs).
+    APP_ORDER = ("dwgtrueview", "inventor", "dclibrary")
+    # Applications ODIS installs that stay out by default for now, with the
+    # reason; --include-app NAME installs one. Empty: the Electrical Catalog
+    # Browser (aceinvaddin) was here until the prefix got tar.exe
+    # (2026-11-16; docs/installer-completeness-review.md, run 2).
+    DEFAULT_OFF = {}
+    APP_TITLES = {"dclibrary": "Content Center libraries", "dwgtrueview": "DWG TrueView",
+                  "aceinvaddin": "Electrical Catalog Browser"}
+
+    def choose_apps(self, img):
+        """(apps to install, [(app, why) left out]) for a product image."""
+        mdir = os.path.join(img.root, "manifest")
+        names = sorted(f[4:-4] for f in os.listdir(mdir) if f.startswith("app.") and f.endswith(".xml")) \
+            if os.path.isdir(mdir) else []
+        if self.a.app:
+            return list(self.a.app), [(n, "not asked for (--app)") for n in names if n not in self.a.app]
+        no = {n.lower() for n in (self.a.no_app or [])}
+        include = {n.lower() for n in (getattr(self.a, "include_app", None) or [])}
+        if self.a.no_content:
+            no.add("dclibrary")
+        for n in sorted(no - {x.lower() for x in names}):
+            self.log("WARN   --no-app %s: no manifest/app.%s.xml in this image" % (n, n))
+        apps, left = [], []
+        for n in sorted(names, key=lambda n: (self.APP_ORDER.index(n) if n in self.APP_ORDER
+                                               else len(self.APP_ORDER), n)):
+            if n.lower().endswith(".ui"):
+                left.append((n, "the setup's UI description, not an application"))
+            elif n.lower() in no:
+                left.append((n, "left out (%s)" % ("--no-content" if n == "dclibrary" and self.a.no_content
+                                                   else "--no-app " + n)))
+            elif n.lower() in self.DEFAULT_OFF and n.lower() not in include:
+                left.append((n, "off by default: %s - install it with --include-app %s"
+                             % (self.DEFAULT_OFF[n.lower()], n)))
+            else:
+                apps.append(n)
+        return apps, left
+
     def main(self):
         img = odis.Image(self.image)
         kind = odis.image_kind(self.image)
@@ -569,22 +1153,32 @@ class Installer:
             self.restore_originals()
         else:
             self.key_prefix = ""
-            apps = self.a.app
-            if not apps:
-                # like ODIS: Inventor plus the Content Center libraries
-                # (app.dclibrary.xml, ~12.7 GB installed) when the image has them
-                apps = ["inventor"]
-                if not self.a.no_content and img.find("manifest/app.dclibrary.xml"):
-                    apps.append("dclibrary")
+            apps, left_out = self.choose_apps(img)
             steps, skipped, missing = odis.plan(img, apps, self.a.lang, extra=self.a.extra)
+            # .NET Framework 4.8 (DWG TrueView depends on it) has its own step
+            # after the packages - run by the plan, under wine-mono it would
+            # exit 0 and install nothing
+            for st in [x for x in steps if x["display"] == self.DOTNET48]:
+                steps.remove(st)
+                skipped.append((st["name"], "installed by the .NET Framework 4.8 step after the packages"))
         if missing:
             for n, rel, chain in missing:
                 print("missing manifest %s (needed by %s)" % (rel, chain))
             sys.exit(1)
         self.prepare()
+        if kind != "update" and not self.install_bsdtar():
+            self.log("\nStopped at the tar.exe step. Fix it and rerun the same command to continue.")
+            sys.exit(1)
         only = {int(x) for x in self.a.only.split(",")} if self.a.only else None
         done = self.state()
         self.log("image  %s\nprefix %s\nlogs   %s" % (self.image, self.prefix, self.logdir))
+        if kind != "update":
+            self.log("apps   %s" % ", ".join(apps))
+            for app, why in left_out:
+                self.log("skip   app %s: %s" % (app, why))
+        self.load_setup_properties(self.image)
+        if kind != "update":
+            self.load_setup_ui_settings(img, apps)
         for n, why in skipped:
             self.log("skip   %s: %s" % (n, why))
         for i, s in enumerate(steps, 1):
@@ -592,7 +1186,9 @@ class Installer:
                 continue
             key = self.key_prefix + s["manifest"]
             if key in done and not self.a.redo:
-                self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"])); continue
+                self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"]))
+                self.record_installed_adix(s, img)
+                continue
             self.log("[%2d/%d] %s" % (i, len(steps), s["display"]))
             t0 = time.time()
             if s["type"] in ("MSI", "MSP"):
@@ -612,15 +1208,17 @@ class Installer:
             self.log("\nStopped at the .NET Framework 4.8 step. Fix it and rerun the same command to continue "
                      "(or --no-dotnet48 to leave it out).")
             sys.exit(1)
+        if kind != "update":
+            self.register_inventor()
         self.log("\nAll steps finished.")
 
     # --- .NET Framework 4.8 ---------------------------------------------------
     # On Windows, Setup installs the image's .NET Framework 4.8 package
     # (3rdParty/dotNetFramework/48/pkg.dotnet48.xml) as a prerequisite when its
     # condition says the release in HKLM\...\NDP\v4\Full is older. Only DWG
-    # TrueView's manifest names it (an external dependency), and DWG TrueView
-    # is not in the product's plan, so plan() never sees it, and under Wine
-    # wine-mono already claims 4.8: the installer exits 0 and installs nothing.
+    # TrueView's manifest names it (an external dependency); main() takes it
+    # out of the plan, because under Wine wine-mono already claims 4.8: run
+    # as a package, the installer exits 0 and installs nothing.
     # Inventor's .NET Framework programs (Anark's 3D PDF corewrapper.exe,
     # AnyCAD's Property Mapping) then run on wine-mono and crash. So, after the
     # product's packages, do what winetricks' dotnet48 verb does and run the
@@ -919,6 +1517,121 @@ class Installer:
         self.log("     done in %ds (clr.dll in Framework64 and Framework, mscoree native)" % (time.time() - t0))
         return True
 
+    # --- tar.exe ---------------------------------------------------------------
+    # Windows 10 has C:\Windows\System32\tar.exe (bsdtar from libarchive);
+    # Wine has none. The Electrical Catalog Browser's library package
+    # (AceInvAddIn-ca.msi) unzips with it during its install, so it goes into
+    # the prefix before the packages: libarchive's own signed Windows build,
+    # pinned and SHA-256 checked (scripts/lib/bsdtar.env), its license text
+    # into the prefix's doc folder. Migration 0006 does the same for an
+    # existing prefix (common.sh, install_bsdtar).
+    def bsdtar_targets(self):
+        dirs = ["system32"] + (["syswow64"] if os.path.isdir(os.path.join(self.c, "windows", "syswow64")) else [])
+        return [os.path.join(self.c, "windows", d, "tar.exe") for d in dirs]
+
+    def install_bsdtar(self):
+        cfg = read_env_file(os.environ.get("INV_BSDTAR_ENV")      # INV_BSDTAR_ENV: tests only
+                            or os.path.join(HERE, "lib", "bsdtar.env"))
+        targets = self.bsdtar_targets()
+        if self.a.dry_run:
+            self.log("tar.exe: bsdtar %s (%s, sha256 %s) -> %s"
+                     % (cfg["BSDTAR_VER"], cfg["BSDTAR_ZIP"], cfg["BSDTAR_SHA256"],
+                        ", ".join(os.path.relpath(t, self.c) for t in targets)))
+            return True
+        if all(sha256_file(t) == cfg["BSDTAR_EXE_SHA256"] for t in targets if os.path.exists(t)) \
+                and all(os.path.exists(t) for t in targets):
+            self.log("tar.exe (bsdtar %s) - already in the prefix" % cfg["BSDTAR_VER"])
+            return True
+        d = os.environ.get("DOWNLOAD_DIR") or os.path.join(PROJECT, "downloads")
+        os.makedirs(d, exist_ok=True)
+        z = os.path.join(d, cfg["BSDTAR_ZIP"])
+        if not os.path.isfile(z):
+            self.log("      downloading %s" % cfg["BSDTAR_URL"])
+            if subprocess.call(["curl", "-fL", "--retry", "3", "-o", z + ".part", cfg["BSDTAR_URL"]]) != 0:
+                self.log("     FAILED - download of %s" % cfg["BSDTAR_ZIP"])
+                return False
+            os.replace(z + ".part", z)
+        got = sha256_file(z)
+        if got != cfg["BSDTAR_SHA256"]:
+            os.remove(z)
+            self.log("     FAILED - %s checksum mismatch (file deleted): %s, expected %s"
+                     % (cfg["BSDTAR_ZIP"], got, cfg["BSDTAR_SHA256"]))
+            return False
+        with zipfile.ZipFile(z) as zf:
+            exe = zf.read(cfg["BSDTAR_MEMBER"])
+        if hashlib.sha256(exe).hexdigest() != cfg["BSDTAR_EXE_SHA256"]:
+            self.log("     FAILED - %s in %s is not the expected file" % (cfg["BSDTAR_MEMBER"], cfg["BSDTAR_ZIP"]))
+            return False
+        for t in targets:
+            os.makedirs(os.path.dirname(t), exist_ok=True)
+            with open(t, "wb") as f:
+                f.write(exe)
+        doc = os.path.join(self.prefix, ".inventor-on-linux", "doc", "libarchive-%s" % cfg["BSDTAR_VER"])
+        os.makedirs(doc, exist_ok=True)
+        shutil.copyfile(os.path.join(HERE, "lib", "licenses", "libarchive-%s-COPYING" % cfg["BSDTAR_VER"]),
+                        os.path.join(doc, "COPYING"))
+        self.log("tar.exe: bsdtar %s (%s, sha256 verified) -> %s; license in %s"
+                 % (cfg["BSDTAR_VER"], cfg["BSDTAR_ZIP"], ", ".join(os.path.relpath(t, self.c) for t in targets),
+                    os.path.relpath(doc, self.prefix)))
+        return True
+
+    # --- Inventor's own registration ----------------------------------------
+    # On Windows, during the install, the Windows Installer service starts
+    # `Inventor.exe /install 0` once Inventor's files are in place
+    # (docs/installer-completeness-review.md, "Needed" 1). It registers the
+    # COM server Inventor.Application, the document types
+    # (Inventor.PartDocument, ...) and type libraries. No package action of
+    # ours starts it (our package order differs), so it runs once here, after
+    # the product's packages. It shows no window and ends by itself; helper
+    # processes it starts keep the wineserver alive, so the prefix is stopped
+    # afterwards. winemenubuilder is off (self.env): run by hand it created
+    # wine-extension-*.desktop files for the prefix.
+    REGISTRATION_KEYS = (r"Software\Classes\Inventor.Application", r"Software\Classes\Inventor.PartDocument")
+
+    def inventor_exe(self):
+        """Windows path of the installed Inventor.exe, or None."""
+        year = self.installed_release()
+        if not year:
+            return None
+        return r"C:\Program Files\Autodesk\Inventor %s\Bin\Inventor.exe" % year
+
+    def desktop_files(self):
+        d = os.path.join(os.environ.get("XDG_DATA_HOME") or os.path.expanduser("~/.local/share"), "applications")
+        return set(glob.glob(os.path.join(d, "wine-*.desktop")))
+
+    def register_inventor(self):
+        key = "registration:inventor"
+        if key in self.state() and not self.a.redo:
+            self.log("Inventor registration (Inventor.exe /install 0) - already done")
+            return True
+        exe = self.inventor_exe()
+        if self.a.dry_run:
+            self.log("Inventor registration: wine %s /install 0 (winemenubuilder off), then wineserver -k"
+                     % (exe or r"C:\Program Files\Autodesk\Inventor <year>\Bin\Inventor.exe"))
+            return True
+        if not exe:
+            self.log("WARN   Inventor registration skipped: no Inventor.exe in the prefix")
+            return False
+        self.log("Inventor registration (COM server, document types; up to %d s)" % ACTION_TIMEOUT)
+        before = self.desktop_files()
+        rc = self.run(["wine", exe, "/install", "0"], "inventor-registration.log", timeout=ACTION_TIMEOUT)
+        subprocess.call(["wineserver", "-k"], env=self.env)
+        subprocess.call(["wineserver", "-w"], env=self.env)
+        new = sorted(self.desktop_files() - before)
+        if new:
+            self.log("      WARN new Linux menu entries (winemenubuilder was off - not expected): %s"
+                     % ", ".join(os.path.basename(p) for p in new))
+        reg = WineReg(os.path.join(self.prefix, "user.reg"))
+        missing = [k for k in self.REGISTRATION_KEYS if not reg.has_key(k)]
+        if missing:
+            self.log("      WARN Inventor registration incomplete (exit code %d), missing in user.reg: %s - "
+                     "Inventor runs without it; to try again: bash scripts/migrate-prefix.sh --run 0005"
+                     % (rc, ", ".join(missing)))
+            return False
+        self.mark_done(key)
+        self.log("      registered: %s" % ", ".join(k.rsplit("\\", 1)[-1] for k in self.REGISTRATION_KEYS))
+        return True
+
     def installed_release(self):
         """Newest Inventor release installed in the prefix ('2027'), or None."""
         found = sorted(glob.glob(os.path.join(self.c, "Program Files", "Autodesk", "Inventor 20[0-9][0-9]",
@@ -1027,10 +1740,15 @@ def main():
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--app", action="append",
-                    help="application manifest(s) to install (default: inventor; "
-                         "dclibrary = Content Center libraries)")
+                    help="install only these application manifest(s) (default: every application of the "
+                         "image, as ODIS: inventor, dclibrary, dwgtrueview, aceinvaddin)")
+    ap.add_argument("--no-app", action="append", default=[], metavar="APP",
+                    help="leave out this application (dclibrary = Content Center libraries, "
+                         "dwgtrueview = DWG TrueView, aceinvaddin = Electrical Catalog Browser)")
+    ap.add_argument("--include-app", action="append", default=[], metavar="APP",
+                    help="also install an application that is off by default (none at the moment)")
     ap.add_argument("--no-content", action="store_true",
-                    help="leave out the Content Center libraries (~12.7 GB)")
+                    help="leave out the Content Center libraries (~12.7 GB); same as --no-app dclibrary")
     ap.add_argument("--no-dotnet48", action="store_true",
                     help="do not replace wine-mono with the image's .NET Framework 4.8")
     ap.add_argument("--with", dest="extra", action="append", default=[],

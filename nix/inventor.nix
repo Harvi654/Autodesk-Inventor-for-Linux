@@ -106,6 +106,13 @@ let
     url = "https://github.com/doitsujin/dxvk/releases/download/v2.7.1/dxvk-2.7.1.tar.gz";
     hash = "sha256-2Fznx59X7NdlqqG55wB8uHXm/en20zHfeZvOc9UTzoc=";
   };
+  # tar.exe for the prefix (scripts/lib/bsdtar.env): libarchive's signed
+  # Windows build of bsdtar, which the Electrical Catalog Browser's installer
+  # needs; install-from-image.py takes it from DOWNLOAD_DIR.
+  bsdtarArchive = pkgs.fetchurl {
+    url = "https://github.com/libarchive/libarchive/releases/download/v3.5.3/libarchive-v3.5.3-win64.zip";
+    sha256 = "81c45c31a31a7b49809b3625594c28a1afbcc18faa6ee1d2ab4e4328ba8ef736";
+  };
   vkd3dArchive = pkgs.fetchurl {
     url = "https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v3.0.1/vkd3d-proton-3.0.1.tar.zst";
     sha256 = "3cf2315522af5e43605ef6d3c41dad91387040bf97199934f3f7ab76caaa2f0c";
@@ -197,6 +204,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
     ln -s ${dxvkArchive} "$DOWNLOAD_DIR/dxvk-2.7.1.tar.gz"
     ln -s ${vkd3dArchive} "$DOWNLOAD_DIR/vkd3d-proton-3.0.1.tar.zst"
+    ln -s ${bsdtarArchive} "$DOWNLOAD_DIR/libarchive-v3.5.3-win64.zip"
     python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
       --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 --no-dotnet48 ${
         lib.optionalString (!contentCenter) "--no-content"

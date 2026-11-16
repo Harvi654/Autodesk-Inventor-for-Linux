@@ -1557,6 +1557,10 @@ palette); the NixOS build of the winum series (@krokosik).
 - `class {cfe9f29b-...} not registered`: not registered on Windows either.
 - `class {1060954f-...} not registered`: the Fusion interop add-in, disabled by
   default (`scripts/addins.sh enable translatorfusion` to try it).
+- `clr_optimization_v4.0.30319_32` / `_64` "failed to start" (`mscorsvw.exe`,
+  an `mscoree` import): the .NET Framework's native image service, which
+  Wine's service manager cannot start; seen on working prefixes too
+  (maintainer, 2026-11-16). Inventor does not need it.
 
 ## NixOS: writable state hid DXVK; 2026 sign-in opened 2027
 
@@ -1620,6 +1624,34 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-16 - Nix: complete installer regression suite in the sandbox:**
+The fixtures now resolve their shell interpreters and preserve the supplied
+PATH instead of assuming /bin and /usr/bin. The `installer` flake check runs
+all 202 tests, which passed in the Nix sandbox, with iconv for synthetic .NET
+logs and standalone coreutils for the tests that give sleep a Windows process
+name. CI builds this synthetic
+check after evaluation; no Autodesk media is needed. Application installation
+and prefix contents are unchanged. Details and the check command:
+`docs/nixos.md`.
+
+**2026-11-16 - msiexec and a property value with a space: not a Wine
+bug.** Measured on Windows 10 (19045.6466) and winum-11.20-2 with a
+synthetic MSI: a property passed as one quoted argument
+(`"INSTALLDIR=C:\quote test\a"`) is rejected with 1639 on both;
+`INSTALLDIR="C:\quote test\a\"` installs on both. msiexec needs
+`NAME="value"` everywhere; the installer's batch file passes that form, as
+ODIS does. No WineHQ report. `docs/wine-repro/msiexec-property-spaces/`,
+`docs/installer-completeness-review.md`.
+
+**2026-11-16 - Installer completeness review: points 1-8 fixed (branch
+`installer-review`):** Inventor's registration (`Inventor.exe /install 0`,
+also migration 0005), the image's `setup.xml` properties and setup UI
+settings as variables, `INSTALLDIR` for every MSI, ODIS's standard MSI
+properties, all applications of the image (DWG TrueView, Electrical Catalog
+Browser), unknown variables skip an action, ADIX files outside VFS listed,
+Genuine Service with `--with ags`. Not yet checked on a real install.
+Details and the results: `docs/installer-completeness-review.md`, "Fixes".
 
 **2026-11-16 - Nix: candidate fixture failed evaluation-only CI:**
 After #12, `nix flake check --no-build --show-trace` could fail while reading

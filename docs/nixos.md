@@ -101,6 +101,14 @@ nix build .#inventor-2026
 nix run .#inventor-2026
 ```
 
+For installer development, `nix build .#checks.x86_64-linux.installer`
+runs the complete Python regression suite, checks each installer shell script's
+syntax and compiles the Python sources. It uses synthetic images and fake Wine
+executables; no Autodesk media or application build is needed. The check
+provides iconv and standalone coreutils, and fixture scripts resolve their
+shells from PATH while keeping the caller's executable search path. CI first
+runs `nix flake check --no-build --show-trace`, then builds this check.
+
 When developing with new files that have not yet been added to Git, use
 `path:$PWD` as the flake reference, for example `nix build "path:$PWD#inventor-2026"`.
 

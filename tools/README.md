@@ -12,12 +12,14 @@ names, SIDs and long hex IDs masked.
 | Tool | Runs on | What it does |
 |---|---|---|
 | `capture-state.ps1` | Windows VM (admin PowerShell) | Snapshot before and after an install: file list, registry exports, services, scheduled tasks, machine environment, uninstall entries; after the install also the installer's and every MSI package's logs. |
-| `compare-reference.py` | Linux | Windows "after minus before" against a prefix: packages, MSI properties per package, files, registry keys and value names, services, uninstall entries, environment. Summary to stdout, full lists with `--details`. |
+| `compare-reference.py` | Linux | Windows "after minus before" against a prefix: packages, MSI properties per package, files (missing, and Autodesk files of a different size: another build), registry keys and value names, services, uninstall entries, environment. Summary to stdout, full lists with `--details`. |
 | `odis-audit.py` | Linux | Reads the image's manifests (nothing is installed): applications in the image, `%VARIABLES%` the installer cannot fill in (install location, MSI properties, parameters, actions), action types it does not run. |
 | `adix-extensions.py` | Linux | What the `AppxManifest.xml` of each ADIX package declares beyond files (COM, file types, fonts, shortcuts). |
 | `pml-who-wrote.py` | Linux, `pip install procmon-parser` | Which process (command line, parents) wrote a registry key or file, from a Process Monitor capture. |
 | `pml-process-context.py` | Linux, `procmon-parser` | Which installer files (.msi, .mst, ...) the parent of a process had opened before it started it ("which package's action ran this"). |
 | `admeta-check.py` | Linux | File integrity of a prefix: every file the image's `.admeta` lists for an ADIX package is present and identical (size, SHA-256) to the file inside the package. |
+| `installdir-check.py` | Linux | Per MSI package of the image: its `installLocation` next to the `INSTALLDIR` Windows' command line had (does ODIS pass `%INSTALL_DEST%` to MSIs without an `installLocation`?). |
+| `adix-registry-names.py` | Linux | ADIX packages with a `Registry.reg` next to `Registry.dat`: key and value NAMES of both compared (never the data) - does the `.reg` hold anything the imported `.dat` does not? |
 
 ## How the 2026-11-15 comparison was made
 
@@ -45,3 +47,15 @@ python3 -I tools/compare-reference.py <cap> /path/.wine-inventor2027-ref \
     --linux-log logs/odis-install-<date>/install.log --details compare-details.md
 venv/bin/python -I tools/pml-who-wrote.py <cap>/install-1.PML --path 'Inventor\.Application'
 ```
+
+## Comparing an update (2027.2)
+
+The same tools, with Windows' "before" taken in the VM snapshot with the
+product installed (`inventor2027-base`) and "after" once the update has
+run; the base install's logs in `%TEMP%` are moved aside after "before",
+so that "after" collects only the update's. On Linux the update goes into
+a reflink copy of a prefix made from the same image, with
+`scripts/install.sh UPDATE.exe --prefix COPY` (the prefix has the
+installer's state, so only the update runs). `compare-reference.py
+--changed` also lists files whose size the update changed but the prefix
+did not (an update mostly replaces files).

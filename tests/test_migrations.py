@@ -11,6 +11,8 @@ import tempfile
 import time
 import unittest
 
+from shell_fixture import fixture_path, shell_script
+
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "scripts" / "lib" / "migrations"
 
@@ -20,6 +22,19 @@ echo "$*" >> "$WINEPREFIX/calls.log"
 regfile() { case "${1^^}" in HKLM*) echo "$WINEPREFIX/system.reg" ;; *) echo "$WINEPREFIX/user.reg" ;; esac; }
 case "$1" in
     --version) echo wine-11.20; exit 0 ;;
+    *'\Bin\Inventor.exe')
+        # Inventor's registration (step 0005): its keys in user.reg, the
+        # menu entry a run with winemenubuilder on would leave
+        echo "registration WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-}" >> "$WINEPREFIX/calls.log"
+        [ "$2 $3" = "/install 0" ] || exit 1
+        [ -n "${FAIL_REGISTRATION:-}" ] && exit 1
+        if [[ ";${WINEDLLOVERRIDES:-};" != *";winemenubuilder.exe=d;"* ]]; then
+            mkdir -p "$HOME/.local/share/applications"; touch "$HOME/.local/share/applications/wine-extension-ipt.desktop"
+        fi
+        for k in Inventor.Application Inventor.PartDocument; do
+            printf 'HKCU\\Software\\Classes\\%s||\n' "$k" >> "$WINEPREFIX/user.reg"
+        done
+        exit 0 ;;
     wineboot)
         # like Wine: the builtin DLL copies in system32 stay as they are
         echo 1794413159 > "$WINEPREFIX/.update-timestamp"
@@ -77,16 +92,29 @@ class Migrations(unittest.TestCase):
             (self.rt / "lib" / "wine" / arch).mkdir(parents=True)
             (self.rt / "lib" / "wine" / arch / "ntdll.dll").write_bytes(b"ntdll of winum " + arch.encode())
         w = self.rt / "bin" / "wine"
-        w.write_text(FAKE_WINE)
+        w.write_text(shell_script(FAKE_WINE))
         w.chmod(0o755)
         (self.rt / "share" / "wine" / "mono").mkdir(parents=True)
         ws = self.rt / "bin" / "wineserver"
-        ws.write_text("#!/bin/sh\nexit 0\n")
+        ws.write_text(shell_script("#!/bin/sh\nexit 0\n"))
         ws.chmod(0o755)
         wb = self.rt / "bin" / "wineboot"
-        wb.write_text('#!/bin/sh\nexec "$(dirname "$0")/wine" wineboot "$@"\n')
+        wb.write_text(shell_script('#!/bin/sh\nexec "$(dirname "$0")/wine" wineboot "$@"\n'))
         wb.chmod(0o755)
         self.logs = t / "logs"
+        # a synthetic stand-in for libarchive's zip (step 0006): no network
+        import zipfile
+        self.downloads = t / "downloads"
+        self.downloads.mkdir()
+        self.fake_tar = b"MZ fake bsdtar.exe"
+        with zipfile.ZipFile(self.downloads / "libarchive-test-win64.zip", "w") as z:
+            z.writestr("libarchive/bin/bsdtar.exe", self.fake_tar)
+        self.bsdtar_env = t / "bsdtar.env"
+        self.bsdtar_env.write_text(
+            "BSDTAR_VER=3.5.3\nBSDTAR_ZIP=libarchive-test-win64.zip\nBSDTAR_URL=http://127.0.0.1:9/none\n"
+            "BSDTAR_SHA256=%s\nBSDTAR_MEMBER=libarchive/bin/bsdtar.exe\nBSDTAR_EXE_SHA256=%s\n"
+            % (hashlib.sha256((self.downloads / "libarchive-test-win64.zip").read_bytes()).hexdigest(),
+               hashlib.sha256(self.fake_tar).hexdigest()))
 
     def prefix(self, name=".wine-inventor2027", year=2027, runtime="old"):
         p = self.home / name
@@ -104,9 +132,10 @@ class Migrations(unittest.TestCase):
         return p
 
     def env(self, prefix, year=2027, **extra):
-        e = {"HOME": str(self.home), "USER": "test", "PATH": "%s/bin:/usr/bin:/bin" % self.rt,
+        e = {"HOME": str(self.home), "USER": "test", "PATH": fixture_path(self.rt / "bin"),
              "INV_PREFIX": str(prefix), "INV_YEAR": str(year), "INV_WINE": "system", "INV_SANDBOX": "0",
-             "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config")}
+             "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config"),
+             "DOWNLOAD_DIR": str(self.downloads), "INV_BSDTAR_ENV": str(self.bsdtar_env)}
         e.update(extra)
         return e
 
@@ -173,7 +202,11 @@ class Migrations(unittest.TestCase):
     def test_prefix_with_everything_has_nothing_to_do(self):
         p = self.prefix(runtime="winum")
         k = "HKCU\\Software\\Wine\\AppDefaults\\Inventor.exe\\X11 Driver"
-        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k))
+        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k)
+                                    + "[Software\\\\Classes\\\\Inventor.Application] 1\n"
+                                    + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n")
+        for d in ("system32", "syswow64"):
+            (p / "drive_c/windows" / d / "tar.exe").write_bytes(self.fake_tar)
         before = (p / "user.reg").read_text()
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
@@ -181,6 +214,145 @@ class Migrations(unittest.TestCase):
         self.assertTrue(all("already so" in v for k, v in self.state(p).items()
                             if k.startswith("done.") and k != "done.0001-base-setup"))
         self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    # --- 0005: Inventor's registration ----------------------------------------
+    def test_registration_runs_once_without_menu_entries(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0005-inventor-registration"])
+        user = (p / "user.reg").read_text()
+        self.assertIn("Classes\\Inventor.Application|", user)
+        self.assertIn("Classes\\Inventor.PartDocument|", user)
+        calls = (p / "calls.log").read_text()
+        self.assertEqual(calls.count("registration "), 1)
+        self.assertIn("winemenubuilder.exe=d", calls.split("registration ")[1].splitlines()[0])
+        self.assertEqual(list((self.home / ".local/share/applications").glob("wine-*.desktop"))
+                         if (self.home / ".local/share/applications").exists() else [], [])
+        # done: the next run does not start Inventor again
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+        self.assertEqual((p / "calls.log").read_text().count("registration "), 1)
+
+    def test_registration_that_fails_is_a_warning_only(self):
+        # Inventor runs without these keys: the launcher must not stop
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p, FAIL_REGISTRATION="1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("did not finish", out.stderr)
+        self.assertIn("--run 0005", out.stderr)
+        # trying again by name
+        out = self.migrate(p, "--run", "0005")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Inventor.Application|", (p / "user.reg").read_text())
+
+    def test_registration_sees_real_user_reg_sections(self):
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("[Software\\\\Classes\\\\Inventor.ApplicationX] 1\n")
+        self.migrate(p, "--run", "0003")
+        out = self.migrate(p)
+        self.assertIn("applied", self.state(p)["done.0005-inventor-registration"], out.stdout + out.stderr)
+
+    # --- 0006: tar.exe ----------------------------------------------------------
+    def test_tar_exe_and_its_license(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+        for d in ("system32", "syswow64"):
+            self.assertEqual((p / "drive_c/windows" / d / "tar.exe").read_bytes(), self.fake_tar)
+        lic = (p / ".inventor-on-linux/doc/libarchive-3.5.3/COPYING").read_text()
+        self.assertIn("Tim Kientzle", lic)
+
+    def test_tar_exe_with_a_wrong_checksum_is_put_off(self):
+        p = self.prefix(runtime="winum")
+        self.bsdtar_env.write_text(self.bsdtar_env.read_text().replace("BSDTAR_SHA256=", "BSDTAR_SHA256=0"))
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("checksum mismatch", out.stdout + out.stderr)
+        self.assertIn("0006-bsdtar-tar-exe put off", out.stderr)
+        self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
+        self.assertNotIn("done.0006-bsdtar-tar-exe", self.state(p))
+
+    def test_offline_start_is_not_stopped_by_the_tar_exe_download(self):
+        # what the launcher runs at every start (run_migrations), with no
+        # zip in downloads/ and the server not reachable
+        (self.downloads / "libarchive-test-win64.zip").rename(self.downloads.parent / "zip-away")
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("bsdtar download failed (offline?)", out.stderr)
+        self.assertIn("0006-bsdtar-tar-exe put off", out.stderr)
+        st = self.state(p)
+        self.assertNotIn("done.0006-bsdtar-tar-exe", st)
+        self.assertIn("deferred.0006-bsdtar-tar-exe", st)
+        # the steps after it still ran
+        self.assertIn("done.0007-public-documents-paths", st)
+        self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
+        # the next start does not try the download again
+        t0 = time.monotonic()
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("put off earlier (cannot be done now) - not tried again yet", out.stdout)
+        self.assertNotIn("downloading", out.stdout)
+        self.assertLess(time.monotonic() - t0, 30)
+        # online again: by name at once
+        (self.downloads.parent / "zip-away").rename(self.downloads / "libarchive-test-win64.zip")
+        out = self.migrate(p, "--run", "0006")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+        self.assertEqual((p / "drive_c/windows/system32/tar.exe").read_bytes(), self.fake_tar)
+
+    def test_put_off_step_is_tried_again_later(self):
+        (self.downloads / "libarchive-test-win64.zip").rename(self.downloads.parent / "zip-away")
+        p = self.prefix(runtime="winum")
+        self.migrate(p)
+        (self.downloads.parent / "zip-away").rename(self.downloads / "libarchive-test-win64.zip")
+        out = self.migrate(p, MIG_DEFER_HOURS="0")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+
+    # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
+    def test_public_paths_in_autodesk_strings(self):
+        p = self.prefix(runtime="winum")
+        (p / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n\n"
+            "[Software\\\\Autodesk\\\\Inventor\\\\RegistryVersion31.0\\\\TaskScheduler\\\\Installation Path] 1\n"
+            "\"DBQ\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Task Scheduler\\\\TaskScheduler.db\"\n"
+            "\"Other\"=\"C:\\\\x\"\n\n"
+            "[Software\\\\Microsoft\\\\Windows\\\\HTML Help] 1\n"
+            "\"admapi_31_0.chm\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Local Help\\\\\"\n\n"
+            "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\Shell Folders] 1\n"
+            "\"Common Documents\"=str(2):\"%PUBLIC%\\\\Documents\"\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0007-public-documents-paths"])
+        self.assertIn("2 value(s) now point to", out.stdout)
+        system = (p / "system.reg").read_text()
+        self.assertIn("HKLM\\Software\\Autodesk\\Inventor\\RegistryVersion31.0\\TaskScheduler\\Installation Path"
+                      "|DBQ|C:\\users\\Public\\Documents\\Autodesk\\Inventor 2027\\Task Scheduler\\TaskScheduler.db",
+                      system)
+        self.assertIn("HKLM\\Software\\Microsoft\\Windows\\HTML Help|admapi_31_0.chm|C:\\users\\Public\\", system)
+        # Wine's own REG_EXPAND_SZ value and other values are not touched
+        calls = (p / "calls.log").read_text()
+        self.assertNotIn("Shell Folders", calls)
+        self.assertNotIn("/v Other", calls)
+
+    def test_public_paths_in_the_32_bit_view(self):
+        # what 0007 left on the maintainer's prefix
+        p = self.prefix(runtime="winum")
+        (p / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n\n"
+            "[Software\\\\Wow6432Node\\\\Microsoft\\\\Windows\\\\HTML Help] 1\n"
+            "\"admapi_31_0.chm\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Local Help\\\\\"\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        st = self.state(p)
+        self.assertIn("already so", st["done.0007-public-documents-paths"])
+        self.assertIn("applied", st["done.0008-public-documents-paths-wow64"])
+        self.assertIn("HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\HTML Help|admapi_31_0.chm|"
+                      "C:\\users\\Public\\Documents\\Autodesk\\Inventor 2027\\Local Help\\",
+                      (p / "system.reg").read_text())
 
     # --- failure and restore ------------------------------------------------
     def test_failing_step_is_restored_and_stops(self):
@@ -271,6 +443,26 @@ class Migrations(unittest.TestCase):
         # a newer winum later: the record no longer matches
         (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
         self.assertEqual(differs(old), "DIFFERS")
+
+    def test_launcher_says_why_it_updates(self):
+        # the everyday prefix case: same `wine --version`, another runtime record
+        def reason(prefix):
+            r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
+                                "source scripts/lib/migrations.sh; prefix_update_reason"],
+                               cwd=str(ROOT), env=self.env(prefix), capture_output=True, text=True)
+            return r.stdout.strip()
+        p = self.prefix(runtime="winum")
+        (p / ".inventor-wine-version").write_text("wine-11.20\n")
+        self.assertEqual(reason(p), "")                       # made by this Wine, no record
+        (p / ".inventor-on-linux").mkdir()
+        (p / ".inventor-on-linux/state").write_text("schema=1\nruntime=wine-11.20\n")
+        (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
+        self.assertEqual(reason(p), 'the prefix was last updated for "wine-11.20", now '
+                                    '"wine-11.20 winum-11.20-2-x86_64" (runtime= in .inventor-on-linux/state)')
+        (p / ".inventor-on-linux/state").write_text("runtime=wine-11.20 winum-11.20-2-x86_64\n")
+        self.assertEqual(reason(p), "")
+        (p / ".inventor-wine-version").write_text("wine-10.0\n")
+        self.assertEqual(reason(p), "the prefix was last set up for wine-10.0 (.inventor-wine-version), now wine-11.20")
 
     def notice(self, prefix, year=2027):
         r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "

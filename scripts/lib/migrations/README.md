@@ -32,7 +32,14 @@ cd scripts/lib/migrations && sha256sum [0-9][0-9][0-9][0-9]-*.sh > SHA256SUMS
 - `MIG_OPTIONAL=1` - run only when asked for by name
   (`migrate-prefix.sh --run NNNN`), never from the launcher or an update.
 
-If a step fails, what was saved is put back and the run stops. The state
+If a step fails, what was saved is put back and the run stops. A step
+whose `mig_apply` returns 75 (`MIG_DEFER`) cannot be done now for a reason
+outside the prefix - a download while offline (0006): what was saved is
+put back, the step is not recorded as done, the run (and the launcher)
+goes on, and automatic runs try it again after 24 hours
+(`MIG_DEFER_HOURS`); `--run NNNN` tries it at once. The launcher runs the
+migrations at every start, so a step there must never need the network to
+let Inventor start. The state
 is `<prefix>/.inventor-on-linux/state` (`done.<step>=<date> applied|already
 so|adopted`, `runtime=` the Wine the prefix was last updated for); the
 backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
@@ -45,6 +52,10 @@ backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
 | 0002-winum-runtime | `wineboot -u` for the Wine in use when the prefix was last updated for another one (this project's `wine-inventor-*`, the system's Wine), and the record of the runtime | 2026-11-11 |
 | 0003-x11-driver-inventor | `UseEGL=N`, `ClientSideWithRender=N` for `Inventor.exe` (GPU ray tracing on GLX; the status bar text) | 2026-11-11 |
 | 0004-enable-hydra | **optional** (`--run 0004` only): `EnableHydra=1` in Inventor's driver preferences (`RegistryVersion30.0` for 2026, `31.0` for 2027) - for a GPU with ray tracing hardware only; on an RX 580 it moved ray tracing to the CPU (~1200 % CPU, 2026-10-21) | 2026-11-11 |
+| 0005-inventor-registration | `Inventor.exe /install 0` once, with winemenubuilder off, then `wineserver -k`: the COM server `Inventor.Application` and the document types (`Inventor.PartDocument`, ...) that Windows' install registers (`docs/installer-completeness-review.md`, "Needed" 1); a registration that does not finish is a warning (Inventor runs without it), try again with `--run 0005` | 2026-11-16 |
+| 0006-bsdtar-tar-exe | `tar.exe` in system32 (and syswow64): libarchive's signed Windows build of bsdtar 3.5.3, pinned and SHA-256 checked (`scripts/lib/bsdtar.env`, also in `nix/inventor.nix`), license text in `<prefix>/.inventor-on-linux/doc/libarchive-3.5.3/`. Windows 10 ships bsdtar as `System32\tar.exe`; the Electrical Catalog Browser's installer unpacks its library with it | 2026-11-16 |
+| 0007-public-documents-paths | registry: Autodesk's plain string values (REG_SZ) under `Software\Autodesk` and `HTML Help` that hold the text `%PUBLIC%\...` (Task Scheduler `DBQ`, `LogFile`; `admapi_31_0.chm`) -> `C:\users\Public\...`; the installer wrote the `[{Common Documents}]` mapping's target unexpanded before 2026-11-16. Wine's own REG_EXPAND_SZ values stay | 2026-11-16 |
+| 0008-public-documents-paths-wow64 | the same as 0007 for the 32-bit view (`Software\Wow6432Node\Autodesk`, `...\Wow6432Node\Microsoft\Windows\HTML Help`), which 0007 missed: `admapi_31_0.chm` there kept `%PUBLIC%\` on the maintainer's prefix | 2026-11-16 |
 
 ## Tested
 
@@ -54,6 +65,15 @@ assembly, save/reopen, restart OK) and Inventor 2027 with .NET 4.8 (0002
 forced: no .NET shim window with `mscoree=d`, wine-mono not back, Property
 Mapping and 3D PDF Publish OK). Details: `docs/arch-hyprland.md`, "Prefix
 migrations".
+
+Steps 0005-0008 on a copy of the maintainer's everyday 2027 prefix
+(2026-11-16): 0005 "already so" (the keys were there), 0006-0008 applied,
+no new `wine-*.desktop`; Inventor starts. 0005 then on the same copy with
+both registration keys deleted: keys back, no new `wine-*.desktop`. After testing on a copy, the everyday prefix may need a new
+Autodesk sign-in: signing in in one copy invalidates the session of the
+others ("Licensing Error" -> "Change license type"). Details:
+`docs/installer-completeness-review.md`, "Migrations on a copy of the
+everyday prefix".
 
 ## Planned, not written yet
 

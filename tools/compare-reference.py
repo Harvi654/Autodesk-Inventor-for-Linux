@@ -16,7 +16,7 @@ The captures themselves stay local; they are never committed.
 
 Usage:
   compare-reference.py CAP_DIR PREFIX --linux-log INSTALL_LOG [...]
-                       [--details OUT.md] [--all-groups]
+                       [--details OUT.md] [--all-groups] [--changed]
   CAP_DIR      folder with before/ and after/ from capture-state.ps1
   PREFIX       the Wine prefix our installer made from the same image
   INSTALL_LOG  logs/odis-install-<date>/install.log of that install (several
@@ -87,10 +87,20 @@ def win_key_to_wine(k):
     lk = norm_key(k)
     for pre, hive, wpre in WIN_ROOTS:
         if lk.startswith(pre):
-            return hive, wpre + lk[len(pre):]
+            return wow_classes(hive, wpre + lk[len(pre):])
         if lk + "\\" == pre:
-            return hive, wpre.rstrip("\\")
+            return wow_classes(hive, wpre.rstrip("\\"))
     return None, lk
+
+
+def wow_classes(hive, key):
+    """HKLM\\Software\\WOW6432Node\\Classes is Software\\Classes\\Wow6432Node
+    (one key, two names); a Windows export lists it under the first, Wine's
+    system.reg under the second."""
+    pre = "software\\wow6432node\\classes"
+    if hive == "hklm" and (key == pre or key.startswith(pre + "\\")):
+        return hive, "software\\classes\\wow6432node" + key[len(pre):]
+    return hive, key
 
 
 def parse_windows_reg(path):
@@ -174,6 +184,18 @@ def read_files_tsv(path):
     return out
 
 
+def read_sizes_tsv(path):
+    """lower-case path -> size in bytes (second column), where given."""
+    out = {}
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
+        next(f, None)
+        for line in f:
+            p = line.rstrip("\r\n").split("\t")
+            if len(p) > 1 and p[0] and p[1].isdigit():
+                out[p[0].lower()] = int(p[1])
+    return out
+
+
 def windows_to_prefix(path, wine_user):
     """C:\\... (Windows) -> path relative to PREFIX/drive_c, lower case."""
     p = path.lower()
@@ -215,6 +237,12 @@ SECRET = re.compile(r"serial|password|token|secret|key\b|_key|prodkey", re.I)
 SHOW_VALUE = re.compile(r"^(INSTALLDIR|TARGETDIR|APPDIR|INSTALLLOCATION|TRANSFORMS|"
                         r"LANGUAGE|LANG|ProductLanguage|ADSK_.*|ADLM_.*|REBOOT|"
                         r"ALLUSERS|MSIFASTINSTALL|.*DIR|.*PATH|.*LOCATION)$", re.I)
+
+
+# Properties the Windows Installer client adds itself when it hands an
+# install to the Windows Installer service; ODIS does not pass them, and
+# Wine's msiexec (no separate service) has no counterpart.
+CLIENT_PROPS = {"CURRENTDIRECTORY", "CLIENTUILEVEL", "MSICLIENTUSESEXTERNALUI", "CLIENTPROCESSID"}
 
 
 def msi_props(cmdline):
@@ -345,13 +373,15 @@ class Report:
         if not detail_only:
             self.summary.append(s)
 
-    def groups(self, title, items, depth_of, limit=25):
-        """items: list of original-case strings; grouped, relevant ones listed."""
+    def groups(self, title, items, depth_of, limit=25, everything=False):
+        """items: list of original-case strings; grouped, relevant ones
+        listed (every group with everything=True)."""
         by = collections.OrderedDict()
         for it in sorted(items, key=str.lower):
             by.setdefault(depth_of(it), []).append(it)
-        rel = [(g, v) for g, v in by.items() if RELEVANT.search(g) or self.all]
-        other = [(g, v) for g, v in by.items() if not (RELEVANT.search(g) or self.all)]
+        show = lambda g: everything or self.all or RELEVANT.search(g)
+        rel = [(g, v) for g, v in by.items() if show(g)]
+        other = [(g, v) for g, v in by.items() if not show(g)]
         self.line("%s: %d in %d groups (%d relevant)" % (title, len(items), len(by), len(rel)))
         for g, v in rel:
             self.line("- `%s`: %d" % (g, len(v)))
@@ -373,6 +403,9 @@ def main():
     ap.add_argument("--linux-log", action="append", default=[])
     ap.add_argument("--details")
     ap.add_argument("--all-groups", action="store_true", help="list every group, not only Autodesk-related")
+    ap.add_argument("--changed", action="store_true",
+                    help="section 3a also covers files Windows had before whose size the install changed "
+                         "(for an update, which mostly replaces files)")
     a = ap.parse_args()
     before, after = os.path.join(a.cap, "before"), os.path.join(a.cap, "after")
     drive_c = os.path.join(a.prefix, "drive_c")
@@ -418,9 +451,13 @@ def main():
         if ln_ is None:
             r.line("- `%s`: only on Windows (we never ran it as MSI)" % name)
             continue
-        miss = [p for p in wp if p not in lp]
+        client = [p for p in wp if p in CLIENT_PROPS and p not in lp]
+        miss = [p for p in wp if p not in lp and p not in CLIENT_PROPS]
         extra = [p for p in lp if p not in wp]
         diff = [p for p in wp if p in lp and wp[p] != lp[p] and not SECRET.search(p)]
+        if client:
+            r.line("- `%s`: Windows Installer client's own properties (ignored): %s"
+                   % (name, ", ".join("`%s`" % p for p in client)), detail_only=True)
         if not (miss or extra or diff):
             r.line("- `%s`: same property names (%d)" % (name, len(wp)), detail_only=True)
             continue
@@ -452,14 +489,46 @@ def main():
            "%d of them are not in the prefix" % (len(added), noise, len(missing)))
     r.groups("missing in the prefix", missing, lambda p: file_group(p, group_depth(p)))
 
+    r.h("3a. Files the install added, on both sides with a different size (another build)")
+    # e.g. a shared file two packages install in different builds: which one
+    # Windows kept has to be the one the prefix has
+    sizes = read_sizes_tsv(os.path.join(after, "files.tsv"))
+    sizes_before = read_sizes_tsv(os.path.join(before, "files.tsv")) if a.changed else {}
+    differ = []
+    for k, p in fa.items():
+        rel = windows_to_prefix(p, wine_user)
+        # only what the install added: Windows' own fonts against Wine's are
+        # no install difference
+        changed = a.changed and k in sizes_before and k in sizes and sizes_before[k] != sizes[k]
+        if (k in fb and not changed) or rel is None or rel not in pf or k not in sizes or NOISE.search(k):
+            continue
+        # Autodesk's folders, the shared Public Documents and the fonts
+        # packages install (AIGDT___.TTF from two packages in two sizes)
+        if not re.match(r"(program files( \(x86\))?/(autodesk|common files/autodesk shared)|programdata/autodesk|"
+                        r"users/public/documents/autodesk|windows/fonts)/", rel):
+            continue
+        try:
+            ours = os.path.getsize(os.path.join(drive_c, pf[rel]))
+        except OSError:
+            continue
+        if ours != sizes[k]:
+            differ.append("%s (Windows %d, prefix %d bytes)" % (p, sizes[k], ours))
+    r.groups("different size", differ, lambda p: file_group(p.split(" (Windows ")[0], group_depth(p)),
+             everything=True)
+
     r.h("3b. Autodesk files only in the prefix")
     win_all = {windows_to_prefix(v, wine_user) for v in fa.values()}
-    ours_only = []
+    win_before = {windows_to_prefix(v, wine_user) for v in fb.values()}
+    ours_only, removed = [], []
     for k, v in pf.items():
         if re.match(r"(program files( \(x86\))?/(autodesk|common files/autodesk shared)|programdata/autodesk)/", k) \
                 and k not in win_all:
-            ours_only.append("C:\\" + v.replace("/", "\\"))
+            # Windows had it before and the install removed it (an update
+            # that drops files of the old version), or it never had it
+            (removed if k in win_before else ours_only).append("C:\\" + v.replace("/", "\\"))
     r.groups("only in the prefix", ours_only, lambda p: file_group(p, group_depth(p)))
+    r.groups("in the prefix, removed by the install on Windows", removed,
+             lambda p: file_group(p, group_depth(p)), everything=True)
 
     # 4. Registry
     r.h("4. Registry keys and value names the Windows install added, missing in the prefix")
@@ -487,6 +556,11 @@ def main():
                 if v not in rb[k]:
                     new_vals.append((k, vals[v]))
     miss_keys = [k for k in new_keys if k not in wine_keys]
+    # written per user on Windows (HKCU\Software\Classes), machine-wide in
+    # the prefix (HKLM\Software\Classes): both are HKEY_CLASSES_ROOT
+    per_user = {k for k in miss_keys if k[0] == "hkcu" and k[1].startswith("software\\classes\\")
+                and ("hklm", k[1]) in wine_keys}
+    miss_keys = [k for k in miss_keys if k not in per_user]
     miss_vals = []
     for k in new_keys:
         if k in wine_keys:
@@ -500,6 +574,10 @@ def main():
             miss_vals.append((k, name))
     r.line("Windows added %d keys and %d values in existing keys; missing in the prefix: "
            "%d keys, %d value names" % (len(new_keys), len(new_vals), len(miss_keys), len(miss_vals)))
+    r.line("keys Windows wrote per user (HKCU\\Software\\Classes) that the prefix has machine-wide "
+           "(HKLM\\Software\\Classes): %d" % len(per_user))
+    r.groups("per user on Windows, machine-wide in the prefix", ["%s:%s" % k for k in sorted(per_user)],
+             lambda s: key_group(s, 4), limit=5)
     r.groups("keys missing in the prefix", ["%s:%s" % k for k in miss_keys],
              lambda s: key_group(s, 5))
     r.groups("value names missing in the prefix (key present or added)",

@@ -437,6 +437,34 @@ prefix_runtime_differs() {
     return 1
 }
 
+# Why the prefix needs `wineboot -u` for the Wine in PATH, as one line for
+# the launcher's message; empty when it does not. The two checks the
+# launcher has always made, named: the Wine version the prefix was last set
+# up for (.inventor-wine-version) and the runtime recorded in its state
+# (prefix_runtime_differs). The version alone ("wine-11.20") is the same
+# for winum-11.20-1, winum-11.20-2 and a system Wine 11.20, so the message
+# used to show no difference at all (maintainer's everyday prefix,
+# 2026-11-16).
+prefix_update_reason() {
+    local now ver rec id
+    now="$(wine --version 2>/dev/null)"
+    ver="$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)"
+    if [ "$ver" != "$now" ]; then
+        echo "the prefix was last set up for ${ver:-an unknown Wine} (.inventor-wine-version), now $now"
+        return 0
+    fi
+    rec="$(sed -n 's/^runtime=//p' "$WINEPREFIX/.inventor-on-linux/state" 2>/dev/null | tail -1)"
+    id="$(wine_runtime_id)"
+    if [ -n "$rec" ]; then
+        [ "$rec" = "$id" ] || echo "the prefix was last updated for \"$rec\", now \"$id\" (runtime= in .inventor-on-linux/state)"
+        return 0
+    fi
+    if prefix_runtime_differs; then
+        echo "Wine's DLLs in the prefix (ntdll.dll) are not the ones of $id"
+    fi
+    return 0
+}
+
 # `wineboot -u` [LOGFILE]. With Microsoft's mscoree.dll in the prefix (.NET
 # Framework installed in place of wine-mono), the update's 64-bit
 # `rundll32 setupapi,InstallHinfSection DefaultInstall ... wine.inf` loads
@@ -576,6 +604,57 @@ install_vkd3d() {
     for d in "${VKD3D_DLLS[@]}"; do
         wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d native
     done
+}
+
+# --- tar.exe -------------------------------------------------------------------
+# libarchive's signed Windows build of bsdtar as tar.exe (Windows 10 ships
+# bsdtar as System32\tar.exe; Wine has none). Pinned values in bsdtar.env,
+# shared with install-from-image.py, which does the same before the packages.
+bsdtar_ok() {   # 0 when every tar.exe in the prefix is the pinned bsdtar.exe
+    local d f
+    # shellcheck source=bsdtar.env
+    source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
+    for d in system32 syswow64; do
+        [ "$d" = syswow64 ] && [ ! -d "$P_C/windows/syswow64" ] && continue
+        f="$P_C/windows/$d/tar.exe"
+        [ -f "$f" ] && echo "$BSDTAR_EXE_SHA256  $f" | sha256sum -c --quiet - >/dev/null 2>&1 || return 1
+    done
+}
+
+install_bsdtar() {
+    # shellcheck source=bsdtar.env
+    source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
+    local zip="$DOWNLOAD_DIR/$BSDTAR_ZIP" d doc
+    mkdir -p "$DOWNLOAD_DIR"
+    # Run by migration 0006 at a launcher start, which must not need the
+    # network: a download that fails or a file that does not match returns
+    # MIG_DEFER (75) - the runner puts the step off and Inventor starts.
+    # tar.exe is only needed to install the Electrical Catalog Browser, and
+    # install-from-image.py puts it in place itself before the packages.
+    if [ ! -f "$zip" ]; then
+        info "downloading $BSDTAR_URL"
+        if ! curl -fL --connect-timeout 15 --max-time 300 -o "$zip.part" "$BSDTAR_URL"; then
+            rm -f "$zip.part"
+            warn "bsdtar download failed (offline?) - tar.exe is needed only to install the Electrical Catalog Browser"
+            return 75
+        fi
+        mv "$zip.part" "$zip"
+    fi
+    if ! echo "$BSDTAR_SHA256  $zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$zip"
+        warn "$BSDTAR_ZIP checksum mismatch - file deleted"
+        return 75
+    fi
+    ok "bsdtar $BSDTAR_VER sha256 verified"
+    for d in system32 syswow64; do
+        [ "$d" = syswow64 ] && [ ! -d "$P_C/windows/syswow64" ] && continue
+        python3 -I -c 'import sys, zipfile; open(sys.argv[3], "wb").write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' \
+            "$zip" "$BSDTAR_MEMBER" "$P_C/windows/$d/tar.exe"
+    done
+    doc="$WINEPREFIX/.inventor-on-linux/doc/libarchive-$BSDTAR_VER"
+    mkdir -p "$doc"
+    cp "$COMMON_DIR/licenses/libarchive-$BSDTAR_VER-COPYING" "$doc/COPYING"
+    bsdtar_ok || die "tar.exe in the prefix is not the expected bsdtar.exe"
 }
 
 # --- isolation ---------------------------------------------------------------

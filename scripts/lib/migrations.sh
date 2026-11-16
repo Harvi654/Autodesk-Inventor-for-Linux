@@ -147,7 +147,23 @@ mig_exec() {   # FILE FUNCTION
     )
 }
 
-mig_run_one() {   # FILE [force] - 0 done, 1 failed (prefix restored)
+# A step's mig_apply returns MIG_DEFER (75, EX_TEMPFAIL) when it cannot be
+# done now for a reason outside the prefix - a download while offline or
+# while the server is down (0006's tar.exe). The launcher runs the
+# migrations at every start, and a failed step would stop it; a deferred
+# one does not, and is not tried again by an automatic run for
+# MIG_DEFER_HOURS (no slow download at every start). --run ID tries it at
+# once.
+MIG_DEFER=75
+MIG_DEFER_HOURS="${MIG_DEFER_HOURS:-24}"
+
+mig_deferred_recently() {   # ID - 0 when put off less than MIG_DEFER_HOURS ago
+    local t
+    t="$(mig_state_get "deferred.$1")"
+    [ -n "$t" ] && [ $(( $(date +%s) - t )) -lt $(( MIG_DEFER_HOURS * 3600 )) ]
+}
+
+mig_run_one() {   # FILE [force] - 0 done or put off, 1 failed (prefix restored)
     local f="$1" id desc backup optional needed=yes rc
     id="$(mig_id "$f")"
     desc="$(MIG_DESC=""; source "$f"; echo "$MIG_DESC")"
@@ -166,6 +182,16 @@ mig_run_one() {   # FILE [force] - 0 done, 1 failed (prefix restored)
     fi
     rc=0; mig_exec "$f" mig_apply || rc=$?
     wine_stop
+    if [ "$rc" -eq "$MIG_DEFER" ]; then
+        # the step cannot run now (e.g. a download while offline): the prefix
+        # as it was, not recorded as done, Inventor still starts; the next
+        # automatic run tries again after MIG_DEFER_HOURS
+        if [ "$backup" != none ]; then mig_restore "$id" >/dev/null || true; fi
+        mig_state_set "deferred.$id" "$(date +%s)"
+        warn "$id put off: it cannot be done now - Inventor starts without it; tried again after" \
+             "$MIG_DEFER_HOURS h, or now with: bash scripts/migrate-prefix.sh --run $id"
+        return 0
+    fi
     if [ "$rc" -ne 0 ]; then
         err "$id failed (exit code $rc)"
         if [ "$backup" != none ]; then
@@ -209,7 +235,12 @@ run_migrations() {
         while IFS= read -r f; do
             id="$(mig_id "$f")"
             if [ "$with_base" = 1 ] && [ "$id" = 0001-base-setup ]; then todo+=("$f"); continue; fi
-            mig_done "$id" || mig_is_optional "$f" || todo+=("$f")
+            if mig_done "$id" || mig_is_optional "$f"; then continue; fi
+            if mig_deferred_recently "$id"; then
+                info "$id: put off earlier (cannot be done now) - not tried again yet"
+                continue
+            fi
+            todo+=("$f")
         done < <(mig_files)
     fi
     if [ ${#todo[@]} -eq 0 ]; then
@@ -235,6 +266,7 @@ mig_status() {
         [ -z "$v" ] && [ "$adopted" = 1 ] && [ "$id" = 0001-base-setup ] && v="before migrations - adopted on the first run"
         if [ -n "$v" ]; then printf '  done      %s (%s)\n' "$id" "$v"
         elif mig_is_optional "$f"; then printf '  optional  %s\n' "$id"
+        elif [ -n "$(mig_state_get "deferred.$id")" ]; then printf '  put off   %s (cannot be done now; tried again later)\n' "$id"
         else printf '  pending   %s\n' "$id"; fi
     done < <(mig_files)
 }

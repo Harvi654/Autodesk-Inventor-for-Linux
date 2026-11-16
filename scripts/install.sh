@@ -14,7 +14,8 @@
 #      downloaded to ~/.local/share/inventor-on-linux;
 #      INV_WINE=system: the Wine in PATH is used as it is)
 #   3. unpack the downloads
-#   4. install Inventor + Content Center libraries          install-from-image.py
+#   4. install Inventor, Content Center libraries,          install-from-image.py
+#      DWG TrueView, Electrical Catalog Browser (as ODIS)
 #   5. install the updates
 #   6. Wine settings, DXVK, WebView2, fonts, isolation      finish-install.sh
 #   7. app-launcher entry and the browser-login handler     install-desktop-integration.sh
@@ -23,6 +24,9 @@
 #   --prefix DIR       Wine prefix (default ~/.wine-inventor<year>; the year comes
 #                      from the download names, or INV_YEAR=2027)
 #   --no-content       leave out the Content Center libraries (~12.7 GB)
+#   --no-trueview      leave out DWG TrueView (installed with Inventor on Windows)
+#   --no-electrical    leave out the Electrical Catalog Browser (likewise)
+#   --with-electrical  install it (the default; kept for older command lines)
 #   --skip-packages    don't install system packages (already there)
 #   --skip-wine        don't install/check Wine
 #   --no-desktop       no app-launcher entry (e.g. for a test prefix)
@@ -36,15 +40,18 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 _ORIG_ARGS=("$@")
 PREFIX="$INV_PREFIX"
 PREFIX_GIVEN=0
-NO_CONTENT=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
+APP_OPTS=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --prefix) PREFIX="$2"; PREFIX_GIVEN=1; shift ;;
-        --no-content) NO_CONTENT=(--no-content) ;;
+        --no-content) APP_OPTS+=(--no-content) ;;
+        --no-trueview) APP_OPTS+=(--no-app dwgtrueview) ;;
+        --no-electrical) APP_OPTS+=(--no-app aceinvaddin) ;;
+        --with-electrical) APP_OPTS+=(--include-app aceinvaddin) ;;
         --skip-packages) SKIP_PKG=1 ;;
         --skip-wine) SKIP_WINE=1 ;;
         --no-desktop) NO_DESKTOP=1 ;;
-        -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) die "unknown option: $1 (see --help)" ;;
         *) ARGS+=("$1") ;;
     esac
@@ -259,7 +266,7 @@ fi
 
 step "Installing Inventor (Autodesk's installers, under Wine - 15-40 minutes)..."
 if [ -n "$PRODUCT" ]; then
-    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${NO_CONTENT[@]}"
+    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${APP_OPTS[@]}"
 else
     info "already installed"
 fi

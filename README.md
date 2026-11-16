@@ -90,6 +90,8 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Part modelling (extrude, hole, ...) | ✅ | |
 | Assemblies | ✅ | |
 | Content Center (screws, nuts, profiles, ...) | ✅ | ~12.7 GB, installed by default |
+| DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
+| Electrical Catalog Browser | ⚠️ | as on Windows: needs Microsoft 365 Access Runtime (64-bit, not in Autodesk's image - Windows asks for it too, the user installs it there). It works on AutoCAD Electrical's catalog database; without AutoCAD Electrical it is empty on Windows too. Installed by default like on Windows (`--no-electrical` leaves it out). Tested: with Microsoft Access Database Engine 2016 (its `aceredist.msi`, installed by hand) the Browser opens and reads a catalog database; an optional installer step for it is planned |
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
@@ -214,8 +216,10 @@ launcher.
 If it stops, fix what it reports and run the same command again - finished
 steps are skipped. The log is in `logs/install-*.log`.
 
-Options: `--no-content` (leave out Content Center), `--prefix DIR`,
-`--help` for the rest.
+Options: `--no-content` (leave out Content Center), `--no-trueview` (leave
+out DWG TrueView, which Autodesk's own installer adds with Inventor on
+Windows), `--no-electrical` (likewise for the Electrical Catalog Browser),
+`--prefix DIR`, `--help` for the rest.
 
 **Or with a window (new, being tested):**
 
@@ -367,6 +371,11 @@ Python, no compiled programs are in this repository. What they do:
   SHA-256 in `wine/SHA256SUMS` (`scripts/get-wine.sh --build` says how to
   build it yourself), DXVK
   2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked),
+  libarchive's signed Windows build of bsdtar 3.5.3 (`libarchive-v3.5.3-win64.zip`,
+  SHA-256 checked) as `tar.exe` in the prefix - Windows 10 ships the same
+  program as `System32\tar.exe`, and the Electrical Catalog Browser's
+  installer unpacks with it; its license text goes to
+  `<prefix>/.inventor-on-linux/doc/`,
   Microsoft's .NET Framework 4.0 installer (SHA-256 checked; installed
   before the .NET Framework 4.8 of Autodesk's image, as winetricks does)
   and Microsoft's WebView2
