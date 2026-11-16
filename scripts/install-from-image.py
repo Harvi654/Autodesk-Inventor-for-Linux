@@ -412,14 +412,23 @@ class Installer:
         extra = {"media_root": media} if media else None
         argv = ["wine", "msiexec", "/i", (media + "\\" + s["file"].replace("/", "\\"))
                 if media else self.media(s["file"]), "/qn", "/norestart", "/l*v", winlog]
-        argv += win_split(self.expand(s["params"], extra, s))
+        params = self.expand(s["params"], extra, s)
+        self.warn_unknown_params(s, params)
+        argv += win_split(params)
         # Autodesk MSIs have the launch condition "ADSK_ODIS_SETUP OR Installed"
         # ("needs to be run from Setup.exe"); ODIS sets this property.
         argv.append("ADSK_ODIS_SETUP=1")
+        dropped = []
         for k, v in s["msiProperties"].items():
             v = self.expand(v, extra, s)
-            if "%" not in v:          # leave out ones only ODIS can fill in
+            if "%" not in v:
                 argv.append("%s=%s" % (k, v))
+            else:
+                # values only ODIS's dialog fills in; Windows' command line
+                # for InvPrivate.msi shows that ODIS does not pass them either
+                dropped.append("%s (%s)" % (k, ", ".join("%%%s%%" % x for x in unknown_variables(v)) or v))
+        if dropped:
+            self.log("      MSI properties left out (unknown variable): %s" % ", ".join(dropped))
         # ODIS passes the package's install location to every MSI that has
         # one (Windows' logs: InvPrivate.msi, adsk-hive-host.msi,
         # DCLibrary64.msi) - "Needed" 4.
@@ -434,6 +443,23 @@ class Installer:
                 argv.append("INSTALLDIR=" + loc)
         rc = self.run(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
+
+    def warn_unknown_params(self, s, params):
+        """A package's install parameters cannot be left out; say which
+        variables go to the installer unexpanded."""
+        unknown = unknown_variables(params)
+        if unknown:
+            self.log("      WARN install parameters of %s keep unknown %s: %s"
+                     % (s["name"], ", ".join("%%%s%%" % v for v in unknown), params))
+
+    def log_unrun_actions(self, s):
+        """Custom actions of a type this installer never runs (it runs
+        preInstall and postInstall), listed so that nothing is dropped
+        silently."""
+        for act in s["actions"]:
+            if act["type"] not in ("preInstall", "postInstall"):
+                self.log("      skip action %s %s %s: action type not run by this installer"
+                         % (act["type"], act["path"] or "", act["params"]))
 
     def do_msp(self, s, logname, media=None):
         """Update patch for an installed product (msiexec finds the target)."""
@@ -452,7 +478,9 @@ class Installer:
     def do_exe(self, s, logname, media=None):
         exe = (media + "\\" + s["file"].replace("/", "\\")) if media else self.media(s["file"])
         extra = {"media_root": media} if media else None
-        argv = ["wine", exe] + win_split(self.expand(s["params"], extra, s))
+        params = self.expand(s["params"], extra, s)
+        self.warn_unknown_params(s, params)
+        argv = ["wine", exe] + win_split(params)
         rc = self.run(argv, logname)
         if rc == 250 and quirk_key(s) == "adsklicensing":
             # Some filesystems cannot represent the installer's NTFS junction.
@@ -612,12 +640,19 @@ class Installer:
             if "%INSTALLERPATH%" in path or "Installer.exe" in path:
                 ok = self.nested_bundle(act, logname, s) and ok
                 continue
-            exe = self.expand(path, {"install_source": media} if media else None, s)
-            if "%" in exe:
-                self.log("      skip action %s %s (unknown variable)" % (act["type"], path))
+            extra = {"install_source": media} if media else None
+            exe = self.expand(path, extra, s)
+            params = self.expand(act["params"], extra, s)
+            # a variable nobody filled in: Windows would get the program or
+            # its parameters right; passing the text on runs it wrongly
+            # (InvAcNGEN.exe with %INV_INSTALL_PATH%Bin) - "Needed" 6
+            unknown = unknown_variables(exe) + [v for v in unknown_variables(params) if v not in unknown_variables(exe)]
+            if unknown or "%" in exe:
+                self.log("      WARN skip action %s %s %s: unknown %s" % (
+                    act["type"], path, act["params"],
+                    ", ".join("%%%s%%" % v for v in unknown) or "variable in the path"))
                 continue
-            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(self.expand(act["params"], step=s)), logname,
-                          timeout=ACTION_TIMEOUT)
+            rc = self.run(["wine", exe.replace("/", "\\")] + win_split(params), logname, timeout=ACTION_TIMEOUT)
             if rc != 0:
                 self.log("      WARN %s action returned %d" % (act["type"], rc))
         return ok
@@ -664,6 +699,7 @@ class Installer:
         if not path:
             self.log("     ERROR %s not in image" % s["file"]); return False
         logname = tag + ".log"
+        self.log_unrun_actions(s)
         try:
             if self.use_preinstalled_webview2(s):
                 return True

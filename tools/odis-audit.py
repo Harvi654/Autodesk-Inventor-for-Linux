@@ -102,7 +102,7 @@ def main():
             seen.add(s["manifest"].lower())
             lines = []
             for v in unknown(s.get("installLocation"), s):
-                lines.append("installLocation: %%%s%% (MSI packages: INSTALLDIR not passed)" % v)
+                lines.append("installLocation: %%%s%% (MSI packages: INSTALLDIR not passed; ZIP/7Z/ADIX: package fails)" % v)
             for k, val in s["msiProperties"].items():
                 for v in unknown(val, s):
                     lines.append("MSI property %s: %%%s%% (property dropped)" % (k, v))
@@ -117,7 +117,7 @@ def main():
                 for v in unknown(act["path"], s):
                     lines.append("%s: path %%%s%% (action skipped)" % (tag, v))
                 for v in unknown(act["params"], s):
-                    lines.append("%s: parameter %%%s%% (passed on unexpanded)" % (tag, v))
+                    lines.append("%s: parameter %%%s%% (action skipped)" % (tag, v))
             if lines:
                 print("- %s [%s, %s, app %s]" % (s["name"], s["type"], s["installAs"] or "-", app))
                 for l in dict.fromkeys(lines):
