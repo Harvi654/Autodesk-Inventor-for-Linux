@@ -38,9 +38,12 @@ let
     );
   candidatePatches = lib.concatMap (
     topic:
-    map (name: "${candidatesSource}/patches/candidates/${topic}/${name}") (
-      readSeries "${candidatesSource}/patches/candidates/${topic}/series"
-    )
+    let
+      # Keep local fixture paths as paths: string interpolation would require
+      # copying them to the store, which --no-build evaluation does not do.
+      directory = candidatesSource + "/patches/candidates/${topic}";
+    in
+    map (name: directory + "/${name}") (readSeries (directory + "/series"))
   ) candidates;
   # Which prefixes this Wine runs as built (nix-overlayfs compares it between
   # the Wine that built the layers and the one that runs them): the winum

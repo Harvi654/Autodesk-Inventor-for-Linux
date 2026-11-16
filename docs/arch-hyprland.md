@@ -1634,6 +1634,16 @@ Browser), unknown variables skip an action, ADIX files outside VFS listed,
 Genuine Service with `--with ags`. Not yet checked on a real install.
 Details and the results: `docs/installer-completeness-review.md`, "Fixes".
 
+**2026-11-16 - Nix: candidate fixture failed evaluation-only CI:**
+After #12, `nix flake check --no-build --show-trace` could fail while reading
+the local fake-winum candidate series from an invalid store path. String
+interpolation had coerced the fixture path into a separate store source;
+a warm store hid the failure locally. Candidate directories, series and patch
+files now preserve path values when given a local source. A regression
+assertion in `launch-wine-candidates` fails before the fix even on a warm
+store. This is Nix evaluation, not a Wine or prefix change; details in
+`docs/nixos.md`.
+
 **2026-11-13 - Nix: .NET Framework 4.8 from a layer; issue #10 section:**
 the Nix package takes .NET 4.8 from nix-overlayfs's `dotnet-framework-4-8`
 layer instead of the installer's step (`--no-dotnet48`); the layer's 4.8
