@@ -906,11 +906,16 @@ class Installer:
     # Applications of the image (manifest/app.<name>.xml) that ODIS installs
     # by default: all of them - Inventor, the Content Center libraries
     # (dclibrary, ~12.7 GB), DWG TrueView (dwgtrueview), the Electrical
-    # Catalog Browser (aceinvaddin) - "Needed" 5. Inventor first, then the
-    # Content Center, then the rest in name order; each can be left out.
+    # Catalog Browser (aceinvaddin) - "Needed" 5. In APP_ORDER, then the
+    # rest in name order; each can be left out.
     # app.<name>.ui.xml (inventor.ui) describes the setup's UI, not an
     # application.
-    APP_ORDER = ("inventor", "dclibrary")
+    # Order: DWG TrueView first - on Windows its package finished before
+    # RealDWG Shared, InvCoreLP and InvCore (times of their logs in the
+    # capture, 07:49:59 / :50:00 / :50:01 / :50:03), and those, installed
+    # after it, decided which copy of the shared files stays (Common
+    # Files\Autodesk Shared, AIGDT___.TTF, AMGDT___.ttf: Windows has theirs).
+    APP_ORDER = ("dwgtrueview", "inventor", "dclibrary")
     # Applications ODIS installs that stay out by default for now, with the
     # reason; --include-app NAME installs one. Empty: the Electrical Catalog
     # Browser (aceinvaddin) was here until the prefix got tar.exe

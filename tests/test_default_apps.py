@@ -69,7 +69,7 @@ class DefaultApps(unittest.TestCase):
     def test_every_application_like_odis(self):
         mod, inst = self.inst()
         apps, left = inst.choose_apps(mod.odis.Image(str(self.image)))
-        self.assertEqual(apps, ["inventor", "dclibrary", "aceinvaddin", "dwgtrueview"])
+        self.assertEqual(apps, ["dwgtrueview", "inventor", "dclibrary", "aceinvaddin"])
         self.assertEqual(left, [("inventor.ui", "the setup's UI description, not an application")])
 
     def test_off_by_default_can_be_included(self):
@@ -105,7 +105,7 @@ class DefaultApps(unittest.TestCase):
         mod, inst = self.inst()
         inst.main()
         log = self.log(inst)
-        self.assertIn("apps   inventor, dclibrary, aceinvaddin, dwgtrueview", log)
+        self.assertIn("apps   dwgtrueview, inventor, dclibrary, aceinvaddin", log)
         self.assertIn("skip   app inventor.ui: the setup's UI description, not an application", log)
         self.assertIn("skip   dotnet48: installed by the .NET Framework 4.8 step after the packages", log)
         for f in ("InvCore.msi", "DCLibrary64.msi", "ace.msi", "dwgviewr.msi"):
