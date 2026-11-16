@@ -8,6 +8,11 @@
   # (each applied in the order of its own series file). Empty for a normal
   # build: candidates are never part of a release.
   candidates ? [ ],
+  # Where the candidates come from (flake input "winum-candidates", for example
+  # a winum checkout). Separate from `winum`, so that taking candidates from
+  # elsewhere leaves the release patches - and the Wine built from them - as
+  # they are.
+  candidatesSource ? winum,
 }:
 let
   # Release this project uses; wine/version.env names the same one and the
@@ -33,10 +38,25 @@ let
     );
   candidatePatches = lib.concatMap (
     topic:
-    map (name: "${winum}/patches/candidates/${topic}/${name}") (
-      readSeries "${winum}/patches/candidates/${topic}/series"
+    map (name: "${candidatesSource}/patches/candidates/${topic}/${name}") (
+      readSeries "${candidatesSource}/patches/candidates/${topic}/series"
     )
   ) candidates;
+  # Which prefixes this Wine runs as built (nix-overlayfs compares it between
+  # the Wine that built the layers and the one that runs them): the winum
+  # release, plus a hash of the candidate patches that change prefix contents.
+  prefixChangingPatches = lib.filter (
+    patch: (import ./wine-prefix.nix { inherit lib; }).changesPrefix (builtins.readFile patch)
+  ) candidatePatches;
+  prefixCompatibility =
+    "winum-${wineVersion}-${winumBuild}"
+    +
+      lib.optionalString (prefixChangingPatches != [ ])
+        "+${
+          builtins.substring 0 16 (
+            builtins.hashString "sha256" (lib.concatMapStrings builtins.readFile prefixChangingPatches)
+          )
+        }";
 in
 (wineWow64Packages.unstableFull.override {
   embedInstallers = true;
@@ -48,9 +68,14 @@ in
       url = "https://dl.winehq.org/wine/source/11.x/wine-${wineVersion}.tar.xz";
       hash = "sha256-6sjKRI+cAIf5YwJrTcJ20eK3+7ZAVu3Ak+Wbu35W/ig=";
     };
-    patches = (old.patches or [ ]) ++ map (name: "${winum}/patches/${name}") series
-      ++ candidatePatches;
+    patches = (old.patches or [ ]) ++ map (name: "${winum}/patches/${name}") series ++ candidatePatches;
     passthru = (old.passthru or { }) // {
-      inherit wineVersion winumBuild series candidates;
+      inherit
+        wineVersion
+        winumBuild
+        series
+        candidates
+        prefixCompatibility
+        ;
     };
   })

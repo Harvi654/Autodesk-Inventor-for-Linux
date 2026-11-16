@@ -25,6 +25,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
+- **NixOS:** [NixOS: writable state hid DXVK; 2026 sign-in opened 2027](#nixos-writable-state-hid-dxvk-2026-sign-in-opened-2027)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
@@ -927,9 +928,11 @@ and saving was worse with it, so it is not used.
 **Fix.** The four patches are in winum-11.20-2's series (winum PR #1;
 their pages are in winum's `docs/patches/`, the reproducers and Windows
 measurements in winum's `docs/wine-repro/ole32-createfromfile-html`).
-`nix/wine.nix` can also build winum candidates in for testing before a
-release: `candidates = [ "<topic>" ]` in `flake.nix` and
-`--override-input winum path:<winum checkout>`.
+The Nix package can also run winum candidates for testing before a
+release: `wineCandidates = [ "<topic>" ]` in `flake.nix` and
+`--override-input winum-candidates path:<winum checkout>`. Only the Wine
+Inventor runs changes; the installation layers are not rebuilt
+(`docs/nixos.md`).
 
 **How it was found.** Wine traces only (`WINEDEBUG=+ole,+storage,+seh`,
 `err+all,warn+ole` from a marker taken just before OK), on NixOS under
@@ -1559,6 +1562,67 @@ palette); the NixOS build of the winum series (@krokosik).
   Wine's service manager cannot start; seen on working prefixes too
   (maintainer, 2026-11-16). Inventor does not need it.
 
+## NixOS: writable state hid DXVK; 2026 sign-in opened 2027
+
+Two problems of the declarative (nix-overlayfs) install, fixed in
+nix-overlayfs; details for users in `docs/nixos.md`.
+
+**DXVK hidden by Wine's own DLLs.** Symptom: nothing visible at first; the
+2026 writable state (`~/.local/share/autodesk-inventor-2026`) had grown to
+660 MB. Cause: that state is the upper layer of an overlay above the Nix
+layers, and a file in it always wins. Wine's `wineboot` updates a prefix
+(`PreInstall`, `DefaultInstall`, `Wow64Install` from `wine.inf`) when
+`.update-timestamp` is missing or does not match `wine.inf`
+(`programs/wineboot/wineboot.c`, `update_timestamp()`); an older nix-overlayfs
+did not carry that file into the layers, so one launch on 2026-10-22 copied
+about 1,480 builtin DLLs and EXEs into the writable state. Among them
+`system32/d3d11.dll`, `dxgi.dll`, `d3d12.dll`, `d3d12core.dll`: Wine's builtins
+(1 MB, marked `Wine builtin DLL` at offset 0x40) above DXVK's and
+vkd3d-proton's (4.4 MB for `d3d11.dll`), for good - later rebuilds re-merged
+the registry, never the files. With the `native` overrides from
+`install_dxvk`, Wine refuses a file carrying the builtin marker
+(`load_builtin()` in `dlls/ntdll/unix/loader.c` returns `STATUS_DLL_NOT_FOUND`
+for a native-only load order), so Direct3D failed to load. Found with:
+
+```bash
+cd ~/.local/share/autodesk-inventor-2026
+find drive_c/windows -name '*.dll' | wc -l
+dd if=drive_c/windows/system32/d3d11.dll bs=1 skip=64 count=16 status=none; echo
+stat -c '%s %y' drive_c/windows/system32/d3d11.dll .update-timestamp
+```
+
+Fix (nix-overlayfs): the launcher writes `disable` into the writable layer's
+`.update-timestamp` before mounting, which wineboot honours; when the Nix
+layers change it moves Wine builtin copies that hide a layer file to
+`.nix-overlayfs/shadowed/<time>/` and reports other hiding files in
+`.nix-overlayfs/shadowed-files`. Check after a launch: `DXVK_HUD=1 inventor`.
+
+**Sign-in callback of 2026 opened 2027.** With both releases installed, the
+browser's `adskidmgr://` callback for a running 2026 started Inventor 2027.
+Cause: one URL scheme for both; the module made the newest release the
+default, and every launch also made its own nix-overlayfs handler the user's
+default (`~/.local/share/applications/*-nix-overlayfs-url-handler.desktop`,
+`~/.config/mimeapps.list`); a release without a running session starts itself
+with the callback. Fix: the module installs one handler,
+`autodesk-inventor-url-handler.desktop`. It asks each release's launcher to
+forward the callback to its running session
+(`--nix-overlayfs-forward-url`, status 3 = no session) and starts the newest
+release only when none runs; the module's launchers no longer register
+handlers (`registerHostUrlHandlers = false`) and remove the ones they wrote
+earlier. Check: `xdg-mime query default x-scheme-handler/adskidmgr`.
+
+Also in nix-overlayfs: layers' DLL overrides are merged instead of one
+replacing another; directories of killed sessions in
+`~/.cache/nix-overlayfs/tmp` are removed; installations depend on the WebView2
+layer itself rather than its launcher, so launcher-only changes no longer
+reinstall Inventor.
+
+Validation: nix-overlayfs unit and VM tests (fake prefixes and a Wine probe,
+no Autodesk code); the flake's `nixos-module` and `url-dispatcher` checks;
+smoke test in Inventor 2026 and 2027 on 2026-11-13 (result log). Still open:
+a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
+with a test callback). Not a Wine bug.
+
 ## Result log
 
 **2026-11-16 - Installer completeness review: points 1-8 fixed (branch
@@ -1900,3 +1964,53 @@ by topic, new sections for GPU ray tracing, the status bar workaround, the
 open repaint issues and 3D PDF. The sections of the first setup (copying a
 Windows installation) and the superseded GPU ray tracing notes moved to
 `docs/archive/arch-hyprland-retired-2026-11-08.md`, unchanged.
+
+**2026-11-11 - NixOS: DXVK hidden in the 2026 state, 2026 sign-in opened
+2027:** a runtime prefix update had copied Wine's builtin `d3d11.dll`, `dxgi.dll`
+and `d3d12*.dll` into the writable 2026 state, above DXVK and vkd3d-proton.
+nix-overlayfs now keeps Wine from updating the prefix at runtime and moves such
+copies aside; the NixOS module routes `adskidmgr://` to the release whose
+session is running. Library and module tests pass; Inventor smoke test
+pending. Details: section "NixOS: writable state hid DXVK; 2026 sign-in
+opened 2027".
+
+**2026-11-12 - NixOS: winum candidates without reinstalling:** the Nix package
+builds its layers (base environment, WebView2, .NET 4.8, Inventor) with the
+winum release and runs Inventor on the same release plus `wineCandidates`.
+Wine loads builtin DLLs from its own installation when the prefix holds a
+builtin copy (`load_builtin()` in `dlls/ntdll/unix/loader.c`), and
+nix-overlayfs keeps wineboot from updating the prefix automatically, so a
+candidate that changes only code takes effect without the two Microsoft
+installers and the Inventor install running again. Candidates that change the
+prefix itself (`wine.inf`, registration, modules added or removed; detected
+from the patch text) are refused there and belong in
+`installWineCandidates`. Checked by evaluation (`launch-wine-candidates`,
+including a fixture winum with a code-only and a `wine.inf` candidate);
+Inventor smoke test with a candidate pending.
+
+**2026-11-13 - NixOS: smoke test of the runtime guards, the sign-in
+dispatcher and a launch-only candidate (winum-11.20-2):** in an isolated X11
+desktop (Xvfb at 60 Hz, llvmpipe), on copies of the user's 2026 and 2027
+state, with the packages of the rebased branch (installation derivations the
+same as #11's):
+- 2027 starts signed in, Direct3D through DXVK 2.7.1 and vkd3d-proton 3.0.1
+  (log); `.update-timestamp` is `disable`; the hidden-file check ran for the
+  new layers and found nothing to move. New part, Save As, restart, reopen
+  from Recent: OK. Quitting leaves no session directory and no mount.
+- Candidate: a test topic that only adds a `MESSAGE()` to kernel32's
+  `DllMain`, taken through `--override-input winum-candidates
+  path:<copy of winum>`. The dry run builds one Wine and the launcher, the
+  installation stays `inventor-2027.1` as without it. Every Wine process
+  prints the marker, and Inventor maps `kernel32.dll` from the candidate
+  Wine's own `lib/wine`, not the copy in the layers. Restart and reopen of
+  the saved part on it: OK.
+- Dispatcher (the module's `autodesk-inventor-url-handler`, the module's
+  launchers): with 2026 running (at its sign-in page) and 2027 not, a test
+  `adskidmgr://` callback goes to 2026 (exit 0, request queue emptied, no
+  2027 started); with neither running it starts 2027. The module's
+  launchers write no handler into `~/.local/share/applications`.
+- Crashed sessions: after SIGKILL of a 2027 launcher's process group, 17 of
+  its processes (fuse-overlayfs, wineserver, services) kept running in their
+  namespace and held `session.lock`; a 2026 launch kept that directory. Once
+  they were gone, the next launch removed it and a second crashed session's.
+- Not done here: a real Autodesk sign-in (the 2026 copy was not signed in).

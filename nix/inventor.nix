@@ -1,7 +1,11 @@
 {
   pkgs,
   overlayfsLib,
+  # Wine and layers the installation is built with (the winum release).
   modules,
+  # Wine Inventor runs: a build of the same release, possibly with winum
+  # candidates under test. Changing it rebuilds only the launcher.
+  launchModules ? modules,
 }:
 {
   # A fixed-output derivation containing the original Autodesk install image.
@@ -11,7 +15,11 @@
   version ? year,
   executableName ? if year == "2026" then "inventor" else "inventor-${year}",
   contentCenter ? true,
-}:
+  # At every launch, make this release the user's adskidmgr:// handler
+  # (~/.local/share/applications, ~/.config/mimeapps.list). The NixOS module
+  # declares one handler for all releases instead and turns this off.
+  registerHostUrlHandlers ? true,
+}@inventorArgs:
 let
   inherit (pkgs) lib;
   inventorMeta = {
@@ -29,22 +37,37 @@ let
         basePackage = package.basePackage.overrideAttrs (base: {
           meta = (base.meta or { }) // inventorMeta;
         });
+        # The same release with other mkInventor arguments, for example
+        # `withArgs { registerHostUrlHandlers = false; }`.
+        withArgs =
+          extra:
+          import ./inventor.nix {
+            inherit
+              pkgs
+              overlayfsLib
+              modules
+              launchModules
+              ;
+          } (inventorArgs // extra);
+        # The wrapper the launcher runs Wine through (checked by the flake).
+        inherit launchWine;
       };
     });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
   # session when the main process exits so overlayfs can unmount it cleanly.
+  launchTools = launchModules.runtime.toolsPackage;
   launchWine = pkgs.writeShellScript "inventor-wine-session" ''
     set +e
-    ${modules.runtime.toolsPackage}/bin/wine "$@"
+    ${launchTools}/bin/wine "$@"
     status=$?
-    ${modules.runtime.toolsPackage}/bin/wineserver -k
+    ${launchTools}/bin/wineserver -k
     exit "$status"
   '';
-  runtime = modules.runtime // {
+  launchRuntime = launchModules.runtime // {
     mkSession =
       args:
       let
-        session = modules.runtime.mkSession args;
+        session = launchModules.runtime.mkSession args;
       in
       session
       // {
@@ -97,6 +120,8 @@ let
   webview2 =
     (overlayfsLib.mkWindowsPackage {
       inherit (modules) runtime;
+      # Same base environment as the installation (no Wine Mono, see below).
+      managedRuntime = "external";
       pname = "inventor-webview2";
       version = "154.0.4258.62";
       packageName = "inventor-webview2";
@@ -119,12 +144,17 @@ let
       });
   # Microsoft's .NET Framework 4.8 (3D PDF, Import CAD's Property Mapping) as
   # nix-overlayfs's dotnet-framework-4-8 layer below the installation, in
-  # place of Wine Mono; the installer's own .NET step is skipped here.
+  # place of Wine Mono; the installer's own .NET step is skipped here. It
+  # exports mscoree=native (dllOverrides) to the launcher.
   dotnet48 = modules.dotnet-framework-4-8;
 in
 withInventorMeta (overlayfsLib.mkWindowsPackage {
-  inherit runtime;
+  # The installation is built with the release Wine, the launcher runs launchRuntime.
+  inherit (modules) runtime;
+  inherit launchRuntime;
   inherit version;
+  # A base environment without Wine Mono: .NET comes from the dotnet48 layer.
+  managedRuntime = "external";
   portableReparsePoints = true;
   pname = "inventor";
   packageName = "autodesk-inventor-${year}";
@@ -197,10 +227,14 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
   runtimeEnvVars = {
     INVENTOR_YEAR = year;
     WINE_LARGE_ADDRESS_AWARE = "1";
-    # mscoree=n: Microsoft's .NET Framework from the dotnet48 layer, not Wine Mono
-    WINEDLLOVERRIDES = "msquic=;winemenubuilder.exe=d;mscoree=n";
+  };
+  # Merged with the layers' overrides (mscoree=n comes from the dotnet48 layer).
+  dllOverrides = {
+    msquic = "";
+    "winemenubuilder.exe" = "";
   };
   urlSchemes = [ "adskidmgr" ];
+  inherit registerHostUrlHandlers;
   entrypointWrapper = entrypoint: ''
     case "''${1:-}" in
       adskidmgr:*) exec ${entrypoint} --nix-overlayfs-open-url "$1" ;;
@@ -208,11 +242,11 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     esac
   '';
   urlSchemeOpenCommands = ''
-    exec ${modules.runtime.toolsPackage}/bin/wine \
+    exec ${launchTools}/bin/wine \
       'C:\Program Files\Autodesk\AdskIdentityManager\Current\AdskIdentityManager.exe' "$callback_url"
   '';
   extraPreLaunchCommands = ''
-    export PATH=${modules.runtime.toolsPackage}/bin:${
+    export PATH=${launchTools}/bin:${
       lib.makeBinPath (
         tools
         ++ [
@@ -223,7 +257,7 @@ withInventorMeta (overlayfsLib.mkWindowsPackage {
     }:$PATH
     ${builtins.readFile ./launch-lock.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
-      inherit (modules) runtime;
+      inherit (launchModules) runtime;
       defaultMode = "system";
     }).extraPreLaunchCommands
     }
