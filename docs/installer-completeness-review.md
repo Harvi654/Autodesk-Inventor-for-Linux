@@ -441,6 +441,39 @@ capture):
 - Uninstall entries: "Inventor Professional 2027.2 Update" and Genuine
   Service only on Windows.
 
+**Second look (improved tools, 2026-11-16):**
+- admeta-check without the other languages: 7 387 files, 7 355
+  identical, 8 turned off on purpose, 5 different, 19 "missing". The 19
+  are the Catalog Browser's files in Inventor's folder - admeta-check did
+  not find the update's manifest (it is not next to the package in the
+  update image); fixed in the tool. The 5 different are the shared files
+  in `Common Files\Autodesk Shared` (4 of InvCore, 1 of InvCoreLP): DWG
+  TrueView 26.0.60 came after InvCore in our update plan and replaced
+  them. Which copy Windows has after the update: the order of the
+  update's packages on Windows (log times) - to be checked; the sizes are
+  equal, so compare-reference cannot tell.
+- **Removed by the update on Windows, still in the prefix: 216** - 43 in
+  `Inventor 2027\Bin` (`AutodeskAssistant\*`, `DevExpress.*.v25.1.dll`,
+  ...), 173 `ProgramData\Autodesk\Inventor 2027\iLogic Codeblocks\*.bundle.js`,
+  all of Inventor Core. Confirmed: on Windows an ADIX update replaces the
+  package and the old version's files the new one lacks go. **Fixed:** the
+  installer keeps the list of files it placed per ADIX package
+  (`.inventor-on-linux/adix/<identity>.json`) and an update removes what
+  its new version no longer has (not a file another package still lists;
+  emptied folders too; logged, with a list file). Prefixes from before:
+  `install.sh BASE UPDATE` records the base packages' lists without
+  unpacking, and an already installed newer package then removes what it
+  dropped; the base image alone on an updated prefix removes nothing.
+  Result on the update prefix: pending.
+- REX Framework, REX Inventor, RSA Engine are not in the update image:
+  ODIS re-registered the installed ones; no file of theirs differs. Not a
+  gap.
+- The 19 files in the user's `AppData\Local\Autodesk` are ADP SDK
+  settings written at run time, Genuine Service's `AGS.conf` (on purpose)
+  and ODIS's own logs of the custom actions. Not a gap.
+- `ProgramData\Autodesk\INVPROSA-2027.0.0.F-background.png` only in the
+  prefix (never on Windows): to be looked at.
+
 ### Point 9 decided (2026-11-16)
 
 UPI2 keys, the product's Programs and Features entry, `dotnet` in `PATH`:
