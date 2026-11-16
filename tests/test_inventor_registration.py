@@ -10,6 +10,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shell_fixture import fixture_path, shell_script
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # The fake Inventor.exe writes the two keys the way Wine stores them in
@@ -48,7 +50,7 @@ class InventorRegistration(unittest.TestCase):
         b = root / "bin"
         b.mkdir()
         for name, text in (("wine", FAKE_WINE), ("wineserver", FAKE_WINESERVER)):
-            (b / name).write_text(text)
+            (b / name).write_text(shell_script(text))
             (b / name).chmod(0o755)
         self.mod = load_installer()
         saved = {k: os.environ.get(k) for k in ("INV_LOGDIR", "WINEDLLOVERRIDES", "XDG_DATA_HOME")}
@@ -63,7 +65,7 @@ class InventorRegistration(unittest.TestCase):
         a = argparse.Namespace(image=str(Path(self.tmp.name) / "image"), prefix=str(self.prefix), lang="en-US",
                                dry_run=dry_run, redo=redo)
         inst = self.mod.Installer(a)
-        inst.env["PATH"] = "%s:%s" % (self.bin, os.environ.get("PATH", "/usr/bin:/bin"))
+        inst.env["PATH"] = fixture_path(self.bin)
         inst.env.update(env)
         return inst
 

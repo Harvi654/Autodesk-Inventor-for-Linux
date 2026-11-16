@@ -8,6 +8,8 @@ import time
 import unittest
 from pathlib import Path
 
+from shell_fixture import fixture_path, shell_script
+
 ROOT = Path(__file__).resolve().parents[1]
 
 # "wine taskkill ..." is recorded and returns; anything else hangs (60 s,
@@ -35,7 +37,7 @@ class ActionTimeout(unittest.TestCase):
         self.prefix.mkdir()
         b = root / "bin"
         b.mkdir()
-        (b / "wine").write_text(HANGING_WINE)
+        (b / "wine").write_text(shell_script(HANGING_WINE))
         (b / "wine").chmod(0o755)
         self.mod = load_installer()
         old = os.environ.get("INV_LOGDIR")
@@ -45,7 +47,7 @@ class ActionTimeout(unittest.TestCase):
         a = argparse.Namespace(image=str(root / "image"), prefix=str(self.prefix), lang="en-US",
                                dry_run=False, no_dotnet48=True)
         self.inst = self.mod.Installer(a)
-        self.inst.env["PATH"] = "%s:%s" % (b, os.environ.get("PATH", "/usr/bin:/bin"))
+        self.inst.env["PATH"] = fixture_path(b)
 
     def calls(self):
         p = self.prefix / "calls.log"

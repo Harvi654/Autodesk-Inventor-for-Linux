@@ -1625,6 +1625,16 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-16 - Nix: complete installer regression suite in the sandbox:**
+The fixtures now resolve their shell interpreters and preserve the supplied
+PATH instead of assuming /bin and /usr/bin. The `installer` flake check runs
+all 202 tests, which passed in the Nix sandbox, with iconv for synthetic .NET
+logs and standalone coreutils for the tests that give sleep a Windows process
+name. CI builds this synthetic
+check after evaluation; no Autodesk media is needed. Application installation
+and prefix contents are unchanged. Details and the check command:
+`docs/nixos.md`.
+
 **2026-11-16 - msiexec and a property value with a space: not a Wine
 bug.** Measured on Windows 10 (19045.6466) and winum-11.20-2 with a
 synthetic MSI: a property passed as one quoted argument
@@ -1642,6 +1652,16 @@ properties, all applications of the image (DWG TrueView, Electrical Catalog
 Browser), unknown variables skip an action, ADIX files outside VFS listed,
 Genuine Service with `--with ags`. Not yet checked on a real install.
 Details and the results: `docs/installer-completeness-review.md`, "Fixes".
+
+**2026-11-16 - Nix: candidate fixture failed evaluation-only CI:**
+After #12, `nix flake check --no-build --show-trace` could fail while reading
+the local fake-winum candidate series from an invalid store path. String
+interpolation had coerced the fixture path into a separate store source;
+a warm store hid the failure locally. Candidate directories, series and patch
+files now preserve path values when given a local source. A regression
+assertion in `launch-wine-candidates` fails before the fix even on a warm
+store. This is Nix evaluation, not a Wine or prefix change; details in
+`docs/nixos.md`.
 
 **2026-11-13 - Nix: .NET Framework 4.8 from a layer; issue #10 section:**
 the Nix package takes .NET 4.8 from nix-overlayfs's `dotnet-framework-4-8`

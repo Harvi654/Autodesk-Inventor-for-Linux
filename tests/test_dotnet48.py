@@ -11,6 +11,8 @@ import sys
 import tempfile
 import unittest
 
+from shell_fixture import fixture_path, shell_script
+
 ROOT = Path(__file__).resolve().parents[1]
 # install-from-image.py reads USER when it is loaded (the prefix's Temp folder)
 os.environ.setdefault("USER", "test")
@@ -131,7 +133,7 @@ class Dotnet48Present(unittest.TestCase):
         self.bin = root / "bin"
         self.bin.mkdir()
         wine = self.bin / "wine"
-        wine.write_text(FAKE_WINE)
+        wine.write_text(shell_script(FAKE_WINE))
         wine.chmod(0o755)
 
     def mscoree(self, mono=False):
@@ -149,7 +151,7 @@ class Dotnet48Present(unittest.TestCase):
     def run_finish(self):
         """cfg_disable_addins as finish-install.sh runs it: set -Eeuo pipefail,
         common.sh and configure.sh sourced, output captured."""
-        env = {"HOME": str(self.home), "USER": "test", "PATH": "%s:/usr/bin:/bin" % self.bin,
+        env = {"HOME": str(self.home), "USER": "test", "PATH": fixture_path(self.bin),
                "INV_YEAR": "2027", "INV_PREFIX": str(self.prefix), "INV_WINE": "system"}
         script = ('set -Eeuo pipefail; source scripts/lib/common.sh; source scripts/lib/configure.sh; '
                   'cfg_disable_addins')
@@ -209,7 +211,7 @@ class Dotnet48Present(unittest.TestCase):
         self.assertIn("on (.NET Framework 4.8): Anark.Core.addin", out)
 
     def run_sh(self):
-        env = {"HOME": str(self.home), "USER": "test", "PATH": "%s:/usr/bin:/bin" % self.bin,
+        env = {"HOME": str(self.home), "USER": "test", "PATH": fixture_path(self.bin),
                "INV_YEAR": "2027", "INV_PREFIX": str(self.prefix), "WINEPREFIX": str(self.prefix),
                "INV_WINE": "system"}
         script = ('source scripts/lib/common.sh >/dev/null 2>&1; '
@@ -349,9 +351,9 @@ class InstallDotnet48(unittest.TestCase):
         b = root / "bin"
         b.mkdir()
         for name, text in (("wine", STATE_WINE), ("wineserver", "#!/bin/sh\nexit 0\n")):
-            (b / name).write_text(text)
+            (b / name).write_text(shell_script(text))
             (b / name).chmod(0o755)
-        self.path = "%s:%s" % (b, os.environ.get("PATH", "/usr/bin:/bin"))
+        self.path = fixture_path(b)
         # wine-mono's keys, as winum-11.20-1 writes them into a new prefix
         (self.prefix / "fake-registry").write_text(
             NDP_FULL.lower() + "|Release|0x82348\n" + NDP_FULL.lower() + "|Version|4.7.03190\n")
@@ -414,7 +416,7 @@ class InstallDotnet48(unittest.TestCase):
         inst = self.installer()
         (self.prefix / "fake-registry").write_text("")
         wine = Path(self.path.split(":")[0]) / "wine"
-        wine.write_text(STATE_WINE.replace(': > "$WINEPREFIX', 'true "$WINEPREFIX'))
+        wine.write_text(shell_script(STATE_WINE.replace(': > "$WINEPREFIX', 'true "$WINEPREFIX')))
         self.assertFalse(inst.install_dotnet48(self.mod.odis.Image(str(self.img))))
         self.assertFalse((self.prefix / ".odis-install-state.json").exists())
 

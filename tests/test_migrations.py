@@ -11,6 +11,8 @@ import tempfile
 import time
 import unittest
 
+from shell_fixture import fixture_path, shell_script
+
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "scripts" / "lib" / "migrations"
 
@@ -90,14 +92,14 @@ class Migrations(unittest.TestCase):
             (self.rt / "lib" / "wine" / arch).mkdir(parents=True)
             (self.rt / "lib" / "wine" / arch / "ntdll.dll").write_bytes(b"ntdll of winum " + arch.encode())
         w = self.rt / "bin" / "wine"
-        w.write_text(FAKE_WINE)
+        w.write_text(shell_script(FAKE_WINE))
         w.chmod(0o755)
         (self.rt / "share" / "wine" / "mono").mkdir(parents=True)
         ws = self.rt / "bin" / "wineserver"
-        ws.write_text("#!/bin/sh\nexit 0\n")
+        ws.write_text(shell_script("#!/bin/sh\nexit 0\n"))
         ws.chmod(0o755)
         wb = self.rt / "bin" / "wineboot"
-        wb.write_text('#!/bin/sh\nexec "$(dirname "$0")/wine" wineboot "$@"\n')
+        wb.write_text(shell_script('#!/bin/sh\nexec "$(dirname "$0")/wine" wineboot "$@"\n'))
         wb.chmod(0o755)
         self.logs = t / "logs"
         # a synthetic stand-in for libarchive's zip (step 0006): no network
@@ -130,7 +132,7 @@ class Migrations(unittest.TestCase):
         return p
 
     def env(self, prefix, year=2027, **extra):
-        e = {"HOME": str(self.home), "USER": "test", "PATH": "%s/bin:/usr/bin:/bin" % self.rt,
+        e = {"HOME": str(self.home), "USER": "test", "PATH": fixture_path(self.rt / "bin"),
              "INV_PREFIX": str(prefix), "INV_YEAR": str(year), "INV_WINE": "system", "INV_SANDBOX": "0",
              "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config"),
              "DOWNLOAD_DIR": str(self.downloads), "INV_BSDTAR_ENV": str(self.bsdtar_env)}
