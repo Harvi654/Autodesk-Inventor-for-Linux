@@ -1632,6 +1632,34 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-16 - Installer checks: disk space per filesystem, memory:** the
+checks now follow the README requirements (measured with du on a full
+2027.2 installation: prefix 20 GB with Content Center 7.4 GB, unpacked
+downloads 10.5 GB, winum 0.9 GB). Before, four places had four numbers
+(GUI start page 60/40 GB, GUI summary 43 GB, `install.sh` 40 GB,
+`check-system.sh` 30 GB), all measured on `$HOME` although the prefix
+(`--prefix`, the GUI's choice), the unpacked downloads (`XDG_CACHE_HOME`)
+and winum (`XDG_DATA_HOME`) can be on other disks. Now one file,
+`scripts/lib/requirements.env` (prefix 20 GB, 13 GB without Content
+Center, unpacked downloads 11 GB only when not unpacked yet, Wine 1 GB +
+small downloads 0.5 GB, 10 % margin; memory warnings below 15 GiB and
+7.5 GiB), and one implementation, `scripts/lib/requirements.py`: what goes
+to each filesystem (`st_dev` of the nearest existing folder) is added up
+and compared with its free space ("prefix disk /mnt/nvme: 22 GB needed,
+15 GB free"). Memory is MemTotal from `/proc/meminfo` (`INV_MEMINFO` for
+tests) - a warning, never a stop. `install.sh` warns, `check-system.sh`
+reports, the GUI start page warns (it does not stop: the prefix may still
+go to another disk), the summary stops only when a disk is really short
+and names it, and says the memory; the done page says the unpacked
+downloads can be deleted (Uninstall… already offers "Unpacked
+downloads"). Not in what the Nix build runs (`install-from-image.py`,
+`finish-install.sh`). "12.7 GB" for Content Center -> about 7.5 GB in
+`install.sh`, `install-from-image.py --help` and the GUI. Checked: 11 tests
+in `tests/test_requirements.py` (fake `st_dev`/`statvfs`, fake meminfo).
+Open: the maintainer's fresh installations of 2027 and 2026 with `df`
+before and after. Later: old winum releases stay in
+`~/.local/share/inventor-on-linux` (0.9 GB each).
+
 **2026-11-16 - Default add-ins: all but the Assistant on:** the maintainer
 turned every add-in on at once (`bash scripts/addins.sh enable-safe`) on a
 copy of a 2027 prefix with .NET Framework 4.8, winum-11.20-2 and

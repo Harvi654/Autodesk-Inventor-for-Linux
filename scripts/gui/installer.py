@@ -76,6 +76,7 @@ def project_settings():
 
 sys.path.insert(0, os.path.join(SCRIPTS, "lib"))
 import odis  # noqa: E402
+import requirements  # noqa: E402  (disk space and memory: scripts/lib/requirements.env)
 
 _RELEASES = {}
 
@@ -128,17 +129,6 @@ def gpu_names():
     return [l.split(": ", 1)[-1] for l in out.splitlines() if re.search(r"VGA|3D|Display", l)]
 
 
-def mem_total_gb():
-    try:
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if line.startswith("MemTotal:"):
-                    return int(line.split()[1]) / 1024 / 1024
-    except OSError:
-        pass
-    return 0
-
-
 def system_checks(settings):
     """[(state, title, detail)] with state 'ok' / 'warn' / 'bad'."""
     checks = []
@@ -151,17 +141,24 @@ def system_checks(settings):
         checks.append(("bad", "Distribution", name + " - supported: Arch, Ubuntu / Debian, Fedora"))
     arch = os.uname().machine
     checks.append(("ok" if arch == "x86_64" else "bad", "Processor", arch))
-    mem = mem_total_gb()
-    checks.append(("ok" if mem >= 15 else "warn", "Memory",
-                   "%.0f GB%s" % (mem, "" if mem >= 15 else " - 16 GB or more recommended")))
-    home = os.path.expanduser("~")
-    free = shutil.disk_usage(home).free / GB
-    if free >= 60:
-        checks.append(("ok", "Free disk space", "%.0f GB in %s" % (free, home)))
-    elif free >= 40:
-        checks.append(("warn", "Free disk space", "%.0f GB - enough without Content Center (~60 GB with it)" % free))
+    req = requirements.load()
+    level, text = requirements.mem_check(req)
+    checks.append(("ok" if level == "ok" else "warn", "Memory", text.split(": ", 1)[1]))
+    # the default places; the summary checks again with the prefix chosen
+    # there, and only it can stop (the prefix may go to another disk)
+    paths = requirements.default_paths(settings["INV_PREFIX"])
+    media = not cached_media()
+    wine = not requirements.winum_present(paths["wine"])
+    full = requirements.disk_plan(paths, req, content=True, media=media, wine=wine)
+    if all(d["ok"] for d in full):
+        checks.append(("ok", "Free disk space", "; ".join(requirements.describe(d) for d in full)))
     else:
-        checks.append(("bad", "Free disk space", "%.0f GB - at least 40 GB needed" % free))
+        short = "; ".join(requirements.describe(d) for d in full if not d["ok"])
+        lean = requirements.disk_plan(paths, req, content=False, media=media, wine=wine)
+        checks.append(("warn", "Free disk space", short + (
+            " - enough without Content Center (about %g GB)" % req["REQ_CONTENT_GB"]
+            if all(d["ok"] for d in lean) else
+            " - not enough; free some space or put the prefix on another disk")))
     gpus = gpu_names()
     if gpus:
         nvidia = any("NVIDIA" in g.upper() for g in gpus)
@@ -915,7 +912,7 @@ class Installer(Gtk.ApplicationWindow):
 
         self.sw_content = option("Content Center libraries",
                                  "Standard parts - screws, nuts, profiles - also needed by Frame Generator "
-                                 "and Design Accelerator. About 12.7 GB.", True)
+                                 "and Design Accelerator. About %g GB." % requirements.load()["REQ_CONTENT_GB"], True)
         self.sw_trueview = option("DWG TrueView",
                                   "Autodesk's DWG viewer and converter. Autodesk's own installer adds it "
                                   "with Inventor on Windows.", True)
@@ -961,7 +958,8 @@ class Installer(Gtk.ApplicationWindow):
             "<b>What happens</b>" if not repair else "<b>The steps</b>",
             "1. System packages are installed with %s - this asks for your password once." % esc(pk),
             "2. This project's Wine (~220 MB) is downloaded and checked against its SHA-256.",
-            "3. The downloads are unpacked (~10 GB, several minutes).",
+            "3. The downloads are unpacked (about %g GB, several minutes; can be deleted afterwards)."
+            % requirements.load()["REQ_MEDIA_GB"],
             "4. Autodesk's installers run under Wine (15-40 minutes)%s."
             % "".join(", without " + name for name, sw in (("Content Center", self.sw_content),
                                                            ("DWG TrueView", self.sw_trueview),
@@ -974,18 +972,23 @@ class Installer(Gtk.ApplicationWindow):
             "",
             "You can stop at any time; running the installer again continues where it stopped.",
         ]
-        # disk space: prefix (with or without Content Center), unpacked download, Wine
-        need = (25 if self.sw_content.get_active() else 12) + 1
-        need += 2 if self.sw_trueview.get_active() or self.sw_electrical.get_active() else 0
-        if not any(os.path.isdir(p) for p in cached_media()) or any(not os.path.isdir(p) for p in sel):
-            need += 15
-        if repair:
-            need = 2
-        free = shutil.disk_usage(os.path.expanduser("~")).free / GB
-        self.summary_ok = free >= need
-        lines += ["", "<b>Disk space</b>: about %d GB needed, %.0f GB free%s" %
-                  (need, free, "" if self.summary_ok else
-                   " - <b>not enough</b>. Free some space, or turn off Content Center.")]
+        # disk space, per filesystem: the prefix, the unpacked downloads,
+        # winum and the small downloads may be on different disks
+        # (scripts/lib/requirements.env); only a disk that is really short stops
+        req = requirements.load()
+        paths = requirements.default_paths(prefix)
+        media = not any(os.path.isdir(p) for p in cached_media()) or any(not os.path.isdir(p) for p in sel)
+        plan = requirements.disk_plan(paths, req, content=self.sw_content.get_active(), media=media,
+                                      wine=not requirements.winum_present(paths["wine"]), repair=repair)
+        self.summary_ok = all(d["ok"] for d in plan)
+        lines += ["", "<b>Disk space</b>"] + [
+            "• " + esc(requirements.describe(d)) + ("" if d["ok"] else " - <b>not enough</b>") for d in plan]
+        if not self.summary_ok:
+            lines.append("Free some space%s, or choose a prefix on another disk." %
+                         (", turn off Content Center (about %g GB)" % req["REQ_CONTENT_GB"]
+                          if self.sw_content.get_active() and not repair else ""))
+        level, text = requirements.mem_check(req)
+        lines += ["", "<b>Memory</b>: " + esc(text.split(": ", 1)[1])]
         self.summary.set_markup("\n".join(lines))
         self.next_btn.set_sensitive(self.summary_ok)
 
@@ -1334,6 +1337,13 @@ class Installer(Gtk.ApplicationWindow):
                 text = ("Inventor %s is installed - in the app menu as \"Autodesk Inventor %s\". The first start "
                         "asks you to sign in with your Autodesk account in your web browser.\n\nYour files go to "
                         "%s (drive D: in Inventor)." % (year, year, self.settings["INV_DATA_DIR"]))
+                media_dir = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"),
+                                         "inventor-on-linux", "media")
+                if os.path.isdir(media_dir):
+                    text += ("\n\nThe unpacked downloads in %s (about %g GB) are no longer needed - "
+                             "delete them to free the space (Uninstall… → \"Unpacked downloads\" does it). "
+                             "Only a repair needs them again; it unpacks Autodesk's downloads once more."
+                             % (media_dir, requirements.load()["REQ_MEDIA_GB"]))
                 if "hyprland" in os.environ.get("XDG_CURRENT_DESKTOP", "").lower():
                     text += ("\n\nHyprland: add this line to ~/.config/hypr/hyprland.conf for Inventor's windows:\n"
                              "source = %s/config/hyprland-inventor.conf" % REPO)
