@@ -2043,3 +2043,23 @@ same as #11's):
   namespace and held `session.lock`; a 2026 launch kept that directory. Once
   they were gone, the next launch removed it and a second crashed session's.
 - Not done here: a real Autodesk sign-in (the 2026 copy was not signed in).
+
+**2026-11-16 - NixOS: DXVK and vkd3d-proton as layers above the
+installation:** the Nix installation is built with `INV_DXVK=none` and
+`INV_VKD3D=none`; the launcher mounts DXVK 2.7.1 and winum's vkd3d-proton
+3.0.1-winum-1 as nix-overlayfs file layers, with their `native` overrides in
+the layers' registry. Wine reads `WINEDLLOVERRIDES` before the per-program
+keys (`get_load_order_value()` in `dlls/ntdll/unix/loadorder.c`), so overrides
+in the environment would have put WebView2 back on DXVK and white windows;
+in the registry the `msedgewebview2.exe` exception still wins. A new DXVK or
+vkd3d-proton now rebuilds only the launcher (`graphics-layers` check).
+Smoke test in the isolated X11 desktop on a copy of the user's 2027 state:
+the installation holds no DXVK or vkd3d-proton DLL and only `d3dcompiler_47`
+and `mscoree` in its global `DllOverrides`; Inventor logs `DXVK: v2.7.1` and
+vkd3d-proton build `3b10bd7a7ec6a73+` (upstream's source plus winum's
+ray-payload patch, per the archive's `BUILDINFO.txt`; upstream 3.0.1 logs no
+`+`); the Home page (WebView2) renders; new part, Save As, restart, reopen:
+OK; the hidden-file check ran for the new layer set and found nothing to
+move. A black rectangle in a new part's viewport, gone as soon as the
+pointer moved, is the known delayed repaint, not new. Installation rebuilt
+once for this.
