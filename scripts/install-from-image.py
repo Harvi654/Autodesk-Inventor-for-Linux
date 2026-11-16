@@ -9,6 +9,7 @@ the manifest, ZIP/7Z/ADIX archives unpacked to their target folders.
 Usage:
   install-from-image.py IMAGE [--prefix DIR] [--lang en-US]
                         [--from N] [--only N,M] [--redo] [--dry-run]
+                        [--no-app APP] [--no-content] [--with PACKAGE]
 
   IMAGE     the unpacked image (folder with Setup.exe and manifest/), or an
             update: its .exe as downloaded from Autodesk (e.g.
@@ -19,7 +20,9 @@ Usage:
             prefix, so your working one is never touched)
   --from N  start at step N;  --only N,M  run just these steps
   --redo    run steps again even if they finished before
-  --dry-run print what would run
+  --dry-run print what would run, and everything left out, with the reason
+  --no-app  leave out an application of the image (default: all of them, as
+            ODIS - inventor, dclibrary, dwgtrueview, aceinvaddin)
 
 Finished steps are remembered in PREFIX/.odis-install-state.json, so after a
 failure you can fix things and simply rerun - it continues where it stopped.
@@ -141,6 +144,17 @@ VARIABLE = re.compile(r"%([A-Za-z0-9_()]+)%")
 def unknown_variables(s):
     """Names of the %VARIABLES% still in an expanded text."""
     return list(dict.fromkeys(VARIABLE.findall(s or "")))
+
+
+def pe_file_version(data):
+    """File version (a, b, c, d) of a PE file's VS_FIXEDFILEINFO, or None."""
+    if data[:2] != b"MZ":
+        return None
+    i = data.find(b"\xbd\x04\xef\xfe")
+    if i < 0 or i + 16 > len(data):
+        return None
+    ms, ls = struct.unpack_from("<II", data, i + 8)
+    return (ms >> 16, ms & 0xffff, ls >> 16, ls & 0xffff)
 
 
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
@@ -588,6 +602,9 @@ class Installer:
                 self.log("      WARN unknown VFS folder %r - skipped %s" % (parts[1], name))
                 return
             dst = os.path.join(self.c, base, *parts[2:])
+            if os.path.isfile(dst) and not self.keep_or_replace(dst, read):
+                written += 1
+                return
             if not self.a.dry_run:
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "wb") as f:
@@ -603,11 +620,33 @@ class Installer:
                 for info in z.infolist():
                     if not info.is_dir():
                         place(info.filename, lambda info=info: z.read(info))
-        self.log("      %d files placed" % written)
+        self.log("      %d files %s" % (written, "to place (dry run)" if self.a.dry_run else "placed"))
         for hive in regs:
             if not self.import_hive(s, os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), logname):
                 return False
         return written > 0
+
+    def keep_or_replace(self, dst, read):
+        """A file of this package is already in the prefix (another package
+        put it there, e.g. the seven DWG TrueView files in Common
+        Files\\Autodesk Shared): True to write ours. Same content: nothing
+        to do. Otherwise the higher file version stays, as Windows
+        Installer's file versioning rules keep it for an MSI package - so
+        the result does not depend on the order of the packages; without
+        versions ours replaces it. Every such file is logged."""
+        new = read()
+        with open(dst, "rb") as f:
+            old = f.read()
+        if old == new:
+            return False
+        ov, nv = pe_file_version(old), pe_file_version(new)
+        rel = os.path.relpath(dst, self.c)
+        fmt = lambda v: ".".join(map(str, v)) if v else "no version"
+        keep = ov is not None and nv is not None and ov > nv
+        self.log("      shared file %s: in the prefix %s, %d bytes; this package %s, %d bytes - %s"
+                 % (rel, fmt(ov), len(old), fmt(nv), len(new),
+                    "kept the newer one in the prefix" if keep else "replaced"))
+        return not keep
 
     def import_hive(self, s, path, logname):
         """Registry.dat of an ADIX package -> .reg -> wine regedit."""
@@ -716,7 +755,7 @@ class Installer:
         # unpacking deleted the fresh AdpDesktopSDK\bin (AdpSDKCore.dll etc.).
         pre = lambda: self.do_actions(s, logname, media, ("preInstall",))
         post = lambda: self.do_actions(s, logname, media, ("postInstall",))
-        if self.a.dry_run and t in ("ZIP", "7Z", "ADIX"):
+        if self.a.dry_run and t in ("ZIP", "7Z"):
             self.log("      unpack %s (%s)" % (s["file"], t))
             return self.do_actions(s, logname, media)
         if t == "MSI":
@@ -740,6 +779,41 @@ class Installer:
             self.log("     FAILED - see %s" % os.path.join(self.logdir, logname))
         return ok
 
+    # Applications of the image (manifest/app.<name>.xml) that ODIS installs
+    # by default: all of them - Inventor, the Content Center libraries
+    # (dclibrary, ~12.7 GB), DWG TrueView (dwgtrueview), the Electrical
+    # Catalog Browser (aceinvaddin) - "Needed" 5. Inventor first, then the
+    # Content Center, then the rest in name order; each can be left out.
+    # app.<name>.ui.xml (inventor.ui) describes the setup's UI, not an
+    # application.
+    APP_ORDER = ("inventor", "dclibrary")
+    APP_TITLES = {"dclibrary": "Content Center libraries", "dwgtrueview": "DWG TrueView",
+                  "aceinvaddin": "Electrical Catalog Browser"}
+
+    def choose_apps(self, img):
+        """(apps to install, [(app, why) left out]) for a product image."""
+        mdir = os.path.join(img.root, "manifest")
+        names = sorted(f[4:-4] for f in os.listdir(mdir) if f.startswith("app.") and f.endswith(".xml")) \
+            if os.path.isdir(mdir) else []
+        if self.a.app:
+            return list(self.a.app), [(n, "not asked for (--app)") for n in names if n not in self.a.app]
+        no = {n.lower() for n in (self.a.no_app or [])}
+        if self.a.no_content:
+            no.add("dclibrary")
+        for n in sorted(no - {x.lower() for x in names}):
+            self.log("WARN   --no-app %s: no manifest/app.%s.xml in this image" % (n, n))
+        apps, left = [], []
+        for n in sorted(names, key=lambda n: (self.APP_ORDER.index(n) if n in self.APP_ORDER
+                                               else len(self.APP_ORDER), n)):
+            if n.lower().endswith(".ui"):
+                left.append((n, "the setup's UI description, not an application"))
+            elif n.lower() in no:
+                left.append((n, "left out (%s)" % ("--no-content" if n == "dclibrary" and self.a.no_content
+                                                   else "--no-app " + n)))
+            else:
+                apps.append(n)
+        return apps, left
+
     def main(self):
         img = odis.Image(self.image)
         kind = odis.image_kind(self.image)
@@ -752,14 +826,14 @@ class Installer:
             self.restore_originals()
         else:
             self.key_prefix = ""
-            apps = self.a.app
-            if not apps:
-                # like ODIS: Inventor plus the Content Center libraries
-                # (app.dclibrary.xml, ~12.7 GB installed) when the image has them
-                apps = ["inventor"]
-                if not self.a.no_content and img.find("manifest/app.dclibrary.xml"):
-                    apps.append("dclibrary")
+            apps, left_out = self.choose_apps(img)
             steps, skipped, missing = odis.plan(img, apps, self.a.lang, extra=self.a.extra)
+            # .NET Framework 4.8 (DWG TrueView depends on it) has its own step
+            # after the packages - run by the plan, under wine-mono it would
+            # exit 0 and install nothing
+            for st in [x for x in steps if x["display"] == self.DOTNET48]:
+                steps.remove(st)
+                skipped.append((st["name"], "installed by the .NET Framework 4.8 step after the packages"))
         if missing:
             for n, rel, chain in missing:
                 print("missing manifest %s (needed by %s)" % (rel, chain))
@@ -768,6 +842,10 @@ class Installer:
         only = {int(x) for x in self.a.only.split(",")} if self.a.only else None
         done = self.state()
         self.log("image  %s\nprefix %s\nlogs   %s" % (self.image, self.prefix, self.logdir))
+        if kind != "update":
+            self.log("apps   %s" % ", ".join(apps))
+            for app, why in left_out:
+                self.log("skip   app %s: %s" % (app, why))
         self.load_setup_properties(self.image)
         if kind != "update":
             self.load_setup_ui_settings(img, apps)
@@ -806,9 +884,9 @@ class Installer:
     # On Windows, Setup installs the image's .NET Framework 4.8 package
     # (3rdParty/dotNetFramework/48/pkg.dotnet48.xml) as a prerequisite when its
     # condition says the release in HKLM\...\NDP\v4\Full is older. Only DWG
-    # TrueView's manifest names it (an external dependency), and DWG TrueView
-    # is not in the product's plan, so plan() never sees it, and under Wine
-    # wine-mono already claims 4.8: the installer exits 0 and installs nothing.
+    # TrueView's manifest names it (an external dependency); main() takes it
+    # out of the plan, because under Wine wine-mono already claims 4.8: run
+    # as a package, the installer exits 0 and installs nothing.
     # Inventor's .NET Framework programs (Anark's 3D PDF corewrapper.exe,
     # AnyCAD's Property Mapping) then run on wine-mono and crash. So, after the
     # product's packages, do what winetricks' dotnet48 verb does and run the
@@ -1272,10 +1350,13 @@ def main():
     ap.add_argument("--redo", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--app", action="append",
-                    help="application manifest(s) to install (default: inventor; "
-                         "dclibrary = Content Center libraries)")
+                    help="install only these application manifest(s) (default: every application of the "
+                         "image, as ODIS: inventor, dclibrary, dwgtrueview, aceinvaddin)")
+    ap.add_argument("--no-app", action="append", default=[], metavar="APP",
+                    help="leave out this application (dclibrary = Content Center libraries, "
+                         "dwgtrueview = DWG TrueView, aceinvaddin = Electrical Catalog Browser)")
     ap.add_argument("--no-content", action="store_true",
-                    help="leave out the Content Center libraries (~12.7 GB)")
+                    help="leave out the Content Center libraries (~12.7 GB); same as --no-app dclibrary")
     ap.add_argument("--no-dotnet48", action="store_true",
                     help="do not replace wine-mono with the image's .NET Framework 4.8")
     ap.add_argument("--with", dest="extra", action="append", default=[],

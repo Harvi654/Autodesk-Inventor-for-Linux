@@ -174,6 +174,18 @@ def read_files_tsv(path):
     return out
 
 
+def read_sizes_tsv(path):
+    """lower-case path -> size in bytes (second column), where given."""
+    out = {}
+    with open(path, encoding="utf-8-sig", errors="replace") as f:
+        next(f, None)
+        for line in f:
+            p = line.rstrip("\r\n").split("\t")
+            if len(p) > 1 and p[0] and p[1].isdigit():
+                out[p[0].lower()] = int(p[1])
+    return out
+
+
 def windows_to_prefix(path, wine_user):
     """C:\\... (Windows) -> path relative to PREFIX/drive_c, lower case."""
     p = path.lower()
@@ -451,6 +463,25 @@ def main():
     r.line("Windows added %d files (%d more in Windows' own logs/caches, ignored); "
            "%d of them are not in the prefix" % (len(added), noise, len(missing)))
     r.groups("missing in the prefix", missing, lambda p: file_group(p, group_depth(p)))
+
+    r.h("3a. Autodesk files on both sides with a different size (another build)")
+    # e.g. a shared file two packages install in different builds: which one
+    # Windows kept has to be the one the prefix has
+    sizes = read_sizes_tsv(os.path.join(after, "files.tsv"))
+    differ = []
+    for k, p in fa.items():
+        rel = windows_to_prefix(p, wine_user)
+        if rel is None or rel not in pf or k not in sizes or NOISE.search(k):
+            continue
+        if not re.match(r"(program files( \(x86\))?/(autodesk|common files/autodesk shared)|programdata/autodesk)/", rel):
+            continue
+        try:
+            ours = os.path.getsize(os.path.join(drive_c, pf[rel]))
+        except OSError:
+            continue
+        if ours != sizes[k]:
+            differ.append("%s (Windows %d, prefix %d bytes)" % (p, sizes[k], ours))
+    r.groups("different size", differ, lambda p: file_group(p.split(" (Windows ")[0], group_depth(p)))
 
     r.h("3b. Autodesk files only in the prefix")
     win_all = {windows_to_prefix(v, wine_user) for v in fa.values()}

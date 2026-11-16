@@ -916,6 +916,12 @@ class Installer(Gtk.ApplicationWindow):
         self.sw_content = option("Content Center libraries",
                                  "Standard parts - screws, nuts, profiles - also needed by Frame Generator "
                                  "and Design Accelerator. About 12.7 GB.", True)
+        self.sw_trueview = option("DWG TrueView",
+                                  "Autodesk's DWG viewer and converter. Autodesk's own installer adds it "
+                                  "with Inventor on Windows.", True)
+        self.sw_electrical = option("Electrical Catalog Browser",
+                                    "Inventor's electrical catalog add-in and its library. Autodesk's own "
+                                    "installer adds it with Inventor on Windows.", True)
         self.sw_desktop = option("App launcher and file types",
                                  "\"Autodesk Inventor\" in your app menu, sign-in through your browser, "
                                  ".ipt/.iam/.idw files open in Inventor with a double-click.", True)
@@ -957,7 +963,10 @@ class Installer(Gtk.ApplicationWindow):
             "2. This project's Wine (~220 MB) is downloaded and checked against its SHA-256.",
             "3. The downloads are unpacked (~10 GB, several minutes).",
             "4. Autodesk's installers run under Wine (15-40 minutes)%s."
-            % ("" if self.sw_content.get_active() else ", without Content Center"),
+            % "".join(", without " + name for name, sw in (("Content Center", self.sw_content),
+                                                           ("DWG TrueView", self.sw_trueview),
+                                                           ("the Electrical Catalog Browser", self.sw_electrical))
+                      if not sw.get_active()),
             "5. Updates, Wine settings, fonts%s." % (", app launcher" if self.sw_desktop.get_active() else ""),
             "",
             "<b>Downloads</b>",
@@ -967,6 +976,7 @@ class Installer(Gtk.ApplicationWindow):
         ]
         # disk space: prefix (with or without Content Center), unpacked download, Wine
         need = (25 if self.sw_content.get_active() else 12) + 1
+        need += 2 if self.sw_trueview.get_active() or self.sw_electrical.get_active() else 0
         if not any(os.path.isdir(p) for p in cached_media()) or any(not os.path.isdir(p) for p in sel):
             need += 15
         if repair:
@@ -1236,6 +1246,10 @@ class Installer(Gtk.ApplicationWindow):
         args = ["bash", os.path.join(SCRIPTS, "install.sh")]
         if not self.sw_content.get_active():
             args.append("--no-content")
+        if not self.sw_trueview.get_active():
+            args.append("--no-trueview")
+        if not self.sw_electrical.get_active():
+            args.append("--no-electrical")
         if not self.sw_desktop.get_active():
             args.append("--no-desktop")
         year, prefix = self.target()

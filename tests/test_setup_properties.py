@@ -43,7 +43,7 @@ class SetupProperties(unittest.TestCase):
         fx.write(self.image, "x64/inv/InvCore.adix", b"")
         self.prefix.mkdir()
         self.saved = os.environ.get("INV_LOGDIR")
-        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR") if self.saved is None
+        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR", None) if self.saved is None
                         else os.environ.__setitem__("INV_LOGDIR", self.saved))
 
     def inst(self):

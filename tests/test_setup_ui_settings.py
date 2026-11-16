@@ -35,7 +35,7 @@ class SetupUISettings(unittest.TestCase):
             install_location=r"%CONTENT_PATH%\Inventor 2027"))
         self.prefix.mkdir()
         saved = os.environ.get("INV_LOGDIR")
-        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR") if saved is None
+        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR", None) if saved is None
                         else os.environ.__setitem__("INV_LOGDIR", saved))
 
     def inst(self, apps=("inventor", "dclibrary"), lang="en-US"):

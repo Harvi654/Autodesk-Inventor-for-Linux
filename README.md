@@ -90,6 +90,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Part modelling (extrude, hole, ...) | ✅ | |
 | Assemblies | ✅ | |
 | Content Center (screws, nuts, profiles, ...) | ✅ | ~12.7 GB, installed by default |
+| DWG TrueView, Electrical Catalog Browser | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
@@ -214,8 +215,10 @@ launcher.
 If it stops, fix what it reports and run the same command again - finished
 steps are skipped. The log is in `logs/install-*.log`.
 
-Options: `--no-content` (leave out Content Center), `--prefix DIR`,
-`--help` for the rest.
+Options: `--no-content` (leave out Content Center), `--no-trueview` and
+`--no-electrical` (leave out DWG TrueView and the Electrical Catalog
+Browser, which Autodesk's own installer adds with Inventor on Windows),
+`--prefix DIR`, `--help` for the rest.
 
 **Or with a window (new, being tested):**
 

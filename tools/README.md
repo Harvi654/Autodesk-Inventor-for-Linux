@@ -12,7 +12,7 @@ names, SIDs and long hex IDs masked.
 | Tool | Runs on | What it does |
 |---|---|---|
 | `capture-state.ps1` | Windows VM (admin PowerShell) | Snapshot before and after an install: file list, registry exports, services, scheduled tasks, machine environment, uninstall entries; after the install also the installer's and every MSI package's logs. |
-| `compare-reference.py` | Linux | Windows "after minus before" against a prefix: packages, MSI properties per package, files, registry keys and value names, services, uninstall entries, environment. Summary to stdout, full lists with `--details`. |
+| `compare-reference.py` | Linux | Windows "after minus before" against a prefix: packages, MSI properties per package, files (missing, and Autodesk files of a different size: another build), registry keys and value names, services, uninstall entries, environment. Summary to stdout, full lists with `--details`. |
 | `odis-audit.py` | Linux | Reads the image's manifests (nothing is installed): applications in the image, `%VARIABLES%` the installer cannot fill in (install location, MSI properties, parameters, actions), action types it does not run. |
 | `adix-extensions.py` | Linux | What the `AppxManifest.xml` of each ADIX package declares beyond files (COM, file types, fonts, shortcuts). |
 | `pml-who-wrote.py` | Linux, `pip install procmon-parser` | Which process (command line, parents) wrote a registry key or file, from a Process Monitor capture. |

@@ -38,7 +38,7 @@ class MsiInstallDir(unittest.TestCase):
         fx.write(self.image, "x64/noloc/pkg.noloc.xml", fx.package_xml("NoLoc", "MSI", "x64/noloc/noloc.msi"))
         self.prefix.mkdir()
         saved = os.environ.get("INV_LOGDIR")
-        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR") if saved is None
+        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR", None) if saved is None
                         else os.environ.__setitem__("INV_LOGDIR", saved))
         self.mod, self.inst = fx.installer(self.image, self.prefix, t / "logs")
         self.inst.load_setup_properties(str(self.image))

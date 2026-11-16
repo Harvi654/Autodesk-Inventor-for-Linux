@@ -81,7 +81,7 @@ def main():
             if name.lower() not in KNOWN:
                 IMAGE_VARS.setdefault(name.lower(), default)
     print("\n## Applications in the image")
-    print("manifest/app.*.xml: %s (our installer plans only 'inventor' unless --app is given)" % ", ".join(apps))
+    print("manifest/app.*.xml: %s (our installer plans all of them except *.ui, as ODIS; --no-app leaves one out)" % ", ".join(apps))
     for app in apps:
         steps, skipped, missing = odis.plan(img, (app,), a.lang)
         allsteps, _, _ = odis.plan(img, (app,), a.lang, include_all=True)

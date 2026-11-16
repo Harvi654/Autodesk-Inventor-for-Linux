@@ -24,7 +24,7 @@ class ActionVariables(unittest.TestCase):
         (t / "image").mkdir()
         (t / "prefix").mkdir()
         saved = os.environ.get("INV_LOGDIR")
-        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR") if saved is None
+        self.addCleanup(lambda: os.environ.pop("INV_LOGDIR", None) if saved is None
                         else os.environ.__setitem__("INV_LOGDIR", saved))
         self.mod, self.inst = fx.installer(t / "image", t / "prefix", t / "logs")
         self.seen = []
