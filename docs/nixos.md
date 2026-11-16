@@ -195,14 +195,31 @@ release. The module's launchers do not register their own
 handlers at runtime, and remove the ones earlier launches wrote. Sign-in
 requires your Autodesk account and license.
 
-If Home Manager already manages your user MIME defaults, set its association
-too; a user default takes precedence over the system default:
+The enabled NixOS module owns this association; no separate Home Manager
+association is needed. Remove any existing
+`xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr"` setting from
+Home Manager and rebuild, so the module's system default can take effect.
+A user default takes precedence over the system default, even when Home
+Manager manages unrelated MIME types. In particular, an old association with
+`autodesk-inventor.desktop` or a release-specific handler can bypass the
+dispatcher and send a 2026 sign-in callback to 2027.
 
-```nix
-xdg.mimeApps.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor-url-handler.desktop";
+After activating the configuration, check the effective association:
+
+```sh
+xdg-mime query default x-scheme-handler/adskidmgr
 ```
 
-Packages used without the module (`nix run .#inventor`) still register a
+It should report `autodesk-inventor-url-handler.desktop`. If it reports
+another handler, check user MIME defaults in `~/.config/mimeapps.list` and
+`~/.local/share/applications/mimeapps.list`. Enabling the module with at least
+one selected release installs the dispatcher; changing only the MIME default
+does not install it. When testing a fix from a pull request, the system flake's
+Inventor input and lock must include that fix, and the rebuilt configuration
+must be activated before testing browser sign-in.
+
+Packages used without the module (`nix run .#inventor-2026` or
+`nix run .#inventor-2027`) still register a
 handler for their release at every launch, as before; `lib.mkInventor` accepts
 `registerHostUrlHandlers = false`, and a package made with it has
 `passthru.withArgs` to change such arguments.
@@ -301,6 +318,11 @@ Validated on 2026-10-20 with the library pinned to
   runtime cleanup, and browser callback VM checks passed.
 
 ## Runtime evidence
+
+On 2026-11-16, the contributor confirmed signing into Inventor 2026 with
+2027 installed, tested directly on NixOS. The browser callback reached 2026
+and sign-in completed. Before correcting the host integration, a stale user
+MIME association bypassed the dispatcher and launched 2027 instead.
 
 A fresh test state under `/tmp/inventor-flake-qa/data4` launched Inventor 2026.4,
 displayed its licensing UI, handed sign-in to the user's normal browser, and
