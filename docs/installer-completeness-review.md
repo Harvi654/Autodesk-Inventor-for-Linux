@@ -417,10 +417,13 @@ debug channels only, nothing looked at inside the action's DLL):
 test; (b) it fails because the source is on `M:` (the image mapped as a
 drive; Bitrock InstallBuilder installers also fail from `M:`). Check:
 the same MSI once with `WINEDEBUG=+loaddll` (does `zipfldr.dll` load?)
-and once from a copy of its folder on `C:`. Until fixed, the maintainer
-decides between placing the zip's contents where the action would (a
-documented workaround for that one action, checked against the Windows
-file list) and leaving the Electrical Catalog Browser out by default.
+and once from a copy of its folder on `C:`. Decision (maintainer, 2026-11-16): if (b), the
+package is installed from a copy of its folder on `C:` (the action stays
+as it is; `MSI_FROM_C` in `install-from-image.py`, ready and empty until
+the diagnosis); if (a), the Electrical Catalog Browser is left out by
+default with a note in the README, and zipfldr becomes a winum candidate
+with a test. The installer never places the zip's contents itself.
+Diagnosis: pending.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
