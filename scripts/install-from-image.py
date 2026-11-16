@@ -172,6 +172,11 @@ def pe_file_version(data):
     return (ms >> 16, ms & 0xffff, ls >> 16, ls & 0xffff)
 
 
+def version_key(v):
+    """(31, 20, 33400, 0) for "31.20.33400.0"; () when there is none."""
+    return tuple(int(x) for x in re.findall(r"\d+", v or ""))
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     try:
@@ -689,53 +694,61 @@ class Installer:
             raise RuntimeError("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
         return self.run([sevenzip, "x", "-y", "-o" + dest, path], logname) == 0
 
-    def do_adix(self, s, logname, path):
-        """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
-        written, regs, dropped = 0, [], []
-        # ODIS maps folders of the package's VFS elsewhere
-        # (<InstallPathMappings>): AceInvAddIn's files are under
-        # Program Files\Autodesk\AutoCAD 2027 in its VFS and belong in
-        # Inventor's folder - placed literally, they ended up in an
-        # "AutoCAD 2027" folder (compare-reference, run 3)
+    def adix_entries(self, s, path):
+        """What an ADIX package holds: (identity, [(member, Windows path,
+        reader)], registry hives [(member, reader)], dropped members,
+        mapper). The Windows path is where ODIS puts the file (VFS folder,
+        then the package's InstallPathMappings: AceInvAddIn's VFS folder
+        Program Files\\Autodesk\\AutoCAD 2027 belongs in Inventor's folder).
+        identity: the package's Identity Name from AppxManifest.xml, the
+        same for every version of the package; else the manifest's name."""
         mapper = odis.PathMapper(s.get("pathMappings"), lambda v: self.expand(v, step=s))
-        def place(name, read):
-            nonlocal written
+        files, regs, dropped, identity = [], [], [], None
+        if os.path.isdir(path):
+            members = []
+            for d, _, fs in os.walk(path):
+                for fn in fs:
+                    full = os.path.join(d, fn)
+                    members.append((os.path.relpath(full, path), lambda full=full: open(full, "rb").read()))
+            z = None
+        else:
+            z = zipfile.ZipFile(path)
+            members = [(i.filename, lambda i=i: z.read(i)) for i in z.infolist() if not i.is_dir()]
+        for name, read in members:
             parts = urllib.parse.unquote(name).replace("\\", "/").split("/")
             if len(parts) == 1 and parts[0].lower() in ADIX_META:
                 if parts[0].lower().endswith(".dat"):
-                    regs.append(parts[0])
-                    if not self.a.dry_run:
-                        with open(os.path.join(self.logdir, "%s-%s" % (s["name"], parts[0])), "wb") as f:
-                            f.write(read())
-                return
+                    regs.append((parts[0], read))
+                elif parts[0].lower() == "appxmanifest.xml":
+                    m = re.search(rb'<Identity\b[^>]*\bName="([^"]+)"', read())
+                    identity = m.group(1).decode("utf-8", "replace") if m else None
+                continue
             if parts[0] != "VFS" or len(parts) < 3 or not parts[-1]:
                 if parts[-1]:
                     dropped.append("/".join(parts))
-                return
+                continue
             base = VFS.get(parts[1].lower())
             if base is None:
                 self.log("      WARN unknown VFS folder %r - skipped %s" % (parts[1], name))
-                return
+                continue
             win = "C:\\" + "\\".join([base.replace("/", "\\")] + parts[2:])
-            dst = self.unix(mapper.map(win))
+            files.append((name, mapper.map(win), read))
+        return identity or s["name"], files, regs, dropped, mapper
+
+    def do_adix(self, s, logname, path):
+        """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
+        written = 0
+        identity, files, regs, dropped, mapper = self.adix_entries(s, path)
+        for name, win, read in files:
+            dst = self.unix(win)
             if os.path.isfile(dst) and not self.keep_or_replace(dst, read):
                 written += 1
-                return
+                continue
             if not self.a.dry_run:
                 os.makedirs(os.path.dirname(dst), exist_ok=True)
                 with open(dst, "wb") as f:
                     f.write(read())
             written += 1
-        if os.path.isdir(path):
-            for d, _, files in os.walk(path):
-                for fn in files:
-                    full = os.path.join(d, fn)
-                    place(os.path.relpath(full, path), lambda full=full: open(full, "rb").read())
-        else:
-            with zipfile.ZipFile(path) as z:
-                for info in z.infolist():
-                    if not info.is_dir():
-                        place(info.filename, lambda info=info: z.read(info))
         self.log("      %d files %s" % (written, "to place (dry run)" if self.a.dry_run else "placed"))
         for prefix, src, target in mapper.rules:
             self.log("      path mapping %s -> %s: %d files" % (src, target, mapper.used.get(src, 0)))
@@ -748,10 +761,102 @@ class Installer:
         if dropped:
             self.log("      not installed (outside VFS, not package metadata): %s"
                      % ", ".join(sorted(dropped, key=str.lower)))
-        for hive in regs:
+        self.replace_adix_record(identity, s, [w for _, w, _ in files], logname)
+        for hive, read in regs:
+            if not self.a.dry_run:
+                with open(os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), "wb") as f:
+                    f.write(read())
             if not self.import_hive(s, os.path.join(self.logdir, "%s-%s" % (s["name"], hive)), logname):
                 return False
         return written > 0
+
+    # --- files of the installed ADIX packages ------------------------------
+    # On Windows an ADIX update replaces the package: files of the old
+    # version that the new one does not have are removed (2027.2: 43 in
+    # Inventor 2027\Bin - DevExpress v25.1, AutodeskAssistant - and 173
+    # iLogic Codeblocks scripts in ProgramData; compare-reference, "removed
+    # by the install on Windows"). Unpacking the new version over the old
+    # one left them. So the installer keeps the list of files it placed per
+    # package (<prefix>/.inventor-on-linux/adix/<identity>.json) and, when
+    # another version of the same package comes, removes what the new one
+    # no longer has - but never a file another package's list still holds.
+    def adix_record_dir(self):
+        return os.path.join(self.prefix, ".inventor-on-linux", "adix")
+
+    def adix_record_path(self, identity):
+        return os.path.join(self.adix_record_dir(), re.sub(r"[^A-Za-z0-9._-]", "_", identity) + ".json")
+
+    def read_adix_records(self):
+        out = {}
+        for p in glob.glob(os.path.join(self.adix_record_dir(), "*.json")):
+            try:
+                with open(p) as f:
+                    rec = json.load(f)
+                out[rec["identity"]] = rec
+            except (OSError, ValueError, KeyError):
+                continue
+        return out
+
+    def write_adix_record(self, identity, s, files):
+        if self.a.dry_run:
+            return
+        os.makedirs(self.adix_record_dir(), exist_ok=True)
+        with open(self.adix_record_path(identity), "w") as f:
+            json.dump({"identity": identity, "package": s.get("display") or s["name"], "version": s.get("version", ""),
+                       "files": sorted(set(files), key=str.lower)}, f, indent=0)
+
+    def replace_adix_record(self, identity, s, files, logname):
+        records = self.read_adix_records()
+        old = records.get(identity)
+        if old is not None:
+            now = {w.lower() for w in files}
+            others = {w.lower() for i, r in records.items() if i != identity for w in r.get("files", [])}
+            stale = [w for w in old.get("files", []) if w.lower() not in now and w.lower() not in others]
+            gone = [w for w in stale if os.path.lexists(self.unix(w))]
+            if gone:
+                self.log("      %s %d files of %s %s that this version no longer has (as Windows does)%s"
+                         % ("would remove" if self.a.dry_run else "removed", len(gone), old.get("package") or identity,
+                            old.get("version") or "", "" if self.a.dry_run else
+                            " - list in %s" % (os.path.splitext(logname)[0] + "-removed.txt")))
+                if not self.a.dry_run:
+                    with open(os.path.join(self.logdir, os.path.splitext(logname)[0] + "-removed.txt"), "w") as f:
+                        f.write("\n".join(gone) + "\n")
+                    for w in gone:
+                        os.remove(self.unix(w))
+                    self.remove_empty_dirs(gone)
+        self.write_adix_record(identity, s, files)
+
+    def remove_empty_dirs(self, removed):
+        """Folders the removed files leave empty (AutodeskAssistant\\en-US,
+        AutodeskAssistant), never above C:\\<folder>\\<folder>."""
+        dirs = sorted({os.path.dirname(self.unix(w)) for w in removed}, key=len, reverse=True)
+        for d in dirs:
+            while os.path.relpath(d, self.c).count(os.sep) >= 2 and os.path.isdir(d) and not os.listdir(d):
+                os.rmdir(d)
+                d = os.path.dirname(d)
+
+    def record_installed_adix(self, s, img):
+        """A package installed before the installer kept file lists (or by
+        an earlier run): record its list from the package itself, without
+        unpacking, so that its next version can remove what it drops."""
+        if s["type"] != "ADIX" or self.a.dry_run:
+            return
+        path = img.find(s["file"])
+        if not path:
+            return
+        try:
+            identity, files, _, _, _ = self.adix_entries(s, path)
+        except (OSError, zipfile.BadZipFile):
+            return
+        rec = self.read_adix_records().get(identity)
+        if rec is None:
+            self.write_adix_record(identity, s, [w for _, w, _ in files])
+        elif version_key(s.get("version")) > version_key(rec.get("version")):
+            # an update installed before the lists existed, now run again
+            # after its base image (install.sh BASE UPDATE): remove what the
+            # base had and the update dropped. Never for an older version:
+            # the base image run again on an updated prefix changes nothing.
+            self.replace_adix_record(identity, s, [w for _, w, _ in files], "%s.log" % s["name"])
 
     def keep_or_replace(self, dst, read):
         """A file of this package is already in the prefix (another package
@@ -1000,7 +1105,9 @@ class Installer:
                 continue
             key = self.key_prefix + s["manifest"]
             if key in done and not self.a.redo:
-                self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"])); continue
+                self.log("[%2d/%d] %s - already done" % (i, len(steps), s["display"]))
+                self.record_installed_adix(s, img)
+                continue
             self.log("[%2d/%d] %s" % (i, len(steps), s["display"]))
             t0 = time.time()
             if s["type"] in ("MSI", "MSP"):
