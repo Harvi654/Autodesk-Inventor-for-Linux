@@ -116,6 +116,13 @@ INV_PREFIX="${INV_PREFIX:-$HOME/.wine-inventor$INV_YEAR}"
 LOGDIR="${INV_LOGDIR:-$PROJECT_DIR/logs}"
 REG_FILE="${REG_FILE:-$PROJECT_DIR/registry/autodesk-full.reg}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
+# Disk space and memory the interactive front ends check for (install.sh,
+# check-system.sh, the graphical installer): numbers in requirements.env,
+# the checks in requirements.py (per filesystem; MemTotal, INV_MEMINFO for
+# tests). Not used by install-from-image.py or finish-install.sh.
+# shellcheck source=requirements.env
+source "$COMMON_DIR/requirements.env"
+inv_requirements() { python3 -I "$COMMON_DIR/requirements.py" "$@"; }
 
 # --- distribution ------------------------------------------------------------
 # arch | debian (Debian, Ubuntu, Mint, Pop!_OS ...) | fedora | unknown

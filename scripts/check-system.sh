@@ -112,11 +112,18 @@ fi
 info "Inventor.exe FileVersion: $(inv_file_version "$WIN_INV/Bin/Inventor.exe")"
 [ -f "$REG_FILE" ] && ok "registry export present ($(wc -l < "$REG_FILE") lines)" || info "registry export not made yet (scripts/export-registry.sh)"
 
-hdr "Disk space"
-NEED_GB=30
-FREE_GB=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
-info "Free in \$HOME: ${FREE_GB} GB (prefix ~20 GB, +7 GB Content Center, warning below $NEED_GB GB)"
-[ "${FREE_GB:-0}" -ge "$NEED_GB" ] || warn "less than $NEED_GB GB free"
+hdr "Memory and disk space"
+# the same numbers and checks as install.sh and the graphical installer
+# (scripts/lib/requirements.env): per filesystem, for a full installation
+IFS=$'\t' read -r mem_level mem_text < <(inv_requirements mem || echo "ok	memory: unknown")
+if [ "$mem_level" = ok ]; then ok "$mem_text"; else warn "$mem_text"; fi
+info "a full installation: prefix ${REQ_PREFIX_GB} GB (${REQ_PREFIX_NO_CONTENT_GB} GB without Content Center)," \
+     "unpacked downloads ${REQ_MEDIA_GB} GB (only while installing), Wine ${REQ_WINE_GB} GB"
+disk_opts=(--prefix "$INV_PREFIX")
+[ -f "$P_INV/Bin/Inventor.exe" ] && disk_opts+=(--repair)
+while IFS=$'\t' read -r disk_state disk_text; do
+    if [ "$disk_state" = ok ]; then ok "$disk_text"; else warn "$disk_text"; fi
+done < <(inv_requirements disk "${disk_opts[@]}" || true)
 
 hdr "Prefix"
 if [ -d "$WINEPREFIX" ]; then

@@ -23,7 +23,7 @@
 # Options:
 #   --prefix DIR       Wine prefix (default ~/.wine-inventor<year>; the year comes
 #                      from the download names, or INV_YEAR=2027)
-#   --no-content       leave out the Content Center libraries (~12.7 GB)
+#   --no-content       leave out the Content Center libraries (about 7.5 GB)
 #   --no-trueview      leave out DWG TrueView (installed with Inventor on Windows)
 #   --no-electrical    leave out the Electrical Catalog Browser (likewise)
 #   --with-electrical  install it (the default; kept for older command lines)
@@ -159,7 +159,7 @@ unpack() {
     if [ ! -f "$dest/.unpacked" ]; then
         mkdir -p "$dest"
         for f in "${parts[@]}"; do
-            info "unpacking $(basename "$f") (several minutes, ~10 GB)" >&2
+            info "unpacking $(basename "$f") (several minutes, up to ${REQ_MEDIA_GB} GB)" >&2
             if ! 7z x -y -o"$dest" "$f" >/dev/null 2>&1; then
                 # not a 7-Zip archive (e.g. Autodesk's web "Install" .exe): not ours
                 rm -rf "$dest"; return 0
@@ -184,8 +184,38 @@ for a in "${ARGS[@]}"; do [ -e "$a" ] || die "not found: $a"; done
 if [ -d "$PREFIX/drive_c" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
     die "$PREFIX already exists and was not made by this installer - move it away (e.g. mv $PREFIX $PREFIX.old) or use --prefix"
 fi
-FREE_GB=$(( $(df --output=avail -k "$HOME" | tail -1) / 1024 / 1024 ))
-[ "$FREE_GB" -ge 40 ] || warn "only $FREE_GB GB free in $HOME - Inventor with libraries needs ~40 GB (plus ~15 GB for the unpacked download)"
+# memory and disk space: warnings only (scripts/lib/requirements.env)
+IFS=$'\t' read -r mem_level mem_text < <(inv_requirements mem || echo "ok	memory: unknown")
+if [ "$mem_level" = ok ]; then info "$mem_text"; else warn "$mem_text"; fi
+# the downloads still to be unpacked into $CACHE (an unpacked image or a
+# download unpacked by an earlier run needs nothing there)
+media_needed() {
+    local a f name
+    for a in "${ARGS[@]}"; do
+        if [ -d "$a" ]; then
+            [ -n "$(find_image "$a")" ] && continue
+            while IFS= read -r f; do
+                name="$(basename "${f%.*}")"; name="${name%_[0-9][0-9][0-9]_[0-9][0-9][0-9]}"
+                [ -f "$CACHE/$name/.unpacked" ] || return 0
+            done < <(find "$a" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.7z' \))
+        else
+            name="$(basename "${a%.*}")"; name="${name%_[0-9][0-9][0-9]_[0-9][0-9][0-9]}"
+            [ -f "$CACHE/$name/.unpacked" ] || return 0
+        fi
+    done
+    return 1
+}
+disk_opts=(--prefix "$PREFIX" --cache "$CACHE" --wine-dir "$INV_WINE_HOME" --downloads "$DOWNLOAD_DIR")
+case " ${APP_OPTS[*]-} " in *" --no-content "*) disk_opts+=(--no-content) ;; esac
+media_needed || disk_opts+=(--no-media)
+if [ "$SKIP_WINE" -eq 1 ] || [ "$INV_WINE" = system ] || [ -d "$INV_WINE_HOME/$INV_WINE_NAME" ]; then
+    disk_opts+=(--no-wine)
+fi
+[ -f "$PREFIX/drive_c/Program Files/Autodesk/Inventor $INV_YEAR/Bin/Inventor.exe" ] && disk_opts+=(--repair)
+while IFS=$'\t' read -r disk_state disk_text; do
+    if [ "$disk_state" = ok ]; then info "$disk_text"
+    else warn "$disk_text - not enough free space, the installation may stop partway (--no-content saves about $REQ_CONTENT_GB GB)"; fi
+done < <(inv_requirements disk "${disk_opts[@]}" || true)
 info "prefix:  $PREFIX"
 info "log:     $LOG"
 # (the graphical installer asks for the password when the packages are installed)

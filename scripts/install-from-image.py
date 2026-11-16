@@ -1094,7 +1094,7 @@ class Installer:
 
     # Applications of the image (manifest/app.<name>.xml) that ODIS installs
     # by default: all of them - Inventor, the Content Center libraries
-    # (dclibrary, ~12.7 GB), DWG TrueView (dwgtrueview), the Electrical
+    # (dclibrary, about 7.5 GB), DWG TrueView (dwgtrueview), the Electrical
     # Catalog Browser (aceinvaddin) - "Needed" 5. In APP_ORDER, then the
     # rest in name order; each can be left out.
     # app.<name>.ui.xml (inventor.ui) describes the setup's UI, not an
@@ -1748,7 +1748,7 @@ def main():
     ap.add_argument("--include-app", action="append", default=[], metavar="APP",
                     help="also install an application that is off by default (none at the moment)")
     ap.add_argument("--no-content", action="store_true",
-                    help="leave out the Content Center libraries (~12.7 GB); same as --no-app dclibrary")
+                    help="leave out the Content Center libraries (about 7.5 GB); same as --no-app dclibrary")
     ap.add_argument("--no-dotnet48", action="store_true",
                     help="do not replace wine-mono with the image's .NET Framework 4.8")
     ap.add_argument("--with", dest="extra", action="append", default=[],
