@@ -972,7 +972,9 @@ archived in [archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-
    so the ray tracing pipelines failed. Fixed by
    `gpu/vkd3d-proton/dxil-spirv-ray-payload-long-vector.patch` in winum
    (vectors longer than 4 become arrays; synthetic shaders fail without and
-   validate with it in CI).
+   validate with it in CI). Released as `vkd3d-proton-3.0.1-winum-1`; the
+   installer uses it since 2026-11-16 and migration 0009 puts it into
+   existing prefixes (Result log, 2026-11-16).
 
 **Settings it needs** (set by hand for now; the installer will do it in the
 next release):
@@ -1437,8 +1439,13 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
   maintainer's measurement of 2026-10-21 in PR #3) it switches Inventor to
   Hydra/USD and ray tracing runs on the CPU at about 1200 % CPU. It becomes a
   normal step with a GPU check and an L4 on a ray tracing card.
-- Waiting: vkd3d-proton with the ray payload fix (no release from winum
-  yet); optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
+- `0009-vkd3d-proton-winum` (2026-11-16): `d3d12.dll`, `d3d12core.dll`
+  (system32, syswow64) from winum's `vkd3d-proton-3.0.1-winum-1` in place
+  of upstream's 3.0.1, only with `INV_VKD3D=pinned` and when the DLLs are
+  not the pinned ones (SHA-256 of each DLL, `VKD3D_DLL_SHA256` in
+  common.sh); the old DLLs go to the backup; offline it is put off
+  (`MIG_DEFER`) like 0006.
+- Waiting: optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
 
 **Rule (AGENTS.md):** every change to what a prefix gets is a new step,
 listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
@@ -1624,6 +1631,28 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-16 - vkd3d-proton from winum for the script install too:** the
+installer and migration `0009-vkd3d-proton-winum` put winum's
+`vkd3d-proton-3.0.1-winum-1` in place of upstream's 3.0.1 (release
+archive SHA-256 `7d20a226...38c8b7`, same layout as upstream's: `x64/`,
+`x86/`; the four DLLs are pinned by SHA-256 too). It is upstream 3.0.1
+(commit `3b10bd7a`) plus the dxil-spirv ray payload fix that GPU ray
+tracing needs (section "GPU ray tracing"); krokosik's Nix change (PR #17)
+makes the same archive the NixOS default, so Arch and NixOS run the same
+DLLs. The step runs only with `INV_VKD3D=pinned`, saves the old DLLs in
+`.inventor-on-linux/backup/0009-vkd3d-proton-winum/`, and is put off while
+offline, so it never stops a start. `fetch_vkd3d` (common.sh) is shared
+with `install_vkd3d`, which still stops a new installation that cannot
+download it. Patch, tests, review and validation: winum
+[gpu/vkd3d-proton/README.md](https://github.com/Harvi654/winum/blob/main/gpu/vkd3d-proton/README.md)
+(L4 in Inventor 2027 on an RX 6400, an RTX 5080 and an RX 9060 XT, the last
+with the released DLLs; open review points P2-2, an inherited `float2x2`
+payload limitation of 3.0.1, and P3, fixtures not yet covering every
+payload shape). Checked here: 5 new tests in `tests/test_migrations.py`
+(winum DLLs with a backup and the native overrides, already winum,
+`INV_VKD3D=off` untouched, offline put off and then `--run 0009`, wrong
+checksum put off). Open: the maintainer's smoke test on a prefix copy.
 
 **2026-11-16 - Nix: complete installer regression suite in the sandbox:**
 The fixtures now resolve their shell interpreters and preserve the supplied

@@ -115,6 +115,26 @@ class Migrations(unittest.TestCase):
             "BSDTAR_SHA256=%s\nBSDTAR_MEMBER=libarchive/bin/bsdtar.exe\nBSDTAR_EXE_SHA256=%s\n"
             % (hashlib.sha256((self.downloads / "libarchive-test-win64.zip").read_bytes()).hexdigest(),
                hashlib.sha256(self.fake_tar).hexdigest()))
+        # a synthetic stand-in for winum's vkd3d-proton archive (step 0009):
+        # a plain tar named .tar.zst and a zstd that passes it through, so
+        # the real `tar --zstd` path runs without zstd installed
+        import io
+        import tarfile
+        z = self.rt / "bin" / "zstd"
+        z.write_text(shell_script("#!/bin/sh\nexec cat\n"))
+        z.chmod(0o755)
+        self.vkd3d = {"x64/d3d12.dll": b"MZ d3d12 x64 winum", "x64/d3d12core.dll": b"MZ d3d12core x64 winum",
+                      "x86/d3d12.dll": b"MZ d3d12 x86 winum", "x86/d3d12core.dll": b"MZ d3d12core x86 winum"}
+        self.vkd3d_tzst = self.downloads / "vkd3d-proton-9.9-test.tar.zst"
+        with tarfile.open(self.vkd3d_tzst, "w") as tf:
+            for name, data in self.vkd3d.items():
+                info = tarfile.TarInfo("vkd3d-proton-9.9-test/" + name)
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        self.vkd3d_env = {
+            "VKD3D_VER": "9.9-test", "VKD3D_URL": "http://127.0.0.1:9/none",
+            "VKD3D_SHA256": hashlib.sha256(self.vkd3d_tzst.read_bytes()).hexdigest(),
+            "VKD3D_DLL_SHA256": " ".join("%s=%s" % (n, hashlib.sha256(d).hexdigest()) for n, d in self.vkd3d.items())}
 
     def prefix(self, name=".wine-inventor2027", year=2027, runtime="old"):
         p = self.home / name
@@ -136,6 +156,7 @@ class Migrations(unittest.TestCase):
              "INV_PREFIX": str(prefix), "INV_YEAR": str(year), "INV_WINE": "system", "INV_SANDBOX": "0",
              "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config"),
              "DOWNLOAD_DIR": str(self.downloads), "INV_BSDTAR_ENV": str(self.bsdtar_env)}
+        e.update(self.vkd3d_env)
         e.update(extra)
         return e
 
@@ -207,6 +228,7 @@ class Migrations(unittest.TestCase):
                                     + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n")
         for d in ("system32", "syswow64"):
             (p / "drive_c/windows" / d / "tar.exe").write_bytes(self.fake_tar)
+        self.put_vkd3d(p, winum=True)
         before = (p / "user.reg").read_text()
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
@@ -311,6 +333,76 @@ class Migrations(unittest.TestCase):
         out = self.migrate(p, MIG_DEFER_HOURS="0")
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+
+    # --- 0009: vkd3d-proton from winum --------------------------------------------
+    def put_vkd3d(self, p, winum=False):
+        """d3d12/d3d12core in the prefix: the pinned (winum) ones, or stand-ins for upstream's 3.0.1."""
+        for d, arch in (("system32", "x64"), ("syswow64", "x86")):
+            for n in ("d3d12", "d3d12core"):
+                data = self.vkd3d["%s/%s.dll" % (arch, n)] if winum else b"MZ upstream 3.0.1 " + n.encode()
+                (p / "drive_c/windows" / d / (n + ".dll")).write_bytes(data)
+
+    def test_vkd3d_proton_from_winum_with_a_backup(self):
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0009-vkd3d-proton-winum"])
+        for d, arch in (("system32", "x64"), ("syswow64", "x86")):
+            for n in ("d3d12", "d3d12core"):
+                self.assertEqual((p / "drive_c/windows" / d / (n + ".dll")).read_bytes(),
+                                 self.vkd3d["%s/%s.dll" % (arch, n)])
+                self.assertEqual((p / ".inventor-on-linux/backup/0009-vkd3d-proton-winum/files/drive_c/windows"
+                                  / d / (n + ".dll")).read_bytes(), b"MZ upstream 3.0.1 " + n.encode())
+        user = (p / "user.reg").read_text()
+        self.assertIn("HKCU\\Software\\Wine\\DllOverrides|d3d12|native", user)
+        self.assertIn("HKCU\\Software\\Wine\\DllOverrides|d3d12core|native", user)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_vkd3d_proton_already_winum_is_left_alone(self):
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p, winum=True)
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
+
+    def test_vkd3d_proton_off_is_left_alone(self):
+        # INV_VKD3D=off: Wine's own d3d12, whatever DLLs are in system32
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p, INV_VKD3D="off")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+        self.assertNotIn("DllOverrides|d3d12|", (p / "user.reg").read_text())
+
+    def test_offline_start_is_not_stopped_by_the_vkd3d_proton_download(self):
+        self.vkd3d_tzst.rename(self.downloads.parent / "vkd3d-away")
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("vkd3d-proton download failed (offline?)", out.stderr)
+        self.assertIn("0009-vkd3d-proton-winum put off", out.stderr)
+        st = self.state(p)
+        self.assertNotIn("done.0009-vkd3d-proton-winum", st)
+        self.assertIn("deferred.0009-vkd3d-proton-winum", st)
+        # upstream's DLLs stay until it can be done
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+        (self.downloads.parent / "vkd3d-away").rename(self.vkd3d_tzst)
+        out = self.migrate(p, "--run", "0009")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0009-vkd3d-proton-winum"])
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), self.vkd3d["x64/d3d12.dll"])
+
+    def test_vkd3d_proton_with_a_wrong_checksum_is_put_off(self):
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p, VKD3D_SHA256="0" * 64)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("checksum mismatch", out.stderr)
+        self.assertIn("0009-vkd3d-proton-winum put off", out.stderr)
+        self.assertNotIn("done.0009-vkd3d-proton-winum", self.state(p))
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
 
     # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
     def test_public_paths_in_autodesk_strings(self):
