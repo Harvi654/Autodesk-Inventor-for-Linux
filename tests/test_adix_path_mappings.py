@@ -77,7 +77,8 @@ class AdmetaCheckMapping(unittest.TestCase):
             fx.write(img, "x64/ace/AceInvAddIn.adix", adix())
             fx.write(img, "x64/ace/AceInvAddIn.admeta", json.dumps({"files": [{"path": NAME.replace("/", "\\")}]}))
             maps = "".join('<InstallPathMapping source="%s" target="%s"/>' % kv for kv in MAP.items())
-            fx.write(img, "x64/ace/pkg.aceinvaddin.xml",
+            # as in the 2027.2 update: the manifest in another folder
+            fx.write(img, "manifest/x64/ace/pkg.aceinvaddin.xml",
                      '<Package xmlns="%s"><Configuration><InstallFile type="ADIX" file="x64/ace/AceInvAddIn.adix"/>'
                      '<AdditionalPackageInfo><Customizations><InstallPathMappings>%s</InstallPathMappings>'
                      '</Customizations></AdditionalPackageInfo></Configuration></Package>' % (fx.NS, maps))

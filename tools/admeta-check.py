@@ -49,11 +49,25 @@ def image_expander(image):
     return inst.expand
 
 
-def package_mappings(admeta, package):
-    """InstallPathMappings of the manifest next to an .admeta whose
-    InstallFile is this package (pkg.*.xml in the same folder)."""
+_MANIFESTS = {}
+
+
+def _manifests(image):
+    """All pkg.*.xml of the image (searched once)."""
+    if image not in _MANIFESTS:
+        _MANIFESTS[image] = glob.glob(os.path.join(image, "**", "pkg.*.xml"), recursive=True)
+    return _MANIFESTS[image]
+
+
+def package_mappings(admeta, package, image=None):
+    """InstallPathMappings of the manifest whose InstallFile is this
+    package: pkg.*.xml next to the .admeta, else anywhere in the image (an
+    update keeps its manifests apart from the packages - 2027.2's
+    AceInvAddIn)."""
     import xml.etree.ElementTree as ET
-    for x in glob.glob(os.path.join(os.path.dirname(admeta), "pkg.*.xml")):
+    near = glob.glob(os.path.join(os.path.dirname(admeta), "pkg.*.xml"))
+    far = list(_manifests(image)) if image else []
+    for x in near + [f for f in far if f not in near]:
         try:
             root = ET.parse(x).getroot()
         except ET.ParseError:
@@ -223,7 +237,7 @@ def main():
         files = json.load(open(m, encoding="utf-8-sig")).get("files", [])
         pm = pd = 0
         # where ODIS puts them: the package's InstallPathMappings
-        mapper = odis.PathMapper(package_mappings(m, sib[0]) if sib else {}, expand)
+        mapper = odis.PathMapper(package_mappings(m, sib[0], a.image) if sib else {}, expand)
         for e in files:
             total += 1
             rel = e["path"].replace("\\", "/")
