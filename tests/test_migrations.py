@@ -297,6 +297,22 @@ class Migrations(unittest.TestCase):
         self.assertNotIn("Shell Folders", calls)
         self.assertNotIn("/v Other", calls)
 
+    def test_public_paths_in_the_32_bit_view(self):
+        # what 0007 left on the maintainer's prefix
+        p = self.prefix(runtime="winum")
+        (p / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n\n"
+            "[Software\\\\Wow6432Node\\\\Microsoft\\\\Windows\\\\HTML Help] 1\n"
+            "\"admapi_31_0.chm\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Local Help\\\\\"\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        st = self.state(p)
+        self.assertIn("already so", st["done.0007-public-documents-paths"])
+        self.assertIn("applied", st["done.0008-public-documents-paths-wow64"])
+        self.assertIn("HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\HTML Help|admapi_31_0.chm|"
+                      "C:\\users\\Public\\Documents\\Autodesk\\Inventor 2027\\Local Help\\",
+                      (p / "system.reg").read_text())
+
     # --- failure and restore ------------------------------------------------
     def test_failing_step_is_restored_and_stops(self):
         # 0003 writes UseEGL, then fails on ClientSideWithRender

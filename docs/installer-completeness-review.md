@@ -659,7 +659,11 @@ Path`: `DBQ`, the path of its database, and `LogFile`) and
 `HTML Help -> admapi_31_0.chm` (the API help); the other `%PUBLIC%` values
 in `system.reg` are Wine's own shell folders (REG_EXPAND_SZ, fine).
 Migration `0007-public-documents-paths` rewrites such Autodesk values to
-`C:\users\Public\...` in existing prefixes.
+`C:\users\Public\...` in existing prefixes. On the run-3 prefix it rewrote three
+(2026-11-16); the same value in the 32-bit view
+(`Software\Wow6432Node\Microsoft\Windows\HTML Help -> admapi_31_0.chm`)
+was outside its scope - migration `0008-public-documents-paths-wow64` does
+the `Wow6432Node` keys.
 
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;

@@ -48,6 +48,7 @@ backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
 | 0005-inventor-registration | `Inventor.exe /install 0` once, with winemenubuilder off, then `wineserver -k`: the COM server `Inventor.Application` and the document types (`Inventor.PartDocument`, ...) that Windows' install registers (`docs/installer-completeness-review.md`, "Needed" 1); a registration that does not finish is a warning (Inventor runs without it), try again with `--run 0005` | 2026-11-16 |
 | 0006-bsdtar-tar-exe | `tar.exe` in system32 (and syswow64): libarchive's signed Windows build of bsdtar 3.5.3, pinned and SHA-256 checked (`scripts/lib/bsdtar.env`, also in `nix/inventor.nix`), license text in `<prefix>/.inventor-on-linux/doc/libarchive-3.5.3/`. Windows 10 ships bsdtar as `System32\tar.exe`; the Electrical Catalog Browser's installer unpacks its library with it | 2026-11-16 |
 | 0007-public-documents-paths | registry: Autodesk's plain string values (REG_SZ) under `Software\Autodesk` and `HTML Help` that hold the text `%PUBLIC%\...` (Task Scheduler `DBQ`, `LogFile`; `admapi_31_0.chm`) -> `C:\users\Public\...`; the installer wrote the `[{Common Documents}]` mapping's target unexpanded before 2026-11-16. Wine's own REG_EXPAND_SZ values stay | 2026-11-16 |
+| 0008-public-documents-paths-wow64 | the same as 0007 for the 32-bit view (`Software\Wow6432Node\Autodesk`, `...\Wow6432Node\Microsoft\Windows\HTML Help`), which 0007 missed: `admapi_31_0.chm` there kept `%PUBLIC%\` on the maintainer's prefix | 2026-11-16 |
 
 ## Tested
 
