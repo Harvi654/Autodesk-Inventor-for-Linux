@@ -172,6 +172,40 @@ def pe_file_version(data):
     return (ms >> 16, ms & 0xffff, ls >> 16, ls & 0xffff)
 
 
+def find_ci(path):
+    """The path as it is on disk, matched without case as Windows does, or
+    None."""
+    if os.path.lexists(path):
+        return path
+    cur = os.sep
+    for part in path.strip(os.sep).split(os.sep):
+        try:
+            hit = next((n for n in os.listdir(cur) if n.lower() == part.lower()), None)
+        except OSError:
+            return None
+        if hit is None:
+            return None
+        cur = os.path.join(cur, hit)
+    return cur
+
+
+def disabled_copy(path):
+    """The copy of a file the prefix setup turned off (scripts/lib/
+    configure.sh; the same rules as tools/admeta-check.py): <file>.disabled,
+    an add-in moved to <Inventor>/Addins.disabled/, a crash source moved to
+    <Inventor>/Addins.disabled/libs/ - or None."""
+    f = find_ci(path + ".disabled")
+    if f:
+        return f
+    m = re.match(r"^(.*/Inventor 20\d\d)/Bin/Addins/([^/]+)$", path, re.I)
+    if m:
+        return find_ci(os.path.join(m.group(1), "Addins.disabled", m.group(2)))
+    m = re.match(r"^(.*/Inventor 20\d\d)/Bin/(?:[a-z]{2}-[A-Z]{2}/)?([^/]+\.dll)$", path)
+    if m:
+        return find_ci(os.path.join(m.group(1), "Addins.disabled", "libs", m.group(2)))
+    return None
+
+
 def version_key(v):
     """(31, 20, 33400, 0) for "31.20.33400.0"; () when there is none."""
     return tuple(int(x) for x in re.findall(r"\d+", v or ""))
@@ -816,28 +850,70 @@ class Installer:
             now = {w.lower() for w in files}
             others = {w.lower() for i, r in records.items() if i != identity for w in r.get("files", [])}
             stale = [w for w in old.get("files", []) if w.lower() not in now and w.lower() not in others]
-            gone = [w for w in stale if os.path.lexists(self.unix(w))]
-            if gone:
-                self.log("      %s %d files of %s %s that this version no longer has (as Windows does)%s"
-                         % ("would remove" if self.a.dry_run else "removed", len(gone), old.get("package") or identity,
-                            old.get("version") or "", "" if self.a.dry_run else
-                            " - list in %s" % (os.path.splitext(logname)[0] + "-removed.txt")))
-                if not self.a.dry_run:
-                    with open(os.path.join(self.logdir, os.path.splitext(logname)[0] + "-removed.txt"), "w") as f:
-                        f.write("\n".join(gone) + "\n")
-                    for w in gone:
-                        os.remove(self.unix(w))
-                    self.remove_empty_dirs(gone)
+            # the file where the package put it, or the copy the prefix
+            # setup moved aside (Addins.disabled, *.disabled)
+            found = []
+            for w in stale:
+                src = self.unix(w)
+                if not os.path.lexists(src):
+                    src = disabled_copy(src)
+                if src:
+                    found.append((w, src))
+            if found:
+                self.move_stale_files(identity, old, found, logname)
         self.write_adix_record(identity, s, files)
 
+    def move_stale_files(self, identity, old, found, logname):
+        """Files of the old version that the new one does not have go out of
+        their place - into a backup, not deleted: 173 of 2027.2's 216 are
+        iLogic Codeblocks scripts in ProgramData, which users can edit, and
+        what Windows does with an edited one was not seen. The backup is
+        <prefix>/.inventor-on-linux/removed-by-update/<identity>-<old
+        version>/ with each file's path under drive_c, like the migrations'
+        backups. A file that cannot be moved is a warning; the rest go on."""
+        label = re.sub(r"[^A-Za-z0-9._-]", "_", "%s-%s" % (identity, old.get("version") or "unknown"))
+        backup = os.path.join(self.prefix, ".inventor-on-linux", "removed-by-update", label)
+        shown = os.path.relpath(backup, self.prefix)
+        what = "%s %s" % (old.get("package") or identity, old.get("version") or "")
+        if self.a.dry_run:
+            self.log("      would move %d files of %s that this version no longer has (as Windows does) to %s"
+                     % (len(found), what, shown))
+            for w, src in found[:20]:
+                self.log("        %s" % self.win_path(src))
+            if len(found) > 20:
+                self.log("        ... %d more" % (len(found) - 20))
+            return
+        listfile = os.path.splitext(logname)[0] + "-removed.txt"
+        moved = []
+        for w, src in found:
+            dst = os.path.join(backup, os.path.relpath(src, self.c))
+            try:
+                os.makedirs(os.path.dirname(dst), exist_ok=True)
+                shutil.move(src, dst)
+                moved.append(src)
+            except OSError as e:
+                self.log("      WARN could not move %s to the backup: %s - left in place" % (self.win_path(src), e))
+        os.makedirs(self.logdir, exist_ok=True)
+        with open(os.path.join(self.logdir, listfile), "w") as f:
+            f.write("".join(self.win_path(p) + "\n" for p in moved))
+        self.log("      moved %d files of %s that this version no longer has (as Windows does) to %s - list in %s"
+                 % (len(moved), what, shown, listfile))
+        self.remove_empty_dirs(moved)
+
+    def win_path(self, unix_path):
+        return "C:\\" + os.path.relpath(unix_path, self.c).replace("/", "\\")
+
     def remove_empty_dirs(self, removed):
-        """Folders the removed files leave empty (AutodeskAssistant\\en-US,
+        """Folders the moved files leave empty (AutodeskAssistant\\en-US,
         AutodeskAssistant), never above C:\\<folder>\\<folder>."""
-        dirs = sorted({os.path.dirname(self.unix(w)) for w in removed}, key=len, reverse=True)
+        dirs = sorted({os.path.dirname(p) for p in removed}, key=len, reverse=True)
         for d in dirs:
-            while os.path.relpath(d, self.c).count(os.sep) >= 2 and os.path.isdir(d) and not os.listdir(d):
-                os.rmdir(d)
-                d = os.path.dirname(d)
+            try:
+                while os.path.relpath(d, self.c).count(os.sep) >= 2 and os.path.isdir(d) and not os.listdir(d):
+                    os.rmdir(d)
+                    d = os.path.dirname(d)
+            except OSError:
+                continue
 
     def record_installed_adix(self, s, img):
         """A package installed before the installer kept file lists (or by

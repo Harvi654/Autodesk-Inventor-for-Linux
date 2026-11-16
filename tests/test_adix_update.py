@@ -1,7 +1,8 @@
-"""An ADIX update removes the files of the old package version that the new
-one no longer has, as Windows does (2027.2: DevExpress v25.1,
-AutodeskAssistant, iLogic Codeblocks scripts), never a file another
-package still lists. Synthetic packages."""
+"""An ADIX update takes the files of the old package version that the new
+one no longer has out of their place, as Windows does (2027.2: DevExpress
+v25.1, AutodeskAssistant, iLogic Codeblocks scripts) - into a backup under
+.inventor-on-linux/removed-by-update, never a file another package still
+lists. Synthetic packages."""
 import io
 import os
 import tempfile
@@ -55,9 +56,16 @@ class AdixUpdate(unittest.TestCase):
         self.assertTrue((self.bin / "DevExpress.Data.v25.2.dll").exists())
         self.assertFalse((self.bin / "DevExpress.Data.v25.1.dll").exists())
         self.assertFalse((self.bin / "AutodeskAssistant").exists())        # emptied folders go too
-        self.assertIn("removed 2 files of Inventor Core 2027 31.0.19200.0 that this version no longer has", self.log())
+        self.assertIn("moved 2 files of Inventor Core 2027 31.0.19200.0 that this version no longer has (as Windows "
+                      "does) to .inventor-on-linux/removed-by-update/Autodesk.InvCore-31.0.19200.0", self.log())
         removed = Path(self.inst.logdir, "31.20.33400.0-removed.txt").read_text()
         self.assertIn("DevExpress.Data.v25.1.dll", removed)
+        # kept, with its path under drive_c, as the migrations' backups
+        backup = self.prefix / ".inventor-on-linux/removed-by-update/Autodesk.InvCore-31.0.19200.0"
+        self.assertEqual((backup / "Program Files/Autodesk/Inventor 2027/Bin/DevExpress.Data.v25.1.dll").read_bytes(),
+                         b"x DevExpress.Data.v25.1.dll")
+        self.assertTrue((backup / "Program Files/Autodesk/Inventor 2027/Bin/AutodeskAssistant/en-US/"
+                                  "InvMcp.resources.dll").exists())
 
     def test_own_files_of_the_old_version_are_replaced_silently(self):
         self.install(["Inventor.exe"], "1")
@@ -71,14 +79,16 @@ class AdixUpdate(unittest.TestCase):
         self.install(["Shared.dll"], "1", identity="Autodesk.Other", name="Other")
         self.install(["Inventor.exe"], "2")
         self.assertTrue((self.bin / "Shared.dll").exists())
-        self.assertNotIn("removed", self.log())
+        self.assertNotIn("moved", self.log())
 
     def test_dry_run_only_says_it(self):
         self.install(["Inventor.exe", "Old.dll"], "1")
         self.inst.a.dry_run = True
         self.install(["Inventor.exe"], "2")
         self.assertTrue((self.bin / "Old.dll").exists())
-        self.assertIn("would remove 1 files", self.log())
+        self.assertIn("would move 1 files", self.log())
+        self.assertIn(r"C:\Program Files\Autodesk\Inventor 2027\Bin\Old.dll", self.log())
+        self.assertFalse((self.prefix / ".inventor-on-linux/removed-by-update").exists())
 
     def test_package_installed_before_file_lists(self):
         # placed by an older installer: no list; the base image's step is
@@ -118,7 +128,59 @@ class AdixUpdate(unittest.TestCase):
         self.install(["Inventor.exe", "DevExpress.Data.v25.2.dll"], "31.20.33400.0")
         self.already_done(["Inventor.exe", "DevExpress.Data.v25.1.dll"], "31.0.19200.0", "base/InvCore.adix")
         self.assertTrue((self.bin / "DevExpress.Data.v25.2.dll").exists())
-        self.assertNotIn("removed", self.log())
+        self.assertNotIn("moved", self.log())
+
+    def test_an_edited_file_is_kept_in_the_backup(self):
+        # iLogic Codeblocks scripts in ProgramData can be edited by users
+        pd = "VFS/Common AppData/Autodesk/Inventor 2027/iLogic Codeblocks/"
+        pkg = Path(self.tmp.name) / "v1.adix"
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("AppxManifest.xml", '<Package><Identity Name="Autodesk.InvCore"/></Package>')
+            z.writestr(pd + "1076.bundle.js", b"original")
+        pkg.write_bytes(buf.getvalue())
+        self.inst.do_adix({"name": "InvCore", "display": "Inventor Core 2027", "version": "1"}, "1.log", str(pkg))
+        script = self.prefix / "drive_c/ProgramData/Autodesk/Inventor 2027/iLogic Codeblocks/1076.bundle.js"
+        script.write_bytes(b"edited by the user")
+        self.install(["Inventor.exe"], "2")
+        self.assertFalse(script.exists())
+        self.assertEqual((self.prefix / ".inventor-on-linux/removed-by-update/Autodesk.InvCore-1/ProgramData/"
+                          "Autodesk/Inventor 2027/iLogic Codeblocks/1076.bundle.js").read_bytes(), b"edited by the user")
+
+    def test_add_in_turned_off_by_the_prefix_setup_is_moved_too(self):
+        self.install(["Inventor.exe", "Addins/Autodesk.Old.Inventor.addin", "Old.Crash.dll", "Tool.exe"], "1")
+        inv = self.bin.parent
+        (inv / "Addins.disabled/libs").mkdir(parents=True)
+        (self.bin / "Addins/Autodesk.Old.Inventor.addin").rename(inv / "Addins.disabled/Autodesk.Old.Inventor.addin")
+        (self.bin / "Old.Crash.dll").rename(inv / "Addins.disabled/libs/Old.Crash.dll")
+        (self.bin / "Tool.exe").rename(self.bin / "Tool.exe.disabled")
+        self.install(["Inventor.exe"], "2")
+        for p in ("Addins.disabled/Autodesk.Old.Inventor.addin", "Addins.disabled/libs/Old.Crash.dll",
+                  "Bin/Tool.exe.disabled"):
+            self.assertFalse((inv / p).exists(), p)
+            self.assertTrue((self.prefix / ".inventor-on-linux/removed-by-update/Autodesk.InvCore-1/Program Files/"
+                             "Autodesk/Inventor 2027" / Path(p)).exists(), p)
+        self.assertIn("moved 3 files", self.log())
+
+    def test_a_file_that_cannot_be_moved_is_a_warning(self):
+        self.install(["Inventor.exe", "A.dll", "B.dll", "C.dll"], "1")
+        real_move = self.mod.shutil.move
+
+        def move(src, dst):
+            if src.endswith("B.dll"):
+                raise PermissionError(13, "Permission denied")
+            return real_move(src, dst)
+        self.mod.shutil.move = move
+        try:
+            self.install(["Inventor.exe"], "2")
+        finally:
+            self.mod.shutil.move = real_move
+        log = self.log()
+        self.assertIn(r"WARN could not move C:\Program Files\Autodesk\Inventor 2027\Bin\B.dll to the backup", log)
+        self.assertIn("moved 2 files", log)
+        self.assertTrue((self.bin / "B.dll").exists())
+        self.assertFalse((self.bin / "A.dll").exists())
+        self.assertFalse((self.bin / "C.dll").exists())
 
     def test_without_appx_manifest_the_name_identifies(self):
         self.install(["A.dll", "B.dll"], "1", identity=None, name="Pkg")

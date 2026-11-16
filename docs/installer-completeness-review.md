@@ -514,9 +514,18 @@ capture):
   all of Inventor Core. Confirmed: on Windows an ADIX update replaces the
   package and the old version's files the new one lacks go. **Fixed:** the
   installer keeps the list of files it placed per ADIX package
-  (`.inventor-on-linux/adix/<identity>.json`) and an update removes what
-  its new version no longer has (not a file another package still lists;
-  emptied folders too; logged, with a list file). Prefixes from before:
+  (`.inventor-on-linux/adix/<identity>.json`) and an update takes what
+  its new version no longer has out of its place (not a file another
+  package still lists; emptied folders too; logged, with a list file).
+  After the maintainer's review (2026-11-16) the files are **moved, not
+  deleted**, to `<prefix>/.inventor-on-linux/removed-by-update/<identity>-<old
+  version>/` with their path under `drive_c` (like the migrations'
+  backups): 173 of the 216 are iLogic Codeblocks scripts in ProgramData,
+  which users can edit, and what Windows does with an edited one was not
+  seen. A file the prefix setup moved aside (`Addins.disabled`,
+  `Addins.disabled/libs`, `*.disabled`; admeta-check's rules) is moved from
+  there when its original path is gone - else old turned-off add-ins stayed
+  behind; a file that cannot be moved is a warning and the rest go on. Prefixes from before:
   `install.sh BASE UPDATE` records the base packages' lists without
   unpacking, and an already installed newer package then removes what it
   dropped; the base image alone on an updated prefix removes nothing.
