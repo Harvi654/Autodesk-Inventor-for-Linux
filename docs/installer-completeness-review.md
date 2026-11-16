@@ -447,6 +447,31 @@ run with `+loaddll,+advapi,+security,+file,+seh`, filtered to the thread
 that loaded the action's DLL (its last calls before it returns, security
 calls, errors), and whether the target folder is created at all.
 
+  **Cause found (trace with `+loaddll,+advapi,+security,+file,+seh`,
+  filtered to the thread that loaded the action's DLL, 2026-11-16):**
+  none of (a)-(d). The action creates the target folder
+  (`CreateDirectoryW ...\Inventor Electrical Library 2027\`), copies
+  the zip to a temporary folder (`C:\ACED5EA\ZIPD5EB\AceInvLib.zip`)
+  and then starts the command line
+  `tar -xf "C:\ACED5EA\ZIPD5EB\AceInvLib.zip" -C "C:\ACED5EA\OUTD5EC" --keep-newer-files`.
+  Windows 10 (since 1803) has `C:\Windows\System32\tar.exe` (bsdtar,
+  from libarchive); Wine has no `tar.exe`. The trace shows the program
+  search for the unquoted command line (`tar`, `tar.exe`, `tar -xf`,
+  `tar -xf "C:\...zip"`, ... in system32, windows, system, wbem,
+  WindowsPowershell\v1.0 and the current folder) finding nothing; the
+  action then returns 1359 and the MSI rolls back (the folder is gone
+  afterwards). No security call failed. A Wine gap, but a missing
+  program rather than a broken function: the decision for (a)/(b) does
+  not cover it and is asked again. Possible ways: leave the Electrical
+  Catalog Browser out by default until there is a `tar.exe`; a winum
+  candidate that adds a `tar.exe` to Wine (at least `-x -f <zip> -C <dir>
+  --keep-newer-files`, with a test whose expected results come from
+  Windows' own `tar.exe` in the VM - L1 is possible, Windows 10 has it);
+  or libarchive's own Windows build of bsdtar - the program Windows ships
+  as `tar.exe` - as a pinned, SHA-256-checked download put into the
+  prefix before the packages (also in `nix/inventor.nix`). Whether
+  libarchive publishes such a build: not checked yet.
+
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
   `inventor.ui` left out.
