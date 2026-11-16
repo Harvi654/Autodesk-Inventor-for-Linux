@@ -642,7 +642,7 @@ The installer (since 2026-11-16): an msiexec command line with a space goes
 into `C:\odis-logs\NN-<package>.msi.cmd` with `NAME="value"` and runs
 through `wine cmd /c` - the command line ODIS builds on Windows, which a
 Linux program cannot pass through `wine msiexec` directly; the right
-design, not a workaround for Wine. **Autodesk-Revit-for-Linux** has its own
+design, not a workaround for Wine. **Autodesk-Revit-on-Linux** has its own
 `.bat` for its step 25 (the same failure); it should use this helper
 (`run_msiexec` in `install-from-image.py`) once the two installers share
 the code again.
