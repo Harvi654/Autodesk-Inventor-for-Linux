@@ -476,6 +476,14 @@ capture):
   package's copy stays, as in the base install) gives the same result as
   Windows in both cases, and the order of TrueView and InvCore in an
   update does not matter for these files. Confirmed.
+- admeta-check of the update, final (2026-11-16): 7 387 files, 7 373
+  identical, 8 turned off on purpose, **0 missing**, 6 different: the five
+  shared files where the prefix has DWG TrueView's 26.0.60 copies instead
+  of InvCore's 26.0.59 - as Windows has them - and
+  `Public Documents\Autodesk\Inventor 2027\Design Data\Import
+  Properties\PropertyMap_STEP.xml`, which Inventor wrote during the smoke
+  test (Import CAD's property mapping; user data, not an installer
+  difference). The Catalog Browser's 19 files found through its mapping.
 - **Smoke test on the updated prefix (L4, maintainer, 2026-11-16):
   passed** (iLogic only opened - a new rule shows the iLogic editor; no
   rule run).
