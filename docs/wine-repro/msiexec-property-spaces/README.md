@@ -1,11 +1,14 @@
 # msiexec: a property value with a space, passed as one argument
 
+**Result: not a Wine bug - Windows does the same** (measured 2026-11-16,
+below).
+
 Found 2026-11-16 by the installer completeness review: Inventor 2027's
 `InvPrivate.msi` with `INSTALLDIR=C:\Program Files\Autodesk\Inventor 2027\`
 ended at once with exit code 103 (= 1639, `ERROR_INVALID_COMMAND_LINE`).
 Revit's earlier "MSI property values with a space fail" is the same.
 
-## What happens in Wine (read in Wine 11.20's source)
+## How it fails (read in Wine 11.20's source)
 
 1. We run `wine msiexec /i X.msi /qn "INSTALLDIR=C:\Program Files\X"` -
    the property is ONE argument (Python's argv, or a quoted shell word).
@@ -30,37 +33,47 @@ through step 2. install-from-image.py therefore writes such a command line
 into a batch file and runs `wine cmd /c` on it (cmd hands the line to
 msiexec unchanged).
 
-## What Windows does - to be measured
+## What Windows does - measured 2026-11-16
 
-Not yet measured (AGENTS.md: expected values come from Windows, not from
-reading). `run-windows.cmd` passes forms A, B (what Wine builds) and C
-(ODIS's form) to Windows' msiexec; `run-wine.sh` the same under Wine plus
-a control without a space. The MSI is synthetic (`quotetest.wxs`, built
-with msitools' `wixl`), so the test can go into a bug report.
+The same on Windows. Windows: the maintainer's Windows 10 test VM
+(10.0.19045.6466, Windows Installer 5.0.19041.4651 - the VM used for tests
+and patches, not the reference snapshot). Wine: winum-11.20-2, a fresh
+prefix. The MSI is synthetic (`quotetest.wxs`, built with msitools'
+`wixl`).
+
+| Form | Wine 11.20 (winum-11.20-2) | Windows 10 |
+|---|---|---|
+| A `"INSTALLDIR=C:\quote test\a"` (one quoted argument) | 103 (= 1639), installs nothing | 1639, installs nothing (Windows Installer shows its usage dialog) |
+| B the same with a trailing backslash | 1639, nothing | 1639, nothing |
+| C `INSTALLDIR="C:\quote test\a\"` (ODIS's form; a batch file under Wine) | 0, `C:\quote test\a` | 0, `C:\quote test\a` |
+| D `INSTALLDIR=C:\quotetest` (no space, control) | 0 | 0 |
+
+**Conclusion: Wine behaves as Windows. msiexec accepts a property value
+with a space only as `NAME="value"`, on Windows too;** a property passed as
+one argument gets quoted as a whole by the usual argv convention (step 2)
+and is rejected on both (steps 3-5 describe how Wine gets there; Windows
+gets to the same result). **Not a Wine bug** - no report on
+bugs.winehq.org. The batch file with `NAME="value"` in
+install-from-image.py is the right design - the command line ODIS builds
+on Windows - not a workaround for Wine.
+
+## Running it
 
 ```bash
 cd docs/wine-repro/msiexec-property-spaces
 echo marker > marker.txt
 wixl quotetest.wxs
 export WINEPREFIX=/tmp/quotetest-prefix
+mkdir -p "$WINEPREFIX"
 bash run-wine.sh
 ```
 
+Wine refuses to create a prefix directly under `/tmp` ("'/tmp' is not
+owned by you") unless the folder exists already; `run-wine.sh` creates it
+too.
+
 Windows: copy `quotetest.msi` and `run-windows.cmd` into the VM, run the
-.cmd as Administrator, bring back its three lines.
-
-## Results
-
-| Form | Wine 11.20 (winum-11.20-2) | Windows 10 |
-|---|---|---|
-| A `"INSTALLDIR=C:\quote test\a"` | expected 1639 (from the source), not run yet | not measured |
-| B `"INSTALLDIR=C:\quote test\a\\"` | expected 1639, not run yet | not measured |
-| C `INSTALLDIR="C:\quote test\a\"` (batch file) | expected: installs to `C:\quote test\a` | not measured |
-| D no space (control) | expected: installs | - |
-
-## For a bug report on bugs.winehq.org
-
-In words, once Windows is measured: the program's arguments, the command
-line Wine builds (step 2), what Wine's msiexec makes of it (steps 3-5,
-exit code 1639), what Windows' msiexec does with the same command line,
-and this synthetic MSI with the two scripts. Not filed yet.
+.cmd as Administrator, bring back its four lines. (Its first version ran
+C through `call :form`, where `=` outside quotes splits the arguments of a
+batch label, so only `INSTALLDIR` arrived; C and D were run by hand in the
+measurement above, and the script now runs every form directly.)

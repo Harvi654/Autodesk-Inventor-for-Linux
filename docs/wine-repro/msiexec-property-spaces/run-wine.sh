@@ -3,10 +3,13 @@
 # passed four ways. Run in a throwaway prefix:
 #   export WINEPREFIX=/tmp/quotetest-prefix
 #   bash run-wine.sh            (needs quotetest.msi next to it: wixl quotetest.wxs)
+# Result (2026-11-16): the same as Windows - not a Wine bug (README.md).
 # Prints per form: msiexec's exit code (low byte) and where marker.txt landed.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 [ -f "$here/quotetest.msi" ] || { echo "build it first: (cd $here && echo marker > marker.txt && wixl quotetest.wxs)"; exit 1; }
+# Wine refuses to create a prefix directly under /tmp unless it exists
+mkdir -p "$WINEPREFIX"
 wineboot -i >/dev/null 2>&1; wineserver -w
 cp "$here/quotetest.msi" "$WINEPREFIX/drive_c/quotetest.msi"
 c="$WINEPREFIX/drive_c"

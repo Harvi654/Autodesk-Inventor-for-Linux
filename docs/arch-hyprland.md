@@ -1628,11 +1628,21 @@ with a test callback). Not a Wine bug.
 **2026-11-16 - Nix: complete installer regression suite in the sandbox:**
 The fixtures now resolve their shell interpreters and preserve the supplied
 PATH instead of assuming /bin and /usr/bin. The `installer` flake check runs
-all 202 tests, which passed in the Nix sandbox, with iconv for synthetic .NET logs and standalone coreutils for
-the tests that give sleep a Windows process name. CI builds this synthetic
+all 202 tests, which passed in the Nix sandbox, with iconv for synthetic .NET
+logs and standalone coreutils for the tests that give sleep a Windows process
+name. CI builds this synthetic
 check after evaluation; no Autodesk media is needed. Application installation
 and prefix contents are unchanged. Details and the check command:
 `docs/nixos.md`.
+
+**2026-11-16 - msiexec and a property value with a space: not a Wine
+bug.** Measured on Windows 10 (19045.6466) and winum-11.20-2 with a
+synthetic MSI: a property passed as one quoted argument
+(`"INSTALLDIR=C:\quote test\a"`) is rejected with 1639 on both;
+`INSTALLDIR="C:\quote test\a\"` installs on both. msiexec needs
+`NAME="value"` everywhere; the installer's batch file passes that form, as
+ODIS does. No WineHQ report. `docs/wine-repro/msiexec-property-spaces/`,
+`docs/installer-completeness-review.md`.
 
 **2026-11-16 - Installer completeness review: points 1-8 fixed (branch
 `installer-review`):** Inventor's registration (`Inventor.exe /install 0`,

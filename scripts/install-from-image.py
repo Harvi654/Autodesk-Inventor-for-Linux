@@ -577,16 +577,17 @@ class Installer:
         rc = self.run_msiexec(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
 
-    # Wine's msiexec cannot take a property value with a space as an
-    # argument: Wine puts the whole argument in quotes
-    # ("INSTALLDIR=C:\Program Files\..."), msiexec keeps them, and the
-    # Windows Installer then reads a property named "INSTALLDIR with
-    # unbalanced quotes and returns 1639 (exit code 103) - read in Wine
-    # 11.20's ntdll build_command_line, msiexec chomp/build_properties and
-    # msi_parse_command_line. ODIS passes INSTALLDIR="C:\Program Files\...\",
-    # which they parse correctly. Such a command line therefore goes into a
-    # batch file, which cmd hands to msiexec unchanged; cmd waits for it and
-    # returns its exit code. Everything else runs as before.
+    # msiexec takes a property value with a space only as NAME="value" -
+    # on Windows and under Wine alike (measured 2026-11-16,
+    # docs/wine-repro/msiexec-property-spaces). A property passed as one
+    # argument ("INSTALLDIR=C:\Program Files\...") is quoted as a whole by
+    # the usual argv convention, and msiexec rejects it with 1639 (exit
+    # code 103) on both. ODIS builds INSTALLDIR="C:\Program Files\...\";
+    # a Linux program cannot pass that form through `wine msiexec`, since
+    # Wine builds the command line from the arguments. Such a command line
+    # therefore goes into a batch file, which cmd hands to msiexec
+    # unchanged; cmd waits for it and returns its exit code. Everything
+    # else runs as before.
     def run_msiexec(self, argv, logname):
         if not any(" " in a or "\t" in a for a in argv[2:]):
             return self.run(argv, logname)

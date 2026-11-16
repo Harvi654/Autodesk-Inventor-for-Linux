@@ -26,7 +26,9 @@ Autodesk-AutoCAD-for-Linux, `docs/autocad-experiment-2026-11.md`): the
 "ACAD Private" MSI landed in `C:\Program Files\` because its target is
 `%ACAD_INSTALL_PATH%`, which only ODIS fills in, and AutoCAD then refused to
 license. Revit 2027 showed two more (MSI property values with a space fail
-in Wine's msiexec; `%LANGUAGE_CODE%` unknown). Inventor works and passes the
+in Wine's msiexec - measured later: msiexec needs `NAME="value"` on Windows
+and Wine alike, see "msiexec and a property value with a space";
+`%LANGUAGE_CODE%` unknown). Inventor works and passes the
 smoke tests, but nobody has checked that the prefix holds everything a
 Windows installation of the same image holds - files and registry.
 
@@ -295,7 +297,7 @@ yet checked on a real install** - the results of the maintainer's run
 | 1 Registration | `Inventor.exe /install 0` once after the product's packages and the .NET 4.8 step, winemenubuilder off for everything it runs, then `wineserver -k`/`-w`; checks `Inventor.Application` and `Inventor.PartDocument` in `user.reg`; not finished = warning, tried again on the next run | migration `0005-inventor-registration` (a registration that does not finish warns, does not stop the launcher; again with `migrate-prefix.sh --run 0005`) | `user.reg` has both keys; no new `~/.local/share/applications/wine-*.desktop`; install.log `registered:` | run 4: both keys, no menu entries; L4 2026-11-16; migration 0005 tested on a copy of the everyday prefix with both keys removed: keys back, no menu entries (2026-11-16) |
 | 2 `setup.xml` properties | `<Properties>` become variables (`INV_INSTALL_PATH`); a `RegistrySearch` whose key and value exist in the prefix wins; logged as `var    %X% = ... (setup.xml; ...)` | none needed for `INSTALLDIR` (files in place); the InvAcNGEN action (.NET native images) did not run in them - open, below | install.log `var    %INV_INSTALL_PATH% = C:\Program Files\Autodesk\Inventor 2027\`; InvAcNGEN runs with `...\Inventor 2027\Bin`; compare: `NGenService` keys | run 4: `INV_INSTALL_PATH` from `setup.xml`, its RegistrySearch read; InvAcNGEN runs with real paths (native images: open) |
 | 3 `CONTENT_PATH` | from `SetupRes/locale/<lang>/<app>.xml` (`defaultVal`), else ODIS's default `%PROGRAMDATA%\Autodesk` | none (files in place) | install.log `var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, ...)` | run 4: from `setup.xml` (`<Setting>`); `DCLibrary64.msi` got `INSTALLDIR=C:\ProgramData\Autodesk\Inventor 2027` as on Windows |
-| 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | run 4: the same `INSTALLDIR` as Windows for every MSI (MSIs without a location: `%INSTALL_DEST%`); values with a space through a batch file (Wine msiexec quoting) |
+| 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | run 4: the same `INSTALLDIR` as Windows for every MSI (MSIs without a location: `%INSTALL_DEST%`); values with a space as `NAME="value"` through a batch file (msiexec needs that form on Windows and Wine alike) |
 | 6 Action parameters | unknown `%VARIABLE%` in path or parameters: action skipped with `WARN skip action ...`; MSI properties left out, install parameters with unknown variables and action types never run are listed | - | install.log: no `WARN skip action` for Inventor's packages | run 4: no action skipped for an unknown variable |
 | 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | run 4: all four applications; Catalog Browser in Inventor's folder (InstallPathMappings), its library via `tar.exe`; shared files and fonts as on Windows (TrueView first). The Catalog Browser asks at start for Microsoft 365 Access Runtime (64-bit), not in the image - the same on Windows (checked), not an installer gap |
 | 7 ADIX root files | listed as `not installed (outside VFS, not package metadata): ...` | - | install.log line for InvCore (`SharedComponents.json`) - decide per file | run 4: listed (`SharedComponents.json`, MSIX metadata, Material Library's `Registry.reg` - same names as `Registry.dat`, nothing to add) |
@@ -618,30 +620,32 @@ Revisited if a program is found that needs one of them.
   "already installed". The dry run could check too (read-only, only when
   the prefix exists).
 
-### Wine bug: msiexec and a property value with a space
+### msiexec and a property value with a space (not a Wine bug)
 
-Worth a report on bugs.winehq.org. A program that passes an MSI property
-whose value has a space as one argument -
-`wine msiexec /i X.msi /qn "INSTALLDIR=C:\Program Files\X"` - gets
-1639 (`ERROR_INVALID_COMMAND_LINE`): Wine builds the command line
-`msiexec /i X.msi /qn "INSTALLDIR=C:\Program Files\X"` (the whole
-argument quoted, the usual Windows convention), Wine's msiexec keeps those
-quotes when it splits the line and quotes the value again, and the
-Windows Installer reads a property named `"INSTALLDIR` with unbalanced
-quotes. ODIS's own form, `INSTALLDIR="C:\Program Files\X\"`, works, but
-cannot be produced through Wine's command line building. What Windows'
-msiexec does with the same command lines is **not measured yet**; the
-synthetic reproducer (a tiny MSI built with `wixl`, a script for Wine and
-one for the Windows VM) and the step-by-step reading of Wine's code are in
+A program that passes an MSI property whose value has a space as one
+argument - `wine msiexec /i X.msi /qn "INSTALLDIR=C:\Program Files\X"` -
+gets 1639 (`ERROR_INVALID_COMMAND_LINE`): the argument is quoted as a whole
+by the usual argv convention, and msiexec rejects it. **Measured
+2026-11-16: Windows does the same** (the maintainer's Windows 10 test VM,
+10.0.19045.6466, Windows Installer 5.0.19041.4651; Wine: winum-11.20-2,
+a fresh prefix): one quoted argument, with or without a trailing
+backslash, 1639 and nothing installed on both (Windows Installer shows its
+usage dialog); `INSTALLDIR="C:\quote test\a\"` (ODIS's form) installs to
+that folder on both; without a space both install. **msiexec accepts a
+value with a space only as `NAME="value"`, on Windows and Wine alike - not
+a Wine bug, no report on bugs.winehq.org.** The synthetic reproducer (a
+tiny MSI built with `wixl`, a script for Wine and one for the Windows VM),
+the table and the mechanism as read in Wine's source are in
 [docs/wine-repro/msiexec-property-spaces/](wine-repro/msiexec-property-spaces/README.md).
-The report is written once Windows is measured; not filed yet.
 
-The installer's workaround (since 2026-11-16): an msiexec command line
-with a space goes into `C:\odis-logs\NN-<package>.msi.cmd` and runs
-through `wine cmd /c`. **Autodesk-Revit-for-Linux** has its own `.bat`
-workaround for its step 25 (the same failure); it should be replaced by
-this helper (`run_msiexec` in `install-from-image.py`) once the two
-installers share the code again.
+The installer (since 2026-11-16): an msiexec command line with a space goes
+into `C:\odis-logs\NN-<package>.msi.cmd` with `NAME="value"` and runs
+through `wine cmd /c` - the command line ODIS builds on Windows, which a
+Linux program cannot pass through `wine msiexec` directly; the right
+design, not a workaround for Wine. **Autodesk-Revit-for-Linux** has its own
+`.bat` for its step 25 (the same failure); it should use this helper
+(`run_msiexec` in `install-from-image.py`) once the two installers share
+the code again.
 
 ### Clean room exception: file versions of shared files
 
@@ -682,8 +686,9 @@ local port of the three functions, not committed). Fix: an msiexec command
 line with a space goes into `C:\odis-logs\NN-<package>.msi.cmd` and runs
 through `cmd /c` (cmd hands the line to msiexec unchanged, waits for it in
 a batch file and returns its exit code); commands without a space run as
-before. A Wine bug report is possible (msiexec should not keep the quotes
-around a whole argument); not filed yet.
+before. Measured afterwards (2026-11-16): Windows' msiexec rejects the
+same one-argument form with 1639 - not a Wine bug, see "msiexec and a
+property value with a space".
 
 **Run 2 (2026-11-16, same prefix, resumed at step 22):** `InvPrivate.msi`,
 `InvPrivateLoc.msi` and `DCLibrary64.msi` installed through the batch
