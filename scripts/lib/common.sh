@@ -328,6 +328,18 @@ try() { "$@" || warn "failed (continuing): $*"; }
 
 # Quiet wine wrappers. Wine's own chatter goes to the log, not the terminal.
 wine_q() { wine "$@" >>"$LOGDIR/setup-wine.log" 2>&1; }
+# Output (stdout and stderr) of a short wine command, for $(...): through a
+# temporary file, not the pipe of the command substitution. A wine call into
+# a stopped prefix starts the wineserver and the prefix's services (FlexNet
+# licensing in a 2026 prefix, Edge update), which inherit stdout and never
+# exit - $(...) would wait for them forever. Exit code of wine.
+wine_capture() {
+    local t rc=0
+    t="$(mktemp)"
+    wine "$@" </dev/null >"$t" 2>&1 || rc=$?
+    cat "$t"; rm -f "$t"
+    return "$rc"
+}
 wine_reg_add() { wine_q reg add "$@" /f; }
 
 # Stop this prefix's wineserver. Never fails (no server running is fine).
@@ -531,7 +543,7 @@ dotnet48_why() {
         fi
     done
     # the whole output first, then grep: no pipe that pipefail could fail
-    out="$(WINEDEBUG=-all wine reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree 2>&1)" || true
+    out="$(WINEDEBUG=-all wine_capture reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree)" || true
     if ! printf '%s\n' "$out" | grep -qiE '^[[:space:]]*mscoree[[:space:]]+REG_SZ[[:space:]]+native'; then
         echo "DllOverrides mscoree is not native (wine: $(command -v wine || echo none), WINEPREFIX=$WINEPREFIX," \
              "reg query: $(printf '%s' "$out" | tr -d '\r' | tr '\n' ' ' | cut -c1-200))"

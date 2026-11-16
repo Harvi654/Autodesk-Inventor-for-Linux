@@ -224,7 +224,7 @@ INV_PID=$!
     while [ "$(date +%s)" -lt "$END" ] && kill -0 "$INV_PID" 2>/dev/null; do
         while IFS=$'\t' read -r SUBKEY VALUE; do
             K="HKLM\\Software\\Classes\\$SUBKEY"
-            CUR="$(wine reg query "$K" /ve </dev/null 2>/dev/null | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
+            CUR="$(wine_capture reg query "$K" /ve | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
             [ "$CUR" = "$VALUE" ] || wine reg add "$K" /ve /d "$VALUE" /f </dev/null >/dev/null 2>&1
         done < "$LOGDIR/.class-icons-$TS"
         sleep 3

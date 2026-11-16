@@ -40,6 +40,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import zipfile
@@ -1225,12 +1226,35 @@ class Installer:
     # image's own installer (docs/arch-hyprland.md, ".NET Framework 4.8").
     DOTNET48 = ".NET Framework Runtime 4.8"
 
+    def wine_output(self, argv, timeout=300):
+        """Output (stdout and stderr) of a short wine command, or None.
+
+        Written to a temporary file and returned when the process exits -
+        never read from a pipe: a wine call into a stopped prefix starts
+        the wineserver and the prefix's services (FlexNet's
+        FNPLicensingService64.exe in a 2026 prefix, MicrosoftEdgeUpdate.exe
+        /c), which inherit stdout and never exit, so reading a pipe to its
+        end waits forever (the .NET Framework 4.0 step hung for 40 minutes
+        in a fresh 2026 installation, 2026-11-16). Like run()."""
+        try:
+            with tempfile.TemporaryFile() as out:
+                proc = subprocess.Popen(argv, env=dict(self.env, WINEDEBUG="-all"), stdin=subprocess.DEVNULL,
+                                        stdout=out, stderr=subprocess.STDOUT)
+                try:
+                    proc.wait(timeout=timeout)
+                except subprocess.TimeoutExpired:
+                    self.log("        no exit after %ds, stopping it: %s" % (timeout, " ".join(argv)))
+                    proc.kill()
+                    proc.wait()
+                out.seek(0)
+                return out.read().decode("utf-8", "replace")
+        except OSError:
+            return None
+
     def reg_query(self, key, value):
         """Data of a registry value in the prefix, or None."""
-        try:
-            out = subprocess.run(["wine", "reg", "query", key, "/v", value], env=dict(self.env, WINEDEBUG="-all"),
-                                 capture_output=True, text=True, errors="replace").stdout
-        except OSError:
+        out = self.wine_output(["wine", "reg", "query", key, "/v", value])
+        if out is None:
             return None
         for line in out.splitlines():
             parts = line.split(None, 2)
@@ -1340,9 +1364,7 @@ class Installer:
         """GUIDs of the "Wine Mono ..." entries of `wine uninstaller --list`.
         The list goes to stderr ("{GUID}|||Wine Mono Windows Support"), so
         both streams are read."""
-        out = subprocess.run(["wine", "uninstaller", "--list"], env=dict(self.env, WINEDEBUG="-all"),
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                             text=True, errors="replace").stdout
+        out = self.wine_output(["wine", "uninstaller", "--list"]) or ""
         return [l.split("|", 1)[0].strip() for l in out.splitlines()
                 if "|" in l and "Wine Mono" in l.split("|", 1)[1]]
 

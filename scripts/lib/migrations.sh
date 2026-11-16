@@ -94,7 +94,7 @@ mig_prefix_busy() {
 # no pipe that pipefail could fail)
 mig_reg_get() {   # KEY VALUE
     local out
-    out="$(WINEDEBUG=-all wine reg query "$1" /v "$2" 2>/dev/null)" || true
+    out="$(WINEDEBUG=-all wine_capture reg query "$1" /v "$2")" || true
     printf '%s\n' "$out" | tr -d '\r' | awk -v v="$2" 'tolower($1) == tolower(v) && $2 ~ /^REG_/ { $1 = ""; $2 = ""; sub(/^ +/, ""); print; exit }'
 }
 
