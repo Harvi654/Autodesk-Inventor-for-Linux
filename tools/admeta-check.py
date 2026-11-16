@@ -55,6 +55,10 @@ def to_prefix(path, drive_c, user):
     m = re.match(r"^(?i:vfs)/([^/]+)/(.*)$", p)
     if m and m.group(1).lower() in KNOWN:
         return os.path.join(drive_c, KNOWN[m.group(1).lower()], m.group(2))
+    if m and m.group(1).lower() == "appdata":
+        return os.path.join(drive_c, "users", user, "AppData/Roaming", m.group(2))
+    if m and m.group(1).lower() == "local appdata":
+        return os.path.join(drive_c, "users", user, "AppData/Local", m.group(2))
     m = re.match(r"^[A-Za-z]:/(.*)$", p)
     if m:
         return os.path.join(drive_c, m.group(1))
@@ -79,6 +83,19 @@ def find_ci(path):
             return None
         cur = os.path.join(cur, n)
     return cur
+
+
+def disabled_copy(path):
+    """The prefix setup (scripts/lib/configure.sh) turns some files off on
+    purpose: add-ins move to <Inventor>/Addins.disabled/, other files get a
+    .disabled suffix. Returns the moved file, or None."""
+    f = find_ci(path + ".disabled")
+    if f:
+        return f
+    m = re.match(r"^(.*/Inventor 20\d\d)/Bin/Addins/([^/]+)$", path, re.I)
+    if m:
+        return find_ci(os.path.join(m.group(1), "Addins.disabled", m.group(2)))
+    return None
 
 
 def digests(path):
@@ -140,7 +157,7 @@ def main():
                     return
         print("no listed file found in the prefix to probe with (path format?)")
         return
-    total = ok = missing = differ = unknown = nopkg = 0
+    total = ok = missing = differ = unknown = nopkg = off = 0
     lines = []
     for m in metas:
         pk = os.path.basename(m)
@@ -163,6 +180,10 @@ def main():
                 lines.append("%s\tunknown path root\t%s" % (pk, shown))
                 continue
             if not f:
+                if disabled_copy(t):
+                    off += 1
+                    lines.append("%s\tturned off by the prefix setup\t%s" % (pk, shown))
+                    continue
                 missing += 1
                 pm += 1
                 lines.append("%s\tmissing\t%s" % (pk, shown))
@@ -191,8 +212,8 @@ def main():
                 pd += 1
                 lines.append("%s\tdifferent\t%s" % (pk, shown))
         print("%-32s files %5d  missing %4d  different %4d%s" % (pk, len(files), pm, pd, "" if z else "  (no package next to it)"))
-    print("total %d: same %d, missing %d, different %d, not in package %d, unknown path %d"
-          % (total, ok, missing, differ, nopkg, unknown))
+    print("total %d: same %d, turned off on purpose %d, missing %d, different %d, not in package %d, unknown path %d"
+          % (total, ok, off, missing, differ, nopkg, unknown))
     if a.details:
         with open(a.details, "w") as f:
             f.write("\n".join(lines) + "\n")
