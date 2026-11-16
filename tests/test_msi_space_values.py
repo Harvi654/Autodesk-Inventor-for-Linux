@@ -1,7 +1,8 @@
 """MSI property values with a space (INSTALLDIR=C:\\Program Files\\...)
-reach msiexec as NAME="value" through a batch file: passed as an argument,
-Wine's msiexec rejects them with 1639 (exit code 103, seen for
-InvPrivate.msi on 2026-11-16). Commands without a space run as before.
+reach msiexec as NAME="value" through a batch file: passed as one
+argument, msiexec rejects them with 1639 (exit code 103) - on Windows and
+under Wine alike (measured 2026-11-16, docs/wine-repro/msiexec-property-
+spaces); ODIS passes NAME="value". Commands without a space run as before.
 Fake wine; no real Wine is started."""
 import os
 import re

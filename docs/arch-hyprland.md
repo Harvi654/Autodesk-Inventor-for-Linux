@@ -1625,6 +1625,15 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-16 - msiexec and a property value with a space: not a Wine
+bug.** Measured on Windows 10 (19045.6466) and winum-11.20-2 with a
+synthetic MSI: a property passed as one quoted argument
+(`"INSTALLDIR=C:\quote test\a"`) is rejected with 1639 on both;
+`INSTALLDIR="C:\quote test\a\"` installs on both. msiexec needs
+`NAME="value"` everywhere; the installer's batch file passes that form, as
+ODIS does. No WineHQ report. `docs/wine-repro/msiexec-property-spaces/`,
+`docs/installer-completeness-review.md`.
+
 **2026-11-16 - Installer completeness review: points 1-8 fixed (branch
 `installer-review`):** Inventor's registration (`Inventor.exe /install 0`,
 also migration 0005), the image's `setup.xml` properties and setup UI
