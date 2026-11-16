@@ -463,7 +463,20 @@ capture):
   neither the bundle manifest's order nor its dependencies. Which copy of
   a shared file wins depends on that order; whether the copies differ in
   version (then it matters) or only in their bytes (signing, time stamp):
-  to be read from the update's install log.
+  to be read from the update's install log. Read (2026-11-16): **they
+  differ in version** - DWG TrueView 26.0.60 brings its seven shared files
+  as 26.0.60.0, the new InvCore and RealDWG still as 26.0.59.0 (same
+  sizes). Ours: 26.0.60.0 (TrueView after InvCore, and the newer version
+  kept anyway). On Windows InvCore came after TrueView: if ODIS lets the
+  last package win, Windows has 26.0.59.0, if it keeps the newer version,
+  26.0.60.0 - to be read in the VM (file version of the seven files);
+  that also decides the rule for shared files of ADIX packages.
+- The 217 files the repair run removed: none of them is on Windows after
+  the update (compared with the capture's file list). Correct.
+- admeta-check's 19 "missing" Catalog Browser files: the update's
+  `setup.xml` has no usable default for `INV_INSTALL_PATH` (the installer
+  finds it with the RegistrySearch in the prefix), and admeta-check asked
+  a prefix that does not exist; fixed - it uses the prefix it checks.
 - `INVPROSA-2027.0.0.F-background.png`: in neither image (only the
   licensing data `INVPROSA202700F_*_Adlm.asr` of `InvPrivate.msi`) -
   written at run time; the prefix was started, the Windows capture was
