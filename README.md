@@ -147,7 +147,7 @@ starting point; under Wine they are the same or a little higher:
 - **Memory: 16 GB minimum, 32 GB recommended.** 16 GB is Autodesk's own
   minimum (for assemblies under 500 parts). Inventor itself, its background
   services (licensing, sign-in, WebView2), Wine and the Linux desktop share
-  it. On an 8 GB machine Inventor starts and opens a part, but only about
+  it. On a laptop with 8 GB Inventor starts and opens a part, but only about
   0.5-1 GB stays free with a browser open, so it swaps and is not usable for
   work. The installer warns below 16 GB but does not stop.
 - **Graphics:** a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the
@@ -171,7 +171,7 @@ starting point; under Wine they are the same or a little higher:
   Windows, updates tested, new features and fixes go here first.
 - **Inventor 2026 - maintained:** it stays in the installer and the NixOS
   package, and fixes in the shared code reach it too, but it is no longer
-  compared with Windows or tested after each change. Since v0.4 (2026-11-16)
+  compared with Windows or tested after each change. Since 2026-11-16
   we recommend 2027 for new installations: keeping two releases costs time
   and disk space (each prefix is about 20 GB).
 - When Inventor 2028 comes out, it becomes the fully supported release,
