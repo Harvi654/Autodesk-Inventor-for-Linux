@@ -2063,3 +2063,14 @@ OK; the hidden-file check ran for the new layer set and found nothing to
 move. A black rectangle in a new part's viewport, gone as soon as the
 pointer moved, is the known delayed repaint, not new. Installation rebuilt
 once for this.
+Repeated on top of the installer review branch (#14), with the 2027
+installation rebuilt by its installer (`nix build .#inventor-2027`, launcher
+`zsy52hs8...-inventor-overlay-2027.1`, 12.5 min): in the Nix sandbox's
+virtual display Inventor's registration (`Inventor.exe /install 0`) exited 0
+after 7 s and registered `Inventor.Application` and `Inventor.PartDocument`;
+`tar.exe` came from the pinned libarchive archive; the 2027.1 update moved
+176 dropped files to `.inventor-on-linux/removed-by-update/`. On a copy of
+the user's state (an upper layer from the previous installation): start
+signed in, Home renders, `d3d9`/`d3d11`/`dxgi`/`d3d12` loaded native from
+the layers, a new part's viewport renders, quit cleanly; the hidden-file
+check moved nothing.
