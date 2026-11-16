@@ -604,6 +604,15 @@ Revisited if a program is found that needs one of them.
 
 ### Small items for later
 
+- **Optional step: Access Database Engine 2016** (maintainer's proposal,
+  2026-11-16, after the merge, not blocking): off by default
+  (`--with access-engine`, a GUI switch); download pinned with SHA-256,
+  unpack `aceredist.msi` with 7z, install it with msiexec (winemenubuilder
+  off), record it like the other prerequisites; a migration for existing
+  prefixes only when asked for by name; `fetchurl` in `nix/inventor.nix`.
+  Off by default because Microsoft ended its support on 2025-10-14 and only
+  users of AutoCAD Electrical's catalogs need it; the README row then says
+  `--with access-engine` next to the Access Runtime note.
 - `--dry-run` prints the .NET Framework 4.8 step even when 4.8 is
   installed; the real run checks `dotnet48_missing()` first and says
   "already installed". The dry run could check too (read-only, only when
@@ -1005,6 +1014,33 @@ Windows. Comparison with Windows:
   Inventor needs it. The package stays installed by default, as on
   Windows; `--no-app aceinvaddin` (`install.sh --no-electrical`) leaves it
   out.
+  **With Microsoft Access Database Engine 2016 (maintainer, 2026-11-16,
+  on a copy of `-review2-upd`, winum-11.20-2):**
+  - What the Browser checks: a `+reg` trace while opening it shows
+    `odbccp32`/`ODBC32` loaded and `HKLM\Software\ODBC\ODBCINST.INI` read
+    (`ODBC Drivers`); no Click-to-Run keys, no ACE ProgID. It looks for the
+    Access ODBC driver.
+  - `accessdatabaseengine_X64.exe` (Microsoft download id 54920, 79.5 MB,
+    SHA-256 `04e96c9f1a1f7d251a88aececf1dc10ff65950392787427c00814a43308003de`)
+    run directly under Wine (`/quiet`, also `/extract:`) exits 0 after its
+    system checks and installs nothing. Unpacked with 7z it holds
+    `aceredist.msi`, `installucrt.exe`, three KB2999226 `.msu` (the UCRT for
+    Windows 7/8, not needed under Wine), `files.cat`, `setup.cmd`.
+  - `wine msiexec /i aceredist.msi /qn` (winemenubuilder off): exit 0;
+    `ODBC Drivers` then lists Microsoft Access Driver (*.mdb, *.accdb),
+    dBASE, Text and Excel drivers.
+  - Inventor: Assemble > Place > Electrical Catalog Browser no longer asks
+    for Microsoft 365 Access Runtime; it says "Could not find catalog
+    database" (as Autodesk documents on Windows without AutoCAD
+    Electrical's database), then opens. Set to Inventor's own
+    `Bin\InventorElectrical\default_cat.mdb`, the Category list loads from
+    it (AN, LR, LS, LT, MO, PB, PNEU-*, ...); Record Count 0, as expected
+    for that sample database. **The Catalog Browser works under Wine with
+    the Access Database Engine.**
+  - Run without winemenubuilder off, Microsoft's installer rewrote
+    `~/.local/share/applications/wine-extension-*.desktop` to point at the
+    test prefix - an installer step for it must run with
+    `winemenubuilder.exe=d`, as the installer's other steps do.
 
 **Dry run with the finished branch (2026-11-16, fresh prefix
 `.wine-inventor2027-review2`):** order `dwgtrueview, inventor, dclibrary,
