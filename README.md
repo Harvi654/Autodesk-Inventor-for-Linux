@@ -103,7 +103,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
-| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and an NVIDIA RTX 5080. Needs a card with hardware ray tracing and a Vulkan driver that supports it; a Wine fix and a vkd3d-proton fix (both in winum's builds the installer uses; vkd3d-proton since 2026-11-16, migration 0009) and three settings, partly by hand for now. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
+| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and an NVIDIA RTX 5080. Needs Inventor 2027 with **Application Options > Hardware > Graphics Driver = DirectX 12** (then the viewport and ray tracing run on Direct3D 12, i.e. vkd3d-proton), a card with hardware ray tracing and a Vulkan driver that supports it; a Wine fix and a vkd3d-proton fix (both in winum's builds the installer uses; vkd3d-proton since 2026-11-16, migration 0009) and three settings, partly by hand for now. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
@@ -122,8 +122,11 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Interactive Tutorial | 🧪 | the tutorial downloads and runs; its window opens at the far right and has to be moved by hand (WebView placement, open) |
 | Autodesk Assistant panel | ⚠️ | its panel is drawn wrongly (WebView2): the only add-in off by default; `bash scripts/addins.sh enable assistant` turns it on |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
+| GPU ray tracing in Inventor 2026 | ❌ | not supported: 2026 has no DirectX 12 graphics driver, and its Direct3D 11 viewport would need Direct3D 12 → 11 shared textures, which DXVK and Wine don't have (krokosik's PR #3 got 2026.4 working with patches we don't carry). Clicking it hung Inventor 2026 once; untick GPU ray tracing - CPU ray tracing works. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
 | Status bar text after GPU ray tracing | ⚠️ | in a maximised window old text stays under new text; workaround: `ClientSideWithRender=N` for Inventor ([how](docs/arch-hyprland.md#status-bar-old-text-stays-after-gpu-ray-tracing-workaround)) |
 | Home page after closing Application Options | ⚠️ | can show an old picture until clicked |
+| First start of Inventor 2027: "projects could not be found" | ⚠️ | a message about `...\guided-tutorial-plugin\INVNTOR\2027\TutorialData.ipj`: the Interactive Tutorial add-in points at its project before any tutorial is downloaded. OK dismisses it. Not compared with Windows yet - likely the same there |
+| Small "Default" window at the top left (2027) | ⚠️ | cosmetic, no effect on work |
 | Native Wayland | ❌ | Does not work yet: Inventor runs through XWayland (retested 2026-11-07: WebView2 pages, dialogs and typing values still broken) |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
@@ -505,7 +508,9 @@ Done:
 Next release (in progress):
 
 - [ ] GPU ray tracing set up by the installer, with a check whether the card
-      and driver support it
+      and driver support it (Inventor 2027: Graphics Driver = DirectX 12 and
+      `EnableHydra`; the registry value of the Graphics Driver choice is still
+      to be found)
 - [ ] updates that reach existing installations: "Update project" also
       updates the Wine prefix (new settings, components), step by step
 - [ ] the status bar workaround by default, until a Wine fix

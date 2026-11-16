@@ -979,6 +979,13 @@ archived in [archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-
 **Settings it needs** (set by hand for now; the installer will do it in the
 next release):
 
+- Inventor 2027: **Application Options > Hardware > Graphics Driver =
+  DirectX 12** (2027 offers DirectX 11 and DirectX 12). Then the viewport
+  and ray tracing run on Direct3D 12, that is vkd3d-proton (winum's build) -
+  the path the fixes above and their tests are for. Fresh 2027.2
+  installation, 2026-11-16 (maintainer, 31 GiB, winum-11.20-2): GPU ray
+  tracing worked after this switch alone; `EnableHydra` was already 1,
+  set by Inventor itself when "Enable Viewport GPU Ray Tracing" is ticked;
 - `HKCU\Software\Autodesk\Inventor\RegistryVersion31.0\System\Preferences\Driver`
   `EnableHydra` = 1 (DWORD);
 - `HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver` `UseEGL` = `N`
@@ -995,7 +1002,21 @@ next release):
 a second on a small part on an RTX 5080). Known side effects: without
 `ClientSideWithRender=N` the status bar text overlaps; after ray tracing has
 been started, Restore Down and maximising again can leave parts of the window
-drawn shifted (section below). Inventor 2026 is not tested.
+drawn shifted (section below).
+
+**Inventor 2026: not supported.** 2026 has no DirectX 12 graphics driver:
+its viewport is Direct3D 11 (DXVK), and its ray tracing renders with
+Direct3D 12 and hands the texture to Direct3D 11. That needs Direct3D 12 ->
+11 shared textures. krokosik's PR #3 got 2026.4 working on an RTX 3060 with
+exactly that: a backport of DXVK PR #5257, texture descriptors bridged
+through Wine's D3DKMT, and a patched vkd3d-proton 2.14.1. This project
+does not carry those patches, and 2027 with DirectX 12 does not need them.
+In the fresh 2026.4 installation of 2026-11-16, clicking GPU ray tracing
+hung Inventor once and did nothing the second time; the log had no vkd3d
+DXR lines. In 2026: untick "Enable Viewport GPU Ray Tracing"; CPU ray
+tracing works. No fix planned (2026 is maintained, not developed further,
+see README "Supported releases"); PR #3 is the starting point for anyone
+who wants it.
 
 **Validation:** opengl32 fix L1 (Windows 10, both architectures) and cross
 review (Codex); vkd3d-proton port cross review (Codex, 2026-11-07; one CI
@@ -1631,6 +1652,46 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-16 - Fresh installations of 2027 and 2026 from `main` (after
+PR #21):** the maintainer's Arch machine (31 GiB, winum-11.20-2), each
+with `install.sh --skip-packages`: Inventor 2027 (base + 2027.2) into
+`~/.wine-inventor2027`, Inventor 2026 (base + 2026.4) into
+`~/.wine-inventor2026`. Both installed with 0 WARN/FAILED in their logs;
+the 2027 smoke test (part, assembly, drawing, save/reopen) is fine.
+- *Disk numbers confirmed.* 2027 (download already unpacked, winum
+  present): the check said "prefix + small downloads disk /home: 23 GB
+  needed"; `df` showed 18 GB used, the prefix is 20 GB (`du`). 2026
+  (download still to unpack): "prefix + unpacked downloads + small
+  downloads disk /home: 35 GB needed"; `df` showed 29 GB used, the prefix
+  21 GB. The memory line said 31.2 GiB, correct. The README numbers stand.
+- *sudo with `--skip-packages`:* `install.sh` ran `sudo -v` always,
+  though only the system packages (`phase0-setup.sh`) need root. Now it
+  asks only when it installs them.
+- *The 2026 installation hung at the .NET Framework 4.0 step* for about
+  40 minutes, until `wineserver -k` by hand (then it finished).
+  `run_framework_installer()` stops the prefix (`wineserver -k`), then
+  `reg_query()` ran `wine reg query` with its output read from a pipe.
+  That wine started a new wineserver and the prefix's services - in a
+  2026 prefix FlexNet's `FNPLicensingService64.exe` (2027 has none) and
+  `MicrosoftEdgeUpdate.exe /c` - which inherited the pipe and never exit,
+  so `subprocess.run()` waited for its end forever (Python's only child
+  was a defunct `start.exe`; no `dotnet40.log` had been written yet). Now
+  every captured wine call in `install-from-image.py` (`reg_query`,
+  `wine_mono_entries`) goes through a temporary file and returns when wine
+  exits, as `run()` always did; the shell's `$(wine reg query ...)` in
+  `dotnet48_why`, `mig_reg_get` and the launcher's icon sync use
+  `wine_capture` (common.sh) for the same reason. Test:
+  `tests/test_wine_capture.py`, with a fake wine that leaves a child
+  holding stdout open (the old code waits for it, the new one does not).
+- *GPU ray tracing:* 2027 works after Graphics Driver = DirectX 12;
+  2026 does not and is not supported (section "GPU ray tracing").
+- *Cosmetic, open:* first start of 2027: "The following projects could
+  not be found on disk ... `C:\users\Public\Documents\Autodesk\.desktop-connect\.docstore\guided-tutorial-plugin\INVNTOR\2027\TutorialData.ipj`"
+  - the Interactive Tutorial add-in (on since PR #20) points at its project
+  before any tutorial is downloaded; OK dismisses it. Not compared with
+  Windows; likely the same there until checked. A small "Default" window
+  at the top left of Inventor 2027.
 
 **2026-11-16 - Installer checks: disk space per filesystem, memory:** the
 checks now follow the README requirements (measured with du on a full

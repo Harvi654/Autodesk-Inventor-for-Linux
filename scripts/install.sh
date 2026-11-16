@@ -218,8 +218,11 @@ while IFS=$'\t' read -r disk_state disk_text; do
 done < <(inv_requirements disk "${disk_opts[@]}" || true)
 info "prefix:  $PREFIX"
 info "log:     $LOG"
-# (the graphical installer asks for the password when the packages are installed)
-[ -n "${INV_GUI:-}" ] || sudo -v || die "sudo is needed for the system packages"
+# sudo only for the system packages (phase0-setup.sh); no later step uses
+# it. The graphical installer asks for the password when they are installed.
+if [ -z "${INV_GUI:-}" ] && [ "$SKIP_PKG" -eq 0 ]; then
+    sudo -v || die "sudo is needed for the system packages (--skip-packages if they are installed)"
+fi
 ok "ok"
 
 step "System packages..."

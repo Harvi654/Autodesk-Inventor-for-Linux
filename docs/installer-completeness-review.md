@@ -619,6 +619,16 @@ Revisited if a program is found that needs one of them.
   installed; the real run checks `dotnet48_missing()` first and says
   "already installed". The dry run could check too (read-only, only when
   the prefix exists).
+- Old winum releases stay in `~/.local/share/inventor-on-linux` after an
+  update (winum-11.20-1 next to 11.20-2, 0.9 GB each): keep the one in
+  use (and perhaps the previous one) and remove the rest.
+- The `removed-by-update` backups in the prefix grow with every update:
+  a keep-the-last rule (e.g. only the backup of the newest update).
+- GPU ray tracing set up automatically for 2027: on a GPU with hardware
+  ray tracing (Vulkan `VK_KHR_ray_tracing_pipeline` and
+  `VK_KHR_acceleration_structure`) set Graphics Driver = DirectX 12 and
+  `EnableHydra`. First find the registry value of the Graphics Driver
+  choice (registry before and after changing it in Application Options).
 
 ### msiexec and a property value with a space (not a Wine bug)
 
