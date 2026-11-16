@@ -100,6 +100,19 @@ class Migrations(unittest.TestCase):
         wb.write_text('#!/bin/sh\nexec "$(dirname "$0")/wine" wineboot "$@"\n')
         wb.chmod(0o755)
         self.logs = t / "logs"
+        # a synthetic stand-in for libarchive's zip (step 0006): no network
+        import zipfile
+        self.downloads = t / "downloads"
+        self.downloads.mkdir()
+        self.fake_tar = b"MZ fake bsdtar.exe"
+        with zipfile.ZipFile(self.downloads / "libarchive-test-win64.zip", "w") as z:
+            z.writestr("libarchive/bin/bsdtar.exe", self.fake_tar)
+        self.bsdtar_env = t / "bsdtar.env"
+        self.bsdtar_env.write_text(
+            "BSDTAR_VER=3.5.3\nBSDTAR_ZIP=libarchive-test-win64.zip\nBSDTAR_URL=http://127.0.0.1:9/none\n"
+            "BSDTAR_SHA256=%s\nBSDTAR_MEMBER=libarchive/bin/bsdtar.exe\nBSDTAR_EXE_SHA256=%s\n"
+            % (hashlib.sha256((self.downloads / "libarchive-test-win64.zip").read_bytes()).hexdigest(),
+               hashlib.sha256(self.fake_tar).hexdigest()))
 
     def prefix(self, name=".wine-inventor2027", year=2027, runtime="old"):
         p = self.home / name
@@ -119,7 +132,8 @@ class Migrations(unittest.TestCase):
     def env(self, prefix, year=2027, **extra):
         e = {"HOME": str(self.home), "USER": "test", "PATH": "%s/bin:/usr/bin:/bin" % self.rt,
              "INV_PREFIX": str(prefix), "INV_YEAR": str(year), "INV_WINE": "system", "INV_SANDBOX": "0",
-             "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config")}
+             "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config"),
+             "DOWNLOAD_DIR": str(self.downloads), "INV_BSDTAR_ENV": str(self.bsdtar_env)}
         e.update(extra)
         return e
 
@@ -189,6 +203,8 @@ class Migrations(unittest.TestCase):
         (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k)
                                     + "[Software\\\\Classes\\\\Inventor.Application] 1\n"
                                     + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n")
+        for d in ("system32", "syswow64"):
+            (p / "drive_c/windows" / d / "tar.exe").write_bytes(self.fake_tar)
         before = (p / "user.reg").read_text()
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
@@ -234,6 +250,26 @@ class Migrations(unittest.TestCase):
         self.migrate(p, "--run", "0003")
         out = self.migrate(p)
         self.assertIn("applied", self.state(p)["done.0005-inventor-registration"], out.stdout + out.stderr)
+
+    # --- 0006: tar.exe ----------------------------------------------------------
+    def test_tar_exe_and_its_license(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+        for d in ("system32", "syswow64"):
+            self.assertEqual((p / "drive_c/windows" / d / "tar.exe").read_bytes(), self.fake_tar)
+        lic = (p / ".inventor-on-linux/doc/libarchive-3.5.3/COPYING").read_text()
+        self.assertIn("Tim Kientzle", lic)
+
+    def test_tar_exe_with_a_wrong_checksum_is_refused(self):
+        p = self.prefix(runtime="winum")
+        self.bsdtar_env.write_text(self.bsdtar_env.read_text().replace("BSDTAR_SHA256=", "BSDTAR_SHA256=0"))
+        out = self.migrate(p)
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("checksum mismatch", out.stdout + out.stderr)
+        self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
+        self.assertNotIn("done.0006-bsdtar-tar-exe", self.state(p))
 
     # --- failure and restore ------------------------------------------------
     def test_failing_step_is_restored_and_stops(self):

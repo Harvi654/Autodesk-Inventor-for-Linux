@@ -578,6 +578,47 @@ install_vkd3d() {
     done
 }
 
+# --- tar.exe -------------------------------------------------------------------
+# libarchive's signed Windows build of bsdtar as tar.exe (Windows 10 ships
+# bsdtar as System32\tar.exe; Wine has none). Pinned values in bsdtar.env,
+# shared with install-from-image.py, which does the same before the packages.
+bsdtar_ok() {   # 0 when every tar.exe in the prefix is the pinned bsdtar.exe
+    local d f
+    # shellcheck source=bsdtar.env
+    source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
+    for d in system32 syswow64; do
+        [ "$d" = syswow64 ] && [ ! -d "$P_C/windows/syswow64" ] && continue
+        f="$P_C/windows/$d/tar.exe"
+        [ -f "$f" ] && echo "$BSDTAR_EXE_SHA256  $f" | sha256sum -c --quiet - >/dev/null 2>&1 || return 1
+    done
+}
+
+install_bsdtar() {
+    # shellcheck source=bsdtar.env
+    source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
+    local zip="$DOWNLOAD_DIR/$BSDTAR_ZIP" d doc
+    mkdir -p "$DOWNLOAD_DIR"
+    if [ ! -f "$zip" ]; then
+        info "downloading $BSDTAR_URL"
+        curl -fL --retry 3 -o "$zip.part" "$BSDTAR_URL" || die "bsdtar download failed"
+        mv "$zip.part" "$zip"
+    fi
+    if ! echo "$BSDTAR_SHA256  $zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$zip"
+        die "$BSDTAR_ZIP checksum mismatch - file deleted"
+    fi
+    ok "bsdtar $BSDTAR_VER sha256 verified"
+    for d in system32 syswow64; do
+        [ "$d" = syswow64 ] && [ ! -d "$P_C/windows/syswow64" ] && continue
+        python3 -I -c 'import sys, zipfile; open(sys.argv[3], "wb").write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' \
+            "$zip" "$BSDTAR_MEMBER" "$P_C/windows/$d/tar.exe"
+    done
+    doc="$WINEPREFIX/.inventor-on-linux/doc/libarchive-$BSDTAR_VER"
+    mkdir -p "$doc"
+    cp "$COMMON_DIR/licenses/libarchive-$BSDTAR_VER-COPYING" "$doc/COPYING"
+    bsdtar_ok || die "tar.exe in the prefix is not the expected bsdtar.exe"
+}
+
 # --- isolation ---------------------------------------------------------------
 # Limits what the Windows programs SEE: drive letters and the user's shell
 # folders. This is not a security boundary - Wine programs run as your user and

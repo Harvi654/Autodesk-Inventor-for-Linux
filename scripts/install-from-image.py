@@ -173,6 +173,30 @@ def pe_file_version(data):
     return (ms >> 16, ms & 0xffff, ls >> 16, ls & 0xffff)
 
 
+def sha256_file(path):
+    h = hashlib.sha256()
+    try:
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(1 << 20), b""):
+                h.update(chunk)
+    except OSError:
+        return None
+    return h.hexdigest()
+
+
+def read_env_file(path):
+    """KEY=VALUE lines of a small settings file (comments and blank lines
+    skipped) - scripts/lib/bsdtar.env, which common.sh sources too."""
+    out = {}
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                out[k.strip()] = v.strip().strip('"')
+    return out
+
+
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
              "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
 
@@ -920,6 +944,9 @@ class Installer:
                 print("missing manifest %s (needed by %s)" % (rel, chain))
             sys.exit(1)
         self.prepare()
+        if kind != "update" and not self.install_bsdtar():
+            self.log("\nStopped at the tar.exe step. Fix it and rerun the same command to continue.")
+            sys.exit(1)
         only = {int(x) for x in self.a.only.split(",")} if self.a.only else None
         done = self.state()
         self.log("image  %s\nprefix %s\nlogs   %s" % (self.image, self.prefix, self.logdir))
@@ -1264,6 +1291,64 @@ class Installer:
             return False
         self.mark_done(key)
         self.log("     done in %ds (clr.dll in Framework64 and Framework, mscoree native)" % (time.time() - t0))
+        return True
+
+    # --- tar.exe ---------------------------------------------------------------
+    # Windows 10 has C:\Windows\System32\tar.exe (bsdtar from libarchive);
+    # Wine has none. The Electrical Catalog Browser's library package
+    # (AceInvAddIn-ca.msi) unzips with it during its install, so it goes into
+    # the prefix before the packages: libarchive's own signed Windows build,
+    # pinned and SHA-256 checked (scripts/lib/bsdtar.env), its license text
+    # into the prefix's doc folder. Migration 0006 does the same for an
+    # existing prefix (common.sh, install_bsdtar).
+    def bsdtar_targets(self):
+        dirs = ["system32"] + (["syswow64"] if os.path.isdir(os.path.join(self.c, "windows", "syswow64")) else [])
+        return [os.path.join(self.c, "windows", d, "tar.exe") for d in dirs]
+
+    def install_bsdtar(self):
+        cfg = read_env_file(os.environ.get("INV_BSDTAR_ENV")      # INV_BSDTAR_ENV: tests only
+                            or os.path.join(HERE, "lib", "bsdtar.env"))
+        targets = self.bsdtar_targets()
+        if self.a.dry_run:
+            self.log("tar.exe: bsdtar %s (%s, sha256 %s) -> %s"
+                     % (cfg["BSDTAR_VER"], cfg["BSDTAR_ZIP"], cfg["BSDTAR_SHA256"],
+                        ", ".join(os.path.relpath(t, self.c) for t in targets)))
+            return True
+        if all(sha256_file(t) == cfg["BSDTAR_EXE_SHA256"] for t in targets if os.path.exists(t)) \
+                and all(os.path.exists(t) for t in targets):
+            self.log("tar.exe (bsdtar %s) - already in the prefix" % cfg["BSDTAR_VER"])
+            return True
+        d = os.environ.get("DOWNLOAD_DIR") or os.path.join(PROJECT, "downloads")
+        os.makedirs(d, exist_ok=True)
+        z = os.path.join(d, cfg["BSDTAR_ZIP"])
+        if not os.path.isfile(z):
+            self.log("      downloading %s" % cfg["BSDTAR_URL"])
+            if subprocess.call(["curl", "-fL", "--retry", "3", "-o", z + ".part", cfg["BSDTAR_URL"]]) != 0:
+                self.log("     FAILED - download of %s" % cfg["BSDTAR_ZIP"])
+                return False
+            os.replace(z + ".part", z)
+        got = sha256_file(z)
+        if got != cfg["BSDTAR_SHA256"]:
+            os.remove(z)
+            self.log("     FAILED - %s checksum mismatch (file deleted): %s, expected %s"
+                     % (cfg["BSDTAR_ZIP"], got, cfg["BSDTAR_SHA256"]))
+            return False
+        with zipfile.ZipFile(z) as zf:
+            exe = zf.read(cfg["BSDTAR_MEMBER"])
+        if hashlib.sha256(exe).hexdigest() != cfg["BSDTAR_EXE_SHA256"]:
+            self.log("     FAILED - %s in %s is not the expected file" % (cfg["BSDTAR_MEMBER"], cfg["BSDTAR_ZIP"]))
+            return False
+        for t in targets:
+            os.makedirs(os.path.dirname(t), exist_ok=True)
+            with open(t, "wb") as f:
+                f.write(exe)
+        doc = os.path.join(self.prefix, ".inventor-on-linux", "doc", "libarchive-%s" % cfg["BSDTAR_VER"])
+        os.makedirs(doc, exist_ok=True)
+        shutil.copyfile(os.path.join(HERE, "lib", "licenses", "libarchive-%s-COPYING" % cfg["BSDTAR_VER"]),
+                        os.path.join(doc, "COPYING"))
+        self.log("tar.exe: bsdtar %s (%s, sha256 verified) -> %s; license in %s"
+                 % (cfg["BSDTAR_VER"], cfg["BSDTAR_ZIP"], ", ".join(os.path.relpath(t, self.c) for t in targets),
+                    os.path.relpath(doc, self.prefix)))
         return True
 
     # --- Inventor's own registration ----------------------------------------
