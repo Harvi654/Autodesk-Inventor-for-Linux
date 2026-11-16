@@ -379,6 +379,90 @@ and `...\Inventor.PartDocument` deleted with `wine reg delete` (0 in
 Inventor.Application, Inventor.PartDocument, ...", both keys back in
 `user.reg`, no new `wine-*.desktop`. Passed.
 
+## The 2027.2 update (2026-11-16)
+
+**Windows:** VM snapshot `inventor2027-base`, offline. The update first
+refused to start ("Cannot install: a required installation component is
+missing or out of date. Download and install the latest Autodesk
+Installer"): the image's ODIS was too old for it. The maintainer installed
+the current ODIS first - `AdODIS-installer.exe` from
+`https://emsfs.autodesk.com/utility/odis/1/installer/latest/AdODIS-installer.exe`,
+473 678 704 bytes, SHA-256
+`411abb9fed46e6cc8dcadd840d342ad480848d40c2ef30be0f9add68bcb21288` (the
+same file on Linux and in the VM; "latest" changes, so the hash records
+which one), `--mode unattended` - **before** the "before" capture, so the
+capture covers only the Inventor update. Our installer does not use ODIS.
+After the update, Programs and Features: "Inventor Professional 2027 -
+English" 31.20.33400.0000 and a new "Inventor Professional 2027.2
+Update" 31.20.33400.0000; Inventor Private 2027 and its language pack,
+the Content Center and the Catalog Browser CA stay at their base versions.
+
+**Linux:** reflink copy of `.wine-inventor2027-review2` (run 4) as
+`.wine-inventor2027-review2-upd`, `install.sh Inventor_2027.2_Update.exe`:
+the add-ins turned off by the prefix setup restored for the update and
+turned off again afterwards; ADP Desktop SDK 7.0.4.0, Autodesk Assistant
+SDK 1.0.24.1, Inventor Core / Pro / language packs 31.20 (en-US; the 12
+other languages left out), Inventor MCP Server 2027 (ZIP into
+`ProgramData\Autodesk\Inventor 2027\Addins\Assistant\31.20.33400`),
+Anark, Nastran, the VC++ / .NET / WebView2 prerequisites again, DWG
+TrueView 26.0.60.0, Interoperability Engine Manager 1.4.1.2, Shared
+Components 2.2.0.56, Electrical Catalog Browser 24.0.71.0 (mapped into
+Inventor's folder); 1 685 shared files replaced, the newer kept in 0
+cases; no new `wine-*.desktop`; Genuine Service left out (optional).
+
+**Comparison** (`compare-reference.py --changed` against the update's
+capture):
+- Files the update changed or added on Windows: **all with the same size
+  in the prefix** (3a: 0); missing in the prefix 275 - ODIS 184,
+  Uninstallers 43 (on purpose), ADPSDK 2, `Common Files\Autodesk` 2,
+  the user's `AppData\Local\Autodesk` 19 (to be looked at), Windows' own.
+- **Only in the prefix: 464** - `Addins.disabled` and `senddmp.exe.disabled`
+  (on purpose), licensing and IDSDK files of the prefix setup, our ODIS
+  extract (205), and files Windows does not have after the update:
+  `Inventor 2027\Bin\AutodeskAssistant\*`, `DevExpress.*.v25.1.dll`, ...
+  (about 45), 173 in `ProgramData\Autodesk\Inventor 2027`,
+  `ProgramData\Autodesk\INVPROSA-2027.0.0.F-background.png`. Probable
+  cause: **an ADIX update replaces the package on Windows, and files of the
+  old version that the new one does not have are removed; our installer
+  unpacks the new package over the old one and removes nothing.** The
+  tool now tells "removed by the install on Windows" (Windows had it
+  before) from "never on Windows" - to be confirmed with the new run, then
+  fixed (the installer has to know the old version's file list).
+- Packages: Windows' ODIS log also names REX Framework, REX Inventor and
+  RSA Engine as installed by the update; our plan of the update has none
+  of them, and no file of theirs differs - whether they are in the update
+  image at all, or ODIS only re-registered the installed ones: open.
+- admeta-check counted the 12 other languages' packages as missing (8 995
+  files) - fixed in the tool (`--lang`); to be run again.
+- Registry: 71 keys missing - DDA/CER (on purpose),
+  `HKCU\Software\Autodesk\Hive`, `Autodesk\InstallInfo\INVPROSA\2027`,
+  the update's own UPI2 key, 39 more `NGenService` keys (NGEN, open); 194
+  value names in Windows' own groups.
+- Uninstall entries: "Inventor Professional 2027.2 Update" and Genuine
+  Service only on Windows.
+
+### Point 9 decided (2026-11-16)
+
+UPI2 keys, the product's Programs and Features entry, `dotnet` in `PATH`:
+**not written by the installer.** What the update showed:
+- Our update installed everything the update bundle has without any of
+  them: our installer keeps its own state
+  (`.odis-install-state.json`) and finds the installed packages from it.
+  UPI2 and the uninstall entries are ODIS's bookkeeping - ODIS reads them
+  to know what is installed and what an update applies to - and nothing of
+  ODIS runs in the prefix.
+- Inventor, its update and the smoke tests ran without them (L4 of run 4,
+  the base prefix before), so Inventor itself does not need them; its own
+  registration (`HKLM\SOFTWARE\Autodesk\Inventor\RegistryVersion31.0`,
+  which add-in installers look for) is there.
+- Writing them would claim an ODIS installation that does not exist: ODIS
+  or Autodesk Access, if ever run in the prefix, would then act on
+  packages it did not install.
+- `dotnet`: the .NET 10 runtimes are in their default folder
+  (`C:\Program Files\dotnet`), where the .NET host finds them without
+  `PATH` or `InstalledVersions`; Inventor's .NET 10 parts run.
+Revisited if a program is found that needs one of them.
+
 ### Wine bug: msiexec and a property value with a space
 
 Worth a report on bugs.winehq.org. A program that passes an MSI property
