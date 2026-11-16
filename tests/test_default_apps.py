@@ -209,11 +209,16 @@ class CompareSizes(unittest.TestCase):
             (d / "cap/after/files.tsv").write_text(
                 "Path\tLength\tTime\n"
                 "C:\\Program Files\\Common Files\\Autodesk Shared\\AcInetEngine26.dll\t100\tx\n"
-                "C:\\Program Files\\Common Files\\Autodesk Shared\\Same.dll\t3\tx\n")
+                "C:\\Program Files\\Common Files\\Autodesk Shared\\Same.dll\t3\tx\n"
+                "C:\\Windows\\Fonts\\AIGDT___.TTF\t7\tx\n")
             (shared / "AcInetEngine26.dll").write_bytes(b"\0" * 90)
             (shared / "Same.dll").write_bytes(b"abc")
+            fonts = d / "pfx/drive_c/windows/Fonts"
+            fonts.mkdir(parents=True)
+            (fonts / "AIGDT___.TTF").write_bytes(b"\0" * 5)
             subprocess.run(["python3", "-I", str(fx.ROOT / "tools/compare-reference.py"), str(d / "cap"),
                             str(d / "pfx"), "--details", str(d / "details.md")], capture_output=True, check=True)
             text = (d / "details.md").read_text()
             self.assertIn("AcInetEngine26.dll (Windows 100, prefix 90 bytes)", text)
             self.assertNotIn("Same.dll (Windows", text)
+            self.assertIn("AIGDT___.TTF (Windows 7, prefix 5 bytes)", text)

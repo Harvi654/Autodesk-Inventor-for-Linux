@@ -357,13 +357,15 @@ class Report:
         if not detail_only:
             self.summary.append(s)
 
-    def groups(self, title, items, depth_of, limit=25):
-        """items: list of original-case strings; grouped, relevant ones listed."""
+    def groups(self, title, items, depth_of, limit=25, everything=False):
+        """items: list of original-case strings; grouped, relevant ones
+        listed (every group with everything=True)."""
         by = collections.OrderedDict()
         for it in sorted(items, key=str.lower):
             by.setdefault(depth_of(it), []).append(it)
-        rel = [(g, v) for g, v in by.items() if RELEVANT.search(g) or self.all]
-        other = [(g, v) for g, v in by.items() if not (RELEVANT.search(g) or self.all)]
+        show = lambda g: everything or self.all or RELEVANT.search(g)
+        rel = [(g, v) for g, v in by.items() if show(g)]
+        other = [(g, v) for g, v in by.items() if not show(g)]
         self.line("%s: %d in %d groups (%d relevant)" % (title, len(items), len(by), len(rel)))
         for g, v in rel:
             self.line("- `%s`: %d" % (g, len(v)))
@@ -464,7 +466,7 @@ def main():
            "%d of them are not in the prefix" % (len(added), noise, len(missing)))
     r.groups("missing in the prefix", missing, lambda p: file_group(p, group_depth(p)))
 
-    r.h("3a. Autodesk files on both sides with a different size (another build)")
+    r.h("3a. Autodesk files and fonts on both sides with a different size (another build)")
     # e.g. a shared file two packages install in different builds: which one
     # Windows kept has to be the one the prefix has
     sizes = read_sizes_tsv(os.path.join(after, "files.tsv"))
@@ -473,7 +475,10 @@ def main():
         rel = windows_to_prefix(p, wine_user)
         if rel is None or rel not in pf or k not in sizes or NOISE.search(k):
             continue
-        if not re.match(r"(program files( \(x86\))?/(autodesk|common files/autodesk shared)|programdata/autodesk)/", rel):
+        # Autodesk's folders, the shared Public Documents and the fonts
+        # packages install (AIGDT___.TTF from two packages in two sizes)
+        if not re.match(r"(program files( \(x86\))?/(autodesk|common files/autodesk shared)|programdata/autodesk|"
+                        r"users/public/documents/autodesk|windows/fonts)/", rel):
             continue
         try:
             ours = os.path.getsize(os.path.join(drive_c, pf[rel]))
@@ -481,7 +486,8 @@ def main():
             continue
         if ours != sizes[k]:
             differ.append("%s (Windows %d, prefix %d bytes)" % (p, sizes[k], ours))
-    r.groups("different size", differ, lambda p: file_group(p.split(" (Windows ")[0], group_depth(p)))
+    r.groups("different size", differ, lambda p: file_group(p.split(" (Windows ")[0], group_depth(p)),
+             everything=True)
 
     r.h("3b. Autodesk files only in the prefix")
     win_all = {windows_to_prefix(v, wine_user) for v in fa.values()}

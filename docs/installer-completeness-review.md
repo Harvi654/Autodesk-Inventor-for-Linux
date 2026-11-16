@@ -541,6 +541,26 @@ calls, errors), and whether the target folder is created at all.
     20 files in `Public Documents\Autodesk\Inventor Electrical Library
     2027`, as on Windows).
 
+**Run 3 (2026-11-16, same prefix, resumed at step 31, Catalog Browser on
+again):** `tar.exe` (bsdtar 3.5.3) went into `system32` and `syswow64`
+before the packages; `AceInvAddIn-ca.msi` with
+`INSTALLDIR="C:\Program Files\Autodesk"` through the batch file: exit
+code 0 after 0.6 s; the library folder holds 9 entries at its top level
+(Windows: 20 files - whether counted the same way, recursively, is to be
+checked). DWG TrueView: 1 885 files placed, 4 480 registry keys. Files
+another package had put there already: the seven in `Common
+Files\Autodesk Shared` have the same version (26.0.59.0) and size as
+TrueView's but other bytes - replaced (equal versions: the package's
+copy, as Windows Installer does); two fonts without a version,
+`AIGDT___.TTF` (36 520 -> 42 132 bytes) and `AMGDT___.ttf` (25 964 ->
+12 461 bytes), replaced by TrueView's - which size Windows has:
+compare-reference section 3a, which now also checks `windows\Fonts` and
+`Public Documents\Autodesk`. .NET 4.8 installed; the registration
+finished in 11.3 s with both keys; migrations 0005 and 0006 found it
+already so. `CONTENT_PATH` was still not found in a setup UI file (the
+`<Setting name="CONTENT_PATH">` is elsewhere in the image - its file to
+be named; the value equals ODIS's default).
+
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
   `inventor.ui` left out.
