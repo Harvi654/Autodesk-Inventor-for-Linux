@@ -13,7 +13,9 @@
 #   mig_needed     return 1 when the prefix already has what the step does
 #                  (it is then recorded as done without changing anything)
 #   MIG_BACKUP     extra paths (relative to the prefix) saved before it runs;
-#                  the registry files are always saved; "none" saves nothing
+#                  the registry files are always saved; "none" saves nothing.
+#                  A word list, or one path per line when a path has a space
+#                  (Program Files)
 #   MIG_OPTIONAL=1 never run unless asked for by name (large changes)
 # Every step runs in a subshell with set -Eeuo pipefail. If it fails, what
 # was saved is put back and the run stops: a prefix is never left half
@@ -165,6 +167,7 @@ mig_deferred_recently() {   # ID - 0 when put off less than MIG_DEFER_HOURS ago
 
 mig_run_one() {   # FILE [force] - 0 done or put off, 1 failed (prefix restored)
     local f="$1" id desc backup optional needed=yes rc
+    local -a backup_paths=()
     id="$(mig_id "$f")"
     desc="$(MIG_DESC=""; source "$f"; echo "$MIG_DESC")"
     backup="$(MIG_BACKUP=""; source "$f"; echo "$MIG_BACKUP")"
@@ -177,8 +180,10 @@ mig_run_one() {   # FILE [force] - 0 done or put off, 1 failed (prefix restored)
     info "$id: $desc"
     wine_stop
     if [ "$backup" != none ]; then
-        # shellcheck disable=SC2086  # MIG_BACKUP is a word list
-        mig_backup "$id" $backup
+        # one path per line (paths with spaces), else a word list
+        if [[ "$backup" == *$'\n'* ]]; then mapfile -t backup_paths <<< "$backup"
+        else read -ra backup_paths <<< "$backup"; fi
+        mig_backup "$id" "${backup_paths[@]}"
     fi
     rc=0; mig_exec "$f" mig_apply || rc=$?
     wine_stop

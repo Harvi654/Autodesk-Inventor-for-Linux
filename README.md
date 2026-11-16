@@ -113,6 +113,9 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |
 | Cable & Harness | 🧪 | wires connect; not verified in depth - testers who use Cable & Harness are welcome |
 | Inventor Studio | 🧪 | starts, its ribbon and commands open; animations and renderings not verified |
+| Shared Views (share, Autodesk Viewer) | 🧪 | works with .NET Framework 4.8 (installed by default), on since 2026-11-16; off without it ([add-ins](notes/disabled-addins.md)) |
+| Interactive Tutorial | 🧪 | the tutorial downloads and runs; its window opens at the far right and has to be moved by hand (WebView placement, open) |
+| Autodesk Assistant panel | ⚠️ | its panel is drawn wrongly (WebView2): the only add-in off by default; `bash scripts/addins.sh enable assistant` turns it on |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
 | Status bar text after GPU ray tracing | ⚠️ | in a maximised window old text stays under new text; workaround: `ClientSideWithRender=N` for Inventor ([how](docs/arch-hyprland.md#status-bar-old-text-stays-after-gpu-ray-tracing-workaround)) |
 | Home page after closing Application Options | ⚠️ | can show an old picture until clicked |
@@ -382,7 +385,8 @@ Python, no compiled programs are in this repository. What they do:
   runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
   (`~/.wine-inventor2026`), winum, the launcher entry.
-  Telemetry add-ins are switched off.
+  Add-ins are on as on Windows, except the Autodesk Assistant (its panel
+  is drawn wrongly under Wine) - [notes/disabled-addins.md](notes/disabled-addins.md).
 - `scripts/uninstall.sh` undoes it.
 
 **Will Autodesk support it?** No - see [Disclaimer](#disclaimer). Report

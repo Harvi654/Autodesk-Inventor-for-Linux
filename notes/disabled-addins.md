@@ -1,10 +1,16 @@
 # Add-ins that are off by default
 
 `finish-install.sh` / `rebuild-prefix.sh` move these add-ins to
-`Inventor 2026/Addins.disabled/`, outside `Bin/Addins` (Inventor 2026 also
+`Inventor <year>/Addins.disabled/`, outside `Bin/Addins` (Inventor also
 loads add-ins from subfolders of `Bin/Addins`, so a `disabled` subfolder there
-does not work). The list is `INV_DEFAULT_DISABLED_ADDINS` in
+does not work). The lists are `INV_DEFAULT_DISABLED_ADDINS` (always off) and
+`INV_DOTNET48_ADDINS` (off without .NET Framework 4.8) in
 `scripts/lib/common.sh`.
+
+Since 2026-11-16 only the Assistant is off by default (and, without .NET
+Framework 4.8, 3D PDF and SharedViews). Migration
+`0010-default-addins-on` turns the others on in existing prefixes; whoever
+wants one off again: `bash scripts/addins.sh disable NAME`.
 
 ```bash
 bash scripts/addins.sh list              # what is on / off
@@ -13,16 +19,21 @@ bash scripts/addins.sh disable NAME
 bash scripts/addins.sh reset             # back to the default set
 ```
 
-| Add-in | Why it is off |
-|---|---|
-| `Autodesk.SharedViews.Inventor.addin` | **crashes Inventor**: loaded through wine-mono, which cannot load its .NET 10 references and ends the process |
-| `Autodesk.Feedback.Inventor.addin`, `Autodesk.PerfFeedbackAddin.Inventor.addin` | usage reporting |
-| `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed |
-| `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | **only without .NET Framework 4.8** (`INV_DOTNET48_ADDINS`): 3D PDF's Publish crashes Anark's `corewrapper.exe` on wine-mono. With the .NET Framework 4.8 that `install-from-image.py` installs from the image, they are on |
-| `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested |
-| `Autodesk.AssistantAddin.Inventor.addin` | Inventor 2027: the "Ask Autodesk Assistant" panel (an online AI assistant). The add-in was already in `Bin\Addins` before the 2027.2 Update, its panel shows up since 2027.2 - drawn wrongly under Wine, and it is not needed. The 2027.2 Update also puts a copy into `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\<version>\` (the "Inventor MCP Server" package); turning off the one in `Bin\Addins` was enough, the panel did not come back |
+| Add-in | Why it was off | Test 2026-11-16 | Now |
+|---|---|---|---|
+| `Autodesk.SharedViews.Inventor.addin` | **crashed Inventor** on wine-mono: loaded through it, which cannot load its .NET 10 references and ends the process | works with .NET Framework 4.8 (share, Autodesk Viewer) | **on with .NET Framework 4.8**, off without it (`INV_DOTNET48_ADDINS`) |
+| `Autodesk.Feedback.Inventor.addin`, `Autodesk.PerfFeedbackAddin.Inventor.addin` | usage reporting | load, nothing broke | **on**, as on Windows; Inventor's own settings turn usage reporting off |
+| `Autodesk.InteractiveTutorial.Inventor.addin` | tutorial overlay, not needed; `InteractiveTutorial.dll` and `en-US\InteractiveTutorial.resources.dll` were moved to `Addins.disabled\libs` as a crash source | works: the tutorial downloads and runs. Its window opens at the far right and has to be moved by hand (a WebView placement issue, open) | **on**, the two libraries stay in `Bin` |
+| `autodesk.translatorfusion.inventor.addin` | Fusion interop, untested | loads (Add-In Manager) | **on**. Real use needs Autodesk Desktop Connector and Fusion Team data, which this project does not install |
+| `Autodesk.Publisher.Inventor.addin`, `Anark.Core.addin` | **only without .NET Framework 4.8**: 3D PDF's Publish crashes Anark's `corewrapper.exe` on wine-mono | (on since 2026-11-11 with .NET 4.8) | on with .NET Framework 4.8, off without it (`INV_DOTNET48_ADDINS`) |
+| `Autodesk.AssistantAddin.Inventor.addin` | Inventor 2027: the "Ask Autodesk Assistant" panel (an online AI assistant). The add-in was already in `Bin\Addins` before the 2027.2 Update, its panel shows up since 2027.2. The 2027.2 Update also puts a copy into `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\<version>\` (the "Inventor MCP Server" package); turning off the one in `Bin\Addins` was enough, the panel did not come back | loads, but its panel is drawn wrongly (WebView2) | **off** - the only add-in off by default (maintainer's decision); `bash scripts/addins.sh enable assistant` turns it on. Revisit with the WebView work |
 
-Untested means: please try it with `addins.sh enable` and report what happens.
+The test (maintainer, 2026-11-16): a copy of a 2027 prefix with .NET
+Framework 4.8, winum-11.20-2 and vkd3d-proton 3.0.1-winum-1, all add-ins
+on at once with `bash scripts/addins.sh enable-safe`. Details in
+`docs/arch-hyprland.md`, Result log 2026-11-16.
+
+If an add-in misbehaves for you: `addins.sh disable` it and report what happens.
 
 3D PDF (2026-11-08): with Microsoft's .NET Framework 4.8 in the prefix
 instead of wine-mono for the .NET Framework parts, `corewrapper.exe` runs,

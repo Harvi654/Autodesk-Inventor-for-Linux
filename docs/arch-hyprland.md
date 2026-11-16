@@ -1625,6 +1625,35 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-16 - Default add-ins: all but the Assistant on:** the maintainer
+turned every add-in on at once (`bash scripts/addins.sh enable-safe`) on a
+copy of a 2027 prefix with .NET Framework 4.8, winum-11.20-2 and
+vkd3d-proton 3.0.1-winum-1, and tried each:
+Autodesk.SharedViews works (share, Autodesk Viewer) - it crashed on
+wine-mono, so it moves to `INV_DOTNET48_ADDINS` (on with .NET 4.8, off
+without); Autodesk.InteractiveTutorial works (the tutorial downloads and
+runs; its window opens at the far right and has to be moved by hand, a
+WebView placement issue for later), so `cfg_crash_sources` no longer moves
+`InteractiveTutorial.dll` and `en-US\InteractiveTutorial.resources.dll`
+aside; Autodesk.Feedback and Autodesk.PerfFeedbackAddin load and nothing
+broke (on as on Windows; Inventor's own settings turn usage reporting
+off); autodesk.translatorfusion loads (real use needs Autodesk Desktop
+Connector and Fusion Team data, not installed); Autodesk.AssistantAddin
+loads but its panel is drawn wrongly (WebView2) - it stays the only add-in
+off by default (maintainer's decision; revisit with the WebView work).
+`INV_DEFAULT_DISABLED_ADDINS` now holds only the Assistant. Migration
+`0010-default-addins-on` moves exactly those five add-ins (SharedViews only
+with .NET 4.8) and the tutorial's two libraries back from `Addins.disabled`
+into `Bin`, leaves an add-in already in `Bin\Addins` alone, and saves both
+ends of every move (the runner now takes `MIG_BACKUP` one path per line,
+for paths with spaces). `addins.sh`: the "SharedViews crashes" warning is
+gone, `enable-safe` keeps every `INV_DOTNET48_ADDINS` add-in off without
+.NET 4.8, and `reset` turns the formerly disabled add-ins on again with the
+tutorial's libraries. Checked: 5 new tests in `tests/test_migrations.py`
+(without and with .NET 4.8, an add-in already on, nothing to do, restore,
+`addins.sh disable`/`enable`/`enable-safe`/`reset`). Open: the
+maintainer's check on a prefix copy. Table: `notes/disabled-addins.md`.
+
 **2026-11-16 - Nix: complete installer regression suite in the sandbox:**
 The fixtures now resolve their shell interpreters and preserve the supplied
 PATH instead of assuming /bin and /usr/bin. The `installer` flake check runs

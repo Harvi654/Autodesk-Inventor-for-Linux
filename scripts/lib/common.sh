@@ -212,19 +212,28 @@ VKD3D_DLLS=(d3d12 d3d12core)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
-# Add-ins rebuild-prefix.sh disables (notes/disabled-addins.md). Some of them
-# are loaded through wine-mono instead of CoreCLR and abort Inventor
-# (SharedViews confirmed: mono assertion -> Environment.Exit).
-INV_DEFAULT_DISABLED_ADDINS=(
+# Add-ins finish-install.sh / rebuild-prefix.sh turn off
+# (notes/disabled-addins.md): only the Assistant, whose panel (WebView2) is
+# drawn wrongly under Wine (maintainer's decision, 2026-11-16; revisit with
+# the WebView work). Feedback, PerfFeedback, InteractiveTutorial and
+# translatorfusion are on since 2026-11-16, as on Windows (tested with
+# addins.sh enable-safe, migration 0010).
+INV_DEFAULT_DISABLED_ADDINS=(Autodesk.AssistantAddin.Inventor.addin)
+# On with Microsoft's .NET Framework 4.8 in the prefix (install-from-image.py
+# installs the image's own), off without it: on wine-mono, 3D PDF's Publish
+# crashes Anark's corewrapper.exe, and SharedViews is loaded through
+# wine-mono, which cannot load its references and ends Inventor (mono
+# assertion -> Environment.Exit). SharedViews with .NET 4.8: share and
+# Autodesk Viewer work (2026-11-16).
+INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin Autodesk.SharedViews.Inventor.addin)
+# Off by default until 2026-11-16, on since then (migration 0010 turns them
+# on in older prefixes; addins.sh reset turns them on too). SharedViews only
+# with .NET Framework 4.8 (INV_DOTNET48_ADDINS).
+INV_ADDINS_ON_SINCE_2026_11_16=(
     Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
-    Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
-    autodesk.translatorfusion.inventor.addin
-    Autodesk.AssistantAddin.Inventor.addin
+    Autodesk.InteractiveTutorial.Inventor.addin autodesk.translatorfusion.inventor.addin
+    Autodesk.SharedViews.Inventor.addin
 )
-# 3D PDF: on with Microsoft's .NET Framework 4.8 in the prefix
-# (install-from-image.py installs the image's own), off without it - on
-# wine-mono Publish crashes Anark's corewrapper.exe.
-INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin)
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
 INV_VDESKTOP="${INV_VDESKTOP:-}"

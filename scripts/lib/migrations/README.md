@@ -28,7 +28,10 @@ cd scripts/lib/migrations && sha256sum [0-9][0-9][0-9][0-9]-*.sh > SHA256SUMS
   step is then recorded as done without changing anything;
 - `MIG_BACKUP` (optional) - paths relative to the prefix to save first
   besides the registry files (`system.reg`, `user.reg`, `userdef.reg`,
-  always saved); `none` saves nothing (installation-time steps only);
+  always saved): a word list, or one path per line for paths with a space
+  (`Program Files`, 0010); a path that does not exist yet is recorded and
+  removed again on a restore; `none` saves nothing (installation-time
+  steps only);
 - `MIG_OPTIONAL=1` - run only when asked for by name
   (`migrate-prefix.sh --run NNNN`), never from the launcher or an update.
 
@@ -56,6 +59,7 @@ backups are in `<prefix>/.inventor-on-linux/backup/<step>/`.
 | 0006-bsdtar-tar-exe | `tar.exe` in system32 (and syswow64): libarchive's signed Windows build of bsdtar 3.5.3, pinned and SHA-256 checked (`scripts/lib/bsdtar.env`, also in `nix/inventor.nix`), license text in `<prefix>/.inventor-on-linux/doc/libarchive-3.5.3/`. Windows 10 ships bsdtar as `System32\tar.exe`; the Electrical Catalog Browser's installer unpacks its library with it | 2026-11-16 |
 | 0007-public-documents-paths | registry: Autodesk's plain string values (REG_SZ) under `Software\Autodesk` and `HTML Help` that hold the text `%PUBLIC%\...` (Task Scheduler `DBQ`, `LogFile`; `admapi_31_0.chm`) -> `C:\users\Public\...`; the installer wrote the `[{Common Documents}]` mapping's target unexpanded before 2026-11-16. Wine's own REG_EXPAND_SZ values stay | 2026-11-16 |
 | 0008-public-documents-paths-wow64 | the same as 0007 for the 32-bit view (`Software\Wow6432Node\Autodesk`, `...\Wow6432Node\Microsoft\Windows\HTML Help`), which 0007 missed: `admapi_31_0.chm` there kept `%PUBLIC%\` on the maintainer's prefix | 2026-11-16 |
+| 0010-default-addins-on | add-ins on as on Windows: Feedback, PerfFeedback, InteractiveTutorial (and `InteractiveTutorial.dll`, `en-US\InteractiveTutorial.resources.dll` from `Addins.disabled\libs` back to `Bin`), translatorfusion, and SharedViews with .NET Framework 4.8 - moved from `Addins.disabled` back to `Bin\Addins` (maintainer's test, 2026-11-16, `notes/disabled-addins.md`); the Assistant stays off; an add-in already in `Bin\Addins` is left as it is; both ends of every move in the backup | 2026-11-16 |
 
 ## Tested
 
