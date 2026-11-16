@@ -2077,3 +2077,51 @@ same as #11's):
   namespace and held `session.lock`; a 2026 launch kept that directory. Once
   they were gone, the next launch removed it and a second crashed session's.
 - Not done here: a real Autodesk sign-in (the 2026 copy was not signed in).
+
+**2026-11-16 - NixOS: DXVK and vkd3d-proton as layers above the
+installation:** the Nix installation is built with `INV_DXVK=none` and
+`INV_VKD3D=none`; the launcher mounts DXVK 2.7.1 and winum's vkd3d-proton
+3.0.1-winum-1 as nix-overlayfs file layers, with their `native` overrides in
+the layers' registry. Wine reads `WINEDLLOVERRIDES` before the per-program
+keys (`get_load_order_value()` in `dlls/ntdll/unix/loadorder.c`), so overrides
+in the environment would have put WebView2 back on DXVK and white windows;
+in the registry the `msedgewebview2.exe` exception still wins. A new DXVK or
+vkd3d-proton now rebuilds only the launcher (`graphics-layers` check).
+Smoke test in the isolated X11 desktop on a copy of the user's 2027 state:
+the installation holds no DXVK or vkd3d-proton DLL and only `d3dcompiler_47`
+and `mscoree` in its global `DllOverrides`; Inventor logs `DXVK: v2.7.1` and
+vkd3d-proton build `3b10bd7a7ec6a73+` (upstream's source plus winum's
+ray-payload patch, per the archive's `BUILDINFO.txt`; upstream 3.0.1 logs no
+`+`); the Home page (WebView2) renders; new part, Save As, restart, reopen:
+OK; the hidden-file check ran for the new layer set and found nothing to
+move. A black rectangle in a new part's viewport, gone as soon as the
+pointer moved, is the known delayed repaint, not new. Installation rebuilt
+once for this.
+Repeated on top of the installer review branch (#14), with the 2027
+installation rebuilt by its installer (`nix build .#inventor-2027`, launcher
+`zsy52hs8...-inventor-overlay-2027.1`, 12.5 min): in the Nix sandbox's
+virtual display Inventor's registration (`Inventor.exe /install 0`) exited 0
+after 7 s and registered `Inventor.Application` and `Inventor.PartDocument`;
+`tar.exe` came from the pinned libarchive archive; the 2027.1 update moved
+176 dropped files to `.inventor-on-linux/removed-by-update/`. On a copy of
+the user's state (an upper layer from the previous installation): start
+signed in, Home renders, `d3d9`/`d3d11`/`dxgi`/`d3d12` loaded native from
+the layers, a new part's viewport renders, quit cleanly; the hidden-file
+check moved nothing.
+
+**2026-11-16 - NixOS: nix-overlayfs 182757d, the launcher as tested
+scripts:** the bash nix-overlayfs generated into every launcher (URL
+handler registration, session state, host browser broker, registry
+helpers, the writable layer's skeleton and start.exe shim, namespace mode,
+Wine shutdown) is now a set of shellchecked programs with their own checks,
+and a VM test covers an application's lifecycle (install, launch, a changed
+lower layer, the host handler turned off). The pin changes only the
+launcher; the installations are not rebuilt. Smoke test of 2027 in the
+isolated X11 desktop on a copy of the user's state: start signed in, the
+`adskidmgr` handler entry and its `mimeapps.list` default written as
+before, `d3d11`/`dxgi`/`d3d12` native from the layers, a new part, clean
+quit (no process or mount left, the start.exe shim removed, the session
+directory gone). The hidden-file check reported the shim's two `start.exe`
+copies: the state was copied while a session of the user was running, so
+its writable layer held them; the check runs before the launcher installs
+the shim, unchanged from the earlier pin.

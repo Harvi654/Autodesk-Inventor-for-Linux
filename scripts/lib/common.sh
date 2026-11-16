@@ -197,6 +197,8 @@ INV_FONT_LETTERS=(t u v w x)
 # DXVK: pinned release from the official GitHub project, verified by SHA-256.
 # Same version and hash as winetricks' "dxvk2071" verb and the original setup.
 # INV_DXVK=system uses setup_dxvk from an installed package instead.
+# INV_DXVK=none installs nothing: DXVK and its overrides come from elsewhere
+# (the Nix package adds them as a layer at launch).
 INV_DXVK="${INV_DXVK:-pinned}"
 DXVK_VER="${DXVK_VER:-2.7.1}"
 DXVK_SHA256="${DXVK_SHA256:-d85ce7c79f57ecd765aaa1b9e7007cb875e6fde9f6d331df799bce73d513ce87}"
@@ -210,7 +212,9 @@ DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # names the release they belong to, so a VKD3D_VER set by the user without
 # its DLL hashes makes 0009 leave the prefix alone). Same layout as
 # upstream's (vkd3d-proton-<ver>/x64, x86). INV_VKD3D=off keeps Wine's
-# builtin d3d12.
+# builtin d3d12. INV_VKD3D=none installs nothing and sets no override
+# (vkd3d-proton comes from elsewhere, as with INV_DXVK=none: the NixOS
+# package adds the same archive as a layer at launch).
 INV_VKD3D="${INV_VKD3D:-pinned}"
 VKD3D_VER="${VKD3D_VER:-3.0.1-winum-1}"
 VKD3D_SHA256="${VKD3D_SHA256:-7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7}"
@@ -546,8 +550,30 @@ migrate_disabled_addins() {
 
 # --- DXVK --------------------------------------------------------------------
 
+# What install_dxvk / install_vkd3d will do, for progress messages.
+dxvk_label() {
+    case "$INV_DXVK" in
+        system) echo "system setup_dxvk" ;;
+        none) echo "provided elsewhere" ;;
+        *) echo "$DXVK_VER, pinned" ;;
+    esac
+}
+vkd3d_label() {
+    case "$INV_VKD3D" in
+        off) echo off ;;
+        none) echo "provided elsewhere" ;;
+        *) echo "$VKD3D_VER, pinned" ;;
+    esac
+}
+
 # Download (once, cached in DOWNLOAD_DIR), verify, and copy DXVK into the prefix.
 install_dxvk() {
+    if [ "$INV_DXVK" = none ]; then
+        # Not DXVK's: Inventor's own d3dcompiler_47, as in the original setup.
+        wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v d3dcompiler_47 /t REG_SZ /d native
+        info "DXVK not installed in the prefix (INV_DXVK=none)"
+        return 0
+    fi
     if [ "$INV_DXVK" = system ]; then
         command -v setup_dxvk >/dev/null || die "INV_DXVK=system but setup_dxvk is not installed"
         setup_dxvk install >>"$LOGDIR/setup-wine.log" 2>&1
@@ -582,6 +608,10 @@ install_dxvk() {
 # Same for vkd3d-proton (Direct3D 12). INV_VKD3D=off: Wine's builtin d3d12 again.
 install_vkd3d() {
     local d
+    if [ "$INV_VKD3D" = none ]; then
+        info "vkd3d-proton not installed in the prefix (INV_VKD3D=none)"
+        return 0
+    fi
     if [ "$INV_VKD3D" = off ]; then
         for d in "${VKD3D_DLLS[@]}"; do
             # builtin explicitly: vkd3d-proton's DLLs may still be in system32
