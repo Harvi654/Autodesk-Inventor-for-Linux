@@ -596,6 +596,50 @@ branch is still to come):**
 - Registry: 21 400 keys missing in 10 900 groups (AdODIS/DDA, COM
   interfaces, ...): to be grouped.
 
+**Details of the comparison after run 3 (maintainer's filtered lists):**
+- **Electrical Catalog Browser in the wrong folder:** its 25 files were in
+  `Program Files\Autodesk\AutoCAD 2027\Bin\InventorElectrical\` and
+  `...\AutoCAD 2027\Bin\Addins\Autodesk.Electrical.Inventor.addin`
+  instead of `Inventor 2027\Bin\...` (the 25 "missing in Inventor 2027"
+  and "only in the prefix" files are the same). Its ADIX package keeps
+  them under that folder in its VFS; ODIS moves them by the manifest's
+  `InstallPathMappings`, which the installer used only for the registry.
+  Fixed: the mappings apply to files too (installer and admeta-check),
+  every mapping is logged with the number of files it moved. The mapping
+  format (folder token, VFS or C: source) is read generically - the next
+  install's log shows what the image has.
+- **The 7 files admeta-check called different** are the shared files of
+  DWG TrueView in `Common Files\Autodesk Shared` (AcShellExtension.dll,
+  AcLauncher.exe, AcInetEngineps26.dll, AcInetEngine26.dll from InvCore;
+  AcSignCore16.dll, en-US\AcAxDb26res.dll from RealDWG Shared;
+  AcShellExtensionRes.dll from InvCoreLP): TrueView, installed last by us,
+  replaced their copies. On Windows TrueView's package finished first
+  (log times 07:49:59, RealDWG 07:50:00, InvCoreLP 07:50:01, InvCore
+  07:50:03) and Windows has the later packages' copies - also of the two
+  fonts. Fixed: TrueView now comes first in the plan; with equal versions
+  or no version the later package's copy stays, as on Windows.
+- **Other files missing in the prefix:** the six add-ins, `senddmp.exe` and
+  `InteractiveTutorial` turned off on purpose;
+  `Autodesk Robot Structural Analysis Engine 2027\Cfg\USER_cfg.lnk` and the
+  shortcuts `Public\Desktop\Autodesk Inventor Professional 2027.lnk`,
+  `Documents\Inventor\Inventor Eletrical Project 2027.lnk` (shortcuts:
+  open - who creates them on Windows, and whether Wine's MSI makes .lnk
+  files with winemenubuilder off); the "other" groups are Windows'
+  (Temp 330, `AppData\Roaming\UI Launcher` 89 - ODIS's UI,
+  `AppData\Local\Packages` 45, `Windows\Installer` 35 - its MSI cache,
+  `ProgramData\Microsoft` 24, `System32` 14, D3DSCache).
+- **Registry, 21 400 missing keys by path:** 8 436
+  `hklm:software\wow6432node\classes` - the tool's mistake (Windows
+  exports 32-bit classes there, Wine keeps the same key as
+  `software\classes\wow6432node`), fixed in compare-reference; 6 009
+  `hkcu:software\classes\interface` and 6 009
+  `hkcu:software\classes\wow6432node` - COM interfaces Windows registers
+  per user (Inventor's registration), to be checked whether the prefix has
+  them machine-wide (the tool now counts those apart); 1 088
+  `hklm:software\microsoft\windows`, 212 `wow6432node\microsoft`, 86
+  `.netframework`, 27 `classes\installer`, 21 UPI2, 18 DDA (Autodesk
+  Access), 16 services: to be read after the next comparison.
+
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
   `inventor.ui` left out.
