@@ -134,6 +134,15 @@ MSI_RC = {
     106: " (= 1642, patch does not apply to the installed product)",
 }
 
+# an ODIS variable (%INV_INSTALL_PATH%, %ProgramFiles(x86)%)
+VARIABLE = re.compile(r"%([A-Za-z0-9_()]+)%")
+
+
+def unknown_variables(s):
+    """Names of the %VARIABLES% still in an expanded text."""
+    return list(dict.fromkeys(VARIABLE.findall(s or "")))
+
+
 ADIX_META = {"appxmanifest.xml", "appxblockmap.xml", "appxsignature.p7x",
              "[content_types].xml", "registry.dat", "user.dat", "userclasses.dat"}
 
@@ -411,6 +420,18 @@ class Installer:
             v = self.expand(v, extra, s)
             if "%" not in v:          # leave out ones only ODIS can fill in
                 argv.append("%s=%s" % (k, v))
+        # ODIS passes the package's install location to every MSI that has
+        # one (Windows' logs: InvPrivate.msi, adsk-hive-host.msi,
+        # DCLibrary64.msi) - "Needed" 4.
+        given = {a.split("=", 1)[0].upper() for a in argv[8:] if "=" in a}
+        if s.get("installLocation") and "INSTALLDIR" not in given:
+            loc = self.expand(s["installLocation"], extra, s)
+            unknown = unknown_variables(loc)
+            if unknown:
+                self.log("      WARN INSTALLDIR not passed: unknown %s in installLocation %s - the MSI uses "
+                         "its own default folder" % (", ".join("%%%s%%" % v for v in unknown), s["installLocation"]))
+            else:
+                argv.append("INSTALLDIR=" + loc)
         rc = self.run(argv, logname)
         return rc in (0, 1641, 3010)  # 3010/1641 = success, reboot wanted
 
