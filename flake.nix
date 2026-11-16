@@ -207,6 +207,11 @@
             evaluates = package: (builtins.tryEval (builtins.deepSeq package.drvPath true)).success;
             prefixChange = import ./nix/wine-prefix.nix { inherit lib; };
             checks = {
+              # This must also hold on a warm store, where an accidentally
+              # copied fixture could hide an evaluation-only failure.
+              "local candidate patches remain paths" =
+                builtins.isPath (lib.last codeOnly.wine.patches)
+                && builtins.isPath (lib.last infAtInstall.installWine.patches);
               # The production packages run on the flake's launch Wine.
               "packages use the launch Wine" =
                 launchTools inventor2027 == drv releases.launchModules.runtime.toolsPackage;

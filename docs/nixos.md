@@ -50,6 +50,13 @@ nix run .#inventor-2027 --override-input winum-candidates path:/path/to/winum
 
 (Overriding `winum` itself changes the release patches, and so rebuilds the
 installations.)
+
+Candidate series and patch files retain their path type when their source is
+a local path. This lets `nix flake check --no-build --show-trace`, the CI
+command, read the synthetic candidate fixture without first copying it into
+the store. The `launch-wine-candidates` check also asserts that local candidate
+patches remain paths, so a previously cached fixture cannot hide a regression.
+
 The pinned library also preserves Wine's registry symbolic-link markers and
 propagates failed installer exit statuses. Microsoft's .NET Framework 4.8
 is a layer below the installation (nix-overlayfs's `dotnet-framework-4-8`,
