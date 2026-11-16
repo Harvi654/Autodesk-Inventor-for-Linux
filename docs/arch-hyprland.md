@@ -1557,6 +1557,15 @@ palette); the NixOS build of the winum series (@krokosik).
 
 ## Result log
 
+**2026-11-16 - Installer completeness review: points 1-8 fixed (branch
+`installer-review`):** Inventor's registration (`Inventor.exe /install 0`,
+also migration 0005), the image's `setup.xml` properties and setup UI
+settings as variables, `INSTALLDIR` for every MSI, ODIS's standard MSI
+properties, all applications of the image (DWG TrueView, Electrical Catalog
+Browser), unknown variables skip an action, ADIX files outside VFS listed,
+Genuine Service with `--with ags`. Not yet checked on a real install.
+Details and the results: `docs/installer-completeness-review.md`, "Fixes".
+
 **2026-11-13 - Nix: .NET Framework 4.8 from a layer; issue #10 section:**
 the Nix package takes .NET 4.8 from nix-overlayfs's `dotnet-framework-4-8`
 layer instead of the installer's step (`--no-dotnet48`); the layer's 4.8

@@ -258,3 +258,63 @@ prefixes (registration, `INSTALLDIR`-less MSIs need no change if their files
 are in place), install again and compare until only the "on purpose" list
 remains; then the 2027.2 update the same way (VM snapshot
 `inventor2027-base` + update, prefix copy + update).
+
+## Fixes (branch `installer-review`, 2026-11-16)
+
+Points 1-8 of "Needed" and Genuine Service, one commit each with a unit
+test under `tests/` (synthetic manifests, `setup.xml`, setup UI settings
+and ADIX zips; no Autodesk files). Not merged, no tag. `--dry-run` prints
+every application, package, property, location, action and file that is
+left out, with the reason. Status of each: **fixed in the installer, not
+yet checked on a real install** - the results of the maintainer's run
+(below) go into the table.
+
+| Point | What the installer does now | Existing prefixes | Check | Result |
+|---|---|---|---|---|
+| 1 Registration | `Inventor.exe /install 0` once after the product's packages and the .NET 4.8 step, winemenubuilder off for everything it runs, then `wineserver -k`/`-w`; checks `Inventor.Application` and `Inventor.PartDocument` in `user.reg`; not finished = warning, tried again on the next run | migration `0005-inventor-registration` (a registration that does not finish warns, does not stop the launcher; again with `migrate-prefix.sh --run 0005`) | `user.reg` has both keys; no new `~/.local/share/applications/wine-*.desktop`; install.log `registered:` | pending |
+| 2 `setup.xml` properties | `<Properties>` become variables (`INV_INSTALL_PATH`); a `RegistrySearch` whose key and value exist in the prefix wins; logged as `var    %X% = ... (setup.xml; ...)` | none needed for `INSTALLDIR` (files in place); the InvAcNGEN action (.NET native images) did not run in them - open, below | install.log `var    %INV_INSTALL_PATH% = C:\Program Files\Autodesk\Inventor 2027\`; InvAcNGEN runs with `...\Inventor 2027\Bin`; compare: `NGenService` keys | pending |
+| 3 `CONTENT_PATH` | from `SetupRes/locale/<lang>/<app>.xml` (`defaultVal`), else ODIS's default `%PROGRAMDATA%\Autodesk` | none (files in place) | install.log `var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, ...)` | pending |
+| 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | pending |
+| 6 Action parameters | unknown `%VARIABLE%` in path or parameters: action skipped with `WARN skip action ...`; MSI properties left out, install parameters with unknown variables and action types never run are listed | - | install.log: no `WARN skip action` for Inventor's packages | pending |
+| 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | pending |
+| 7 ADIX root files | listed as `not installed (outside VFS, not package metadata): ...` | - | install.log line for InvCore (`SharedComponents.json`) - decide per file | pending |
+| 8 Standard MSI properties | `MSIFASTINSTALL=7`, `REBOOT=ReallySuppress`, `ARPSYSTEMCOMPONENT=1` on every MSI (not on MSP patches) unless the manifest gives one | none: only `SystemComponent=1` in the parts' uninstall entries, nothing reads it | compare-reference section 2: these three no longer "Windows passes ..." | pending |
+| Genuine Service | `--with ags` installs it; default without it until the test above | - | the test on a prefix copy ("On purpose") | pending |
+
+Open, to be decided with the results:
+
+- **`RegistrySearch` and setup UI attribute names are guessed** (`root`/
+  `key`/`name` and their usual spellings; the variable name of a setup UI
+  setting from `name`, `id`, `property`, ... or the element name).
+  `tools/odis-audit.py IMAGE` prints what it understood (sections
+  "Variables from setup.xml" and "Setup UI settings"); a search it cannot
+  read is logged with its attribute names and the default is used.
+- **`inventor.ui` is assumed to be a UI description**, not an application
+  (left out). odis-audit's "Applications in the image" shows whether it
+  has packages; compare-reference shows whether Windows installed any.
+- **The NGEN action in existing prefixes:** InvCore's postInstall
+  `InvAcNGEN.exe` makes .NET native images (84 `NGenService` keys on
+  Windows); existing prefixes ran it with the unexpanded variable. Native
+  images only make .NET code start faster; a migration needs the action's
+  exact command line from a new install.log and a check that it works
+  under Wine first.
+- **Package order** still differs from ODIS (point 1 does not depend on
+  it any more).
+- **Nix (@krokosik):** the Nix build runs `install-from-image.py` and
+  `finish-install.sh`, so it now installs DWG TrueView and the Electrical
+  Catalog Browser too (larger store path; `--no-app` exists if the package
+  should leave them out), and runs the registration (in the build sandbox,
+  without a display - a registration that does not finish is only a
+  warning, bounded by the 600 s timeout).
+- **Point 9** (UPI2 keys, the product's uninstall entry, `dotnet` in
+  `PATH`): waits for the maintainer's decision.
+
+### Check (the maintainer's run)
+
+A fresh prefix on `/mnt/nvme` from the two download parts with this
+branch, then `tools/admeta-check.py`, `tools/compare-reference.py` against
+the Windows capture (`~/vm-inventor/cap`) and the Inventor smoke test
+(start, part, assembly, drawing, save/reopen, restart, Import CAD, 3D
+PDF). Filtered output only. Results go into the table above and here.
+
+Results: pending.
