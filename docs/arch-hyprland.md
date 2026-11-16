@@ -2074,3 +2074,20 @@ the user's state (an upper layer from the previous installation): start
 signed in, Home renders, `d3d9`/`d3d11`/`dxgi`/`d3d12` loaded native from
 the layers, a new part's viewport renders, quit cleanly; the hidden-file
 check moved nothing.
+
+**2026-11-16 - NixOS: nix-overlayfs 182757d, the launcher as tested
+scripts:** the bash nix-overlayfs generated into every launcher (URL
+handler registration, session state, host browser broker, registry
+helpers, the writable layer's skeleton and start.exe shim, namespace mode,
+Wine shutdown) is now a set of shellchecked programs with their own checks,
+and a VM test covers an application's lifecycle (install, launch, a changed
+lower layer, the host handler turned off). The pin changes only the
+launcher; the installations are not rebuilt. Smoke test of 2027 in the
+isolated X11 desktop on a copy of the user's state: start signed in, the
+`adskidmgr` handler entry and its `mimeapps.list` default written as
+before, `d3d11`/`dxgi`/`d3d12` native from the layers, a new part, clean
+quit (no process or mount left, the start.exe shim removed, the session
+directory gone). The hidden-file check reported the shim's two `start.exe`
+copies: the state was copied while a session of the user was running, so
+its writable layer held them; the check runs before the launcher installs
+the shim, unchanged from the earlier pin.
