@@ -972,7 +972,9 @@ archived in [archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-
    so the ray tracing pipelines failed. Fixed by
    `gpu/vkd3d-proton/dxil-spirv-ray-payload-long-vector.patch` in winum
    (vectors longer than 4 become arrays; synthetic shaders fail without and
-   validate with it in CI).
+   validate with it in CI). Released as `vkd3d-proton-3.0.1-winum-1`; the
+   installer uses it since 2026-11-16 and migration 0009 puts it into
+   existing prefixes (Result log, 2026-11-16).
 
 **Settings it needs** (set by hand for now; the installer will do it in the
 next release):
@@ -1437,8 +1439,13 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
   maintainer's measurement of 2026-10-21 in PR #3) it switches Inventor to
   Hydra/USD and ray tracing runs on the CPU at about 1200 % CPU. It becomes a
   normal step with a GPU check and an L4 on a ray tracing card.
-- Waiting: vkd3d-proton with the ray payload fix (no release from winum
-  yet); optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
+- `0009-vkd3d-proton-winum` (2026-11-16): `d3d12.dll`, `d3d12core.dll`
+  (system32, syswow64) from winum's `vkd3d-proton-3.0.1-winum-1` in place
+  of upstream's 3.0.1, only with `INV_VKD3D=pinned` and when the DLLs are
+  not the pinned ones (SHA-256 of each DLL, `VKD3D_DLL_SHA256` in
+  common.sh); the old DLLs go to the backup; offline it is put off
+  (`MIG_DEFER`) like 0006.
+- Waiting: optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
 
 **Rule (AGENTS.md):** every change to what a prefix gets is a new step,
 listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
@@ -1653,6 +1660,32 @@ tutorial's libraries. Checked: 5 new tests in `tests/test_migrations.py`
 (without and with .NET 4.8, an add-in already on, nothing to do, restore,
 `addins.sh disable`/`enable`/`enable-safe`/`reset`). Open: the
 maintainer's check on a prefix copy. Table: `notes/disabled-addins.md`.
+**2026-11-16 - vkd3d-proton from winum for the script install too:** the
+installer and migration `0009-vkd3d-proton-winum` put winum's
+`vkd3d-proton-3.0.1-winum-1` in place of upstream's 3.0.1 (release
+archive SHA-256 `7d20a226...38c8b7`, same layout as upstream's: `x64/`,
+`x86/`; the four DLLs are pinned by SHA-256 too). It is upstream 3.0.1
+(commit `3b10bd7a`) plus the dxil-spirv ray payload fix that GPU ray
+tracing needs (section "GPU ray tracing"); krokosik's Nix change (PR #17)
+makes the same archive the NixOS default, so Arch and NixOS run the same
+DLLs. The step runs only with `INV_VKD3D=pinned`, saves the old DLLs in
+`.inventor-on-linux/backup/0009-vkd3d-proton-winum/`, and is put off while
+offline, so it never stops a start. `fetch_vkd3d` (common.sh) is shared
+with `install_vkd3d`, which still stops a new installation that cannot
+download it. Patch, tests, review and validation: winum
+[gpu/vkd3d-proton/README.md](https://github.com/Harvi654/winum/blob/main/gpu/vkd3d-proton/README.md)
+(L4 in Inventor 2027 on an RX 6400, an RTX 5080 and an RX 9060 XT, the last
+with the released DLLs; open review points P2-2, an inherited `float2x2`
+payload limitation of 3.0.1, and P3, fixtures not yet covering every
+payload shape). A `VKD3D_VER` set by the user leaves the prefix alone:
+the DLL hashes belong to one release (`VKD3D_DLL_SHA256_VER`), and without
+that check the step would fail at every start (maintainer's review). The
+real archive's layout was listed once (`tar --zstd -tvf`): top folder
+`vkd3d-proton-3.0.1-winum-1/` with `x64/`, `x86/`, as `install_vkd3d`
+expects. Checked here: 6 new tests in `tests/test_migrations.py` (winum
+DLLs with a backup and the native overrides, already winum, `INV_VKD3D=off`
+untouched, another `VKD3D_VER` untouched and nothing downloaded, offline
+put off and then `--run 0009`, wrong checksum put off). Open: the maintainer's smoke test on a prefix copy.
 
 **2026-11-16 - Nix: complete installer regression suite in the sandbox:**
 The fixtures now resolve their shell interpreters and preserve the supplied
@@ -2072,3 +2105,51 @@ same as #11's):
   namespace and held `session.lock`; a 2026 launch kept that directory. Once
   they were gone, the next launch removed it and a second crashed session's.
 - Not done here: a real Autodesk sign-in (the 2026 copy was not signed in).
+
+**2026-11-16 - NixOS: DXVK and vkd3d-proton as layers above the
+installation:** the Nix installation is built with `INV_DXVK=none` and
+`INV_VKD3D=none`; the launcher mounts DXVK 2.7.1 and winum's vkd3d-proton
+3.0.1-winum-1 as nix-overlayfs file layers, with their `native` overrides in
+the layers' registry. Wine reads `WINEDLLOVERRIDES` before the per-program
+keys (`get_load_order_value()` in `dlls/ntdll/unix/loadorder.c`), so overrides
+in the environment would have put WebView2 back on DXVK and white windows;
+in the registry the `msedgewebview2.exe` exception still wins. A new DXVK or
+vkd3d-proton now rebuilds only the launcher (`graphics-layers` check).
+Smoke test in the isolated X11 desktop on a copy of the user's 2027 state:
+the installation holds no DXVK or vkd3d-proton DLL and only `d3dcompiler_47`
+and `mscoree` in its global `DllOverrides`; Inventor logs `DXVK: v2.7.1` and
+vkd3d-proton build `3b10bd7a7ec6a73+` (upstream's source plus winum's
+ray-payload patch, per the archive's `BUILDINFO.txt`; upstream 3.0.1 logs no
+`+`); the Home page (WebView2) renders; new part, Save As, restart, reopen:
+OK; the hidden-file check ran for the new layer set and found nothing to
+move. A black rectangle in a new part's viewport, gone as soon as the
+pointer moved, is the known delayed repaint, not new. Installation rebuilt
+once for this.
+Repeated on top of the installer review branch (#14), with the 2027
+installation rebuilt by its installer (`nix build .#inventor-2027`, launcher
+`zsy52hs8...-inventor-overlay-2027.1`, 12.5 min): in the Nix sandbox's
+virtual display Inventor's registration (`Inventor.exe /install 0`) exited 0
+after 7 s and registered `Inventor.Application` and `Inventor.PartDocument`;
+`tar.exe` came from the pinned libarchive archive; the 2027.1 update moved
+176 dropped files to `.inventor-on-linux/removed-by-update/`. On a copy of
+the user's state (an upper layer from the previous installation): start
+signed in, Home renders, `d3d9`/`d3d11`/`dxgi`/`d3d12` loaded native from
+the layers, a new part's viewport renders, quit cleanly; the hidden-file
+check moved nothing.
+
+**2026-11-16 - NixOS: nix-overlayfs 182757d, the launcher as tested
+scripts:** the bash nix-overlayfs generated into every launcher (URL
+handler registration, session state, host browser broker, registry
+helpers, the writable layer's skeleton and start.exe shim, namespace mode,
+Wine shutdown) is now a set of shellchecked programs with their own checks,
+and a VM test covers an application's lifecycle (install, launch, a changed
+lower layer, the host handler turned off). The pin changes only the
+launcher; the installations are not rebuilt. Smoke test of 2027 in the
+isolated X11 desktop on a copy of the user's state: start signed in, the
+`adskidmgr` handler entry and its `mimeapps.list` default written as
+before, `d3d11`/`dxgi`/`d3d12` native from the layers, a new part, clean
+quit (no process or mount left, the start.exe shim removed, the session
+directory gone). The hidden-file check reported the shim's two `start.exe`
+copies: the state was copied while a session of the user was running, so
+its writable layer held them; the check runs before the launcher installs
+the shim, unchanged from the earlier pin.
