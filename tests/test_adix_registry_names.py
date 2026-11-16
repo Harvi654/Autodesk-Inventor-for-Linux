@@ -108,6 +108,15 @@ class AdixRegistryNames(unittest.TestCase):
         self.assertNotIn("dword", out)
         self.assertNotIn('"u"', out)
 
+    def test_msix_root_names_in_the_reg(self):
+        # Material Library's Registry.reg names its keys like the hive does
+        reg = REG_SAME.replace("HKEY_LOCAL_MACHINE", "REGISTRY\\MACHINE")
+        out = self.run_tool(adix(reg))
+        self.assertIn("Registry.reg holds nothing the .dat does not have", out)
+        self.assertNotIn("only in", out)
+        names, _ = self.mod.names_from_reg("[REGISTRY\\USER\\[{AppVCurrentUserSID}]\\Software\\X]\n\"a\"=\"1\"\n")
+        self.assertEqual(names, {"hkcu\\software\\x": {"a"}})
+
     def test_dat_names(self):
         names = self.mod.names_from_dat(DAT)
         self.assertEqual(names["hklm\\software\\autodesk\\materials"], {"version", "path"})

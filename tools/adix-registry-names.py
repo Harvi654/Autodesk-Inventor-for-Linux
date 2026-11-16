@@ -30,6 +30,14 @@ HIVES = {"hkey_local_machine": "HKLM", "hklm": "HKLM", "hkey_current_user": "HKC
 
 def norm_key(k):
     k = k.strip().strip("\\")
+    # MSIX layout, as in the hive itself: REGISTRY\MACHINE\..., and
+    # REGISTRY\USER\<user token>\...
+    parts = k.split("\\")
+    if len(parts) >= 2 and parts[0].lower() == "registry":
+        if parts[1].lower() == "machine":
+            k = "\\".join(["HKLM"] + parts[2:])
+        elif parts[1].lower() == "user" and len(parts) >= 3:
+            k = "\\".join(["HKCU"] + parts[3:])
     first, _, rest = k.partition("\\")
     first = HIVES.get(first.lower(), first)
     return ("%s\\%s" % (first, rest) if rest else first).lower()
