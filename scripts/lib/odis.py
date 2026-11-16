@@ -32,7 +32,12 @@ NS = {"m": "https://emsfs.autodesk.com/schema/manifest/1/0"}
 
 # Packages left out by default, by manifest name (case-insensitive): they
 # phone home, watch for "non-genuine" installs, or are Autodesk's own
-# installer/updater - none of them are needed to run Inventor.
+# installer/updater - none of them are needed to run Inventor. A name given
+# with --with is installed all the same.
+# Autodesk Genuine Service: the maintainer decided (2026-11-16) to install
+# it as Windows does; it stays here until its test on a prefix copy
+# (docs/installer-completeness-review.md, "Autodesk Genuine Service") has
+# shown that it runs under Wine without problems.
 SKIP = {
     "ags": "Autodesk Genuine Service (licence-compliance watcher)",
     "cer": "Customer Error Reporting (crash upload)",
@@ -430,8 +435,9 @@ def _plan(img, roots, lang, include_all, extra=()):
         if key in seen:
             return
         seen.add(key)
-        if not include_all and name.lower() in SKIP:
-            skipped.append((name, SKIP[name.lower()]))
+        # asked for by name (--with ags): installed although on the skip list
+        if not include_all and name.lower() in SKIP and name.lower() not in extra:
+            skipped.append((name, "%s - install it with --with %s" % (SKIP[name.lower()], name)))
             return
         # language-specific packages (x64/de-DE/...) only for the chosen language
         other = [p for p in rel.replace("\\", "/").split("/") if LOCALE.match(p) and p != lang]

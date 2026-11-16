@@ -196,6 +196,30 @@ for existing prefixes, into a migration.
   prefix copy (does its service run under Wine, start-up time, crashes,
   CPU); kept unless it causes problems, and then the reason is written
   here.
+  Installable since 2026-11-16 (branch `installer-review`):
+  `install-from-image.py IMAGE --with ags` installs it (a name given with
+  `--with` overrides the skip list); the default stays without it until
+  the test below is done. **Test on a prefix copy** (the maintainer; the
+  working prefix is not touched):
+  1. With winum's `bin` first in `PATH`
+     (`~/.local/share/inventor-on-linux/winum-*-x86_64/bin`), stop the
+     prefix and copy it with reflinks:
+     `WINEPREFIX=$PREFIX wineserver -k; cp -a --reflink=auto $PREFIX $PREFIX-ags`.
+  2. `--dry-run` first: `python3 scripts/install-from-image.py $IMAGE
+     --prefix $PREFIX-ags --with ags --dry-run | grep -v 'already done'` -
+     only the AGS package(s) may be left to run.
+  3. The same without `--dry-run`; the package's `exit code` line and, if
+     it hangs, how long (its service may not report "running" to Wine,
+     like the licensing service).
+  4. What it left: `WINEPREFIX=$PREFIX-ags wine reg query
+     'HKLM\System\CurrentControlSet\Services' | grep -i genuine` (the
+     service; its `Start` value with `wine reg query '<that key>' /v
+     Start`).
+  5. `INV_YEAR=2027 INV_PREFIX=$PREFIX-ags bash scripts/launch-inventor.sh`: time to the
+     home page compared with the working prefix, `top -b -n1 | grep -i
+     genuine` after a minute (CPU), Inventor's smoke test, and a crash or
+     message box from AGS.
+  Result: pending.
 - `AdskLicensingService` start type Manual instead of Auto (the launcher
   starts it).
 
