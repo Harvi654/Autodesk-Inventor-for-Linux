@@ -159,7 +159,10 @@ def unknown_variables(s):
 
 
 def pe_file_version(data):
-    """File version (a, b, c, d) of a PE file's VS_FIXEDFILEINFO, or None."""
+    """File version (a, b, c, d) of a PE file's VS_FIXEDFILEINFO, or None.
+    Clean room: an explicit exception decided by the maintainer on
+    2026-11-16 (docs/installer-completeness-review.md) - only this version
+    stamp is read from Autodesk files, nothing else."""
     if data[:2] != b"MZ":
         return None
     i = data.find(b"\xbd\x04\xef\xfe")

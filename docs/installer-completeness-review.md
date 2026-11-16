@@ -307,7 +307,55 @@ Open, to be decided with the results:
   without a display - a registration that does not finish is only a
   warning, bounded by the 600 s timeout).
 - **Point 9** (UPI2 keys, the product's uninstall entry, `dotnet` in
-  `PATH`): waits for the maintainer's decision.
+  `PATH`): decided by the maintainer on 2026-11-16 - not now; after the
+  comparison with the 2027.2 update, since UPI2 is mainly what updates
+  rely on.
+- **`INSTALLDIR` for MSIs without an `installLocation`**
+  (`adsk-hive-host.msi`: Windows passed `C:\Program Files\Autodesk`,
+  i.e. `%INSTALL_DEST%`): not implemented until the Windows logs show that
+  ODIS does it for every such MSI - `tools/installdir-check.py CAP IMAGE`
+  lists each MSI package with its `installLocation` and Windows'
+  `INSTALLDIR`. Result: pending.
+- **`Registry.reg` next to `Registry.dat`** (the three Material Library
+  packages): `tools/adix-registry-names.py IMAGE` compares the key and
+  value names of both (never the data). Result: pending.
+
+### Wine bug: msiexec and a property value with a space
+
+Worth a report on bugs.winehq.org. A program that passes an MSI property
+whose value has a space as one argument -
+`wine msiexec /i X.msi /qn "INSTALLDIR=C:\Program Files\X"` - gets
+1639 (`ERROR_INVALID_COMMAND_LINE`): Wine builds the command line
+`msiexec /i X.msi /qn "INSTALLDIR=C:\Program Files\X"` (the whole
+argument quoted, the usual Windows convention), Wine's msiexec keeps those
+quotes when it splits the line and quotes the value again, and the
+Windows Installer reads a property named `"INSTALLDIR` with unbalanced
+quotes. ODIS's own form, `INSTALLDIR="C:\Program Files\X\"`, works, but
+cannot be produced through Wine's command line building. What Windows'
+msiexec does with the same command lines is **not measured yet**; the
+synthetic reproducer (a tiny MSI built with `wixl`, a script for Wine and
+one for the Windows VM) and the step-by-step reading of Wine's code are in
+[docs/wine-repro/msiexec-property-spaces/](wine-repro/msiexec-property-spaces/README.md).
+The report is written once Windows is measured; not filed yet.
+
+The installer's workaround (since 2026-11-16): an msiexec command line
+with a space goes into `C:\odis-logs\NN-<package>.msi.cmd` and runs
+through `wine cmd /c`. **Autodesk-Revit-for-Linux** has its own `.bat`
+workaround for its step 25 (the same failure); it should be replaced by
+this helper (`run_msiexec` in `install-from-image.py`) once the two
+installers share the code again.
+
+### Clean room exception: file versions of shared files
+
+Decided by the maintainer on 2026-11-16: `install-from-image.py` reads the
+file version (the `VS_FIXEDFILEINFO` version stamp) of a file that two
+packages install (point 5: the seven TrueView files in `Common
+Files\Autodesk Shared`), to keep the newer one as Windows Installer does.
+Only the version stamp is read - nothing else from Autodesk files (no
+code, no other resources, no disassembly). It is an explicit exception to
+"not looking inside vendor binaries beyond crash addresses" (AGENTS.md,
+"Clean room"); the version stamp is also what Windows' own file
+properties dialog shows.
 
 ### Check (the maintainer's run)
 
