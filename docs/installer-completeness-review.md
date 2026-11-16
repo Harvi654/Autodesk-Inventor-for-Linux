@@ -640,6 +640,22 @@ branch is still to come):**
   `.netframework`, 27 `classes\installer`, 21 UPI2, 18 DDA (Autodesk
   Access), 16 services: to be read after the next comparison.
 
+**Dry run with the finished branch (2026-11-16, fresh prefix
+`.wine-inventor2027-review2`):** order `dwgtrueview, inventor, dclibrary,
+aceinvaddin`; `CONTENT_PATH` and further settings now from `setup.xml`
+(`INVENTORLANGUAGESTRING`, `LANG2LONG`, `UPIMASTERID`, `UNITS`,
+`DRAWINGSTANDARD` - setup options, so not passed to MSIs, as on
+Windows); the Catalog Browser's two mappings `[{ProgramFilesX64}]\Autodesk\AutoCAD 2027\
+-> C:\Program Files\Autodesk\Inventor 2027` move 19 + 6 files; the other
+mappings name the folder the VFS already uses (TrueView 1 573 files,
+Inventor 2027, Common Files, ProgramData). Four packages map
+`[{Common Documents}]\ -> %PUBLIC%\Documents\`, which was not understood:
+`%PUBLIC%` is now `C:\users\Public`. The same mappings replace folder
+tokens in the packages' registry values, so until now such values got the
+text `%PUBLIC%\Documents\...` - in existing prefixes too; whether any
+value has it and whether it matters (REG_EXPAND_SZ or not): to be
+checked.
+
 What run 1 showed before that:
 - Applications: `inventor, dclibrary, aceinvaddin, dwgtrueview`;
   `inventor.ui` left out.
