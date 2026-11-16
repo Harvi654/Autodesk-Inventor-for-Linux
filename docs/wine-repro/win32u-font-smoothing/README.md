@@ -45,4 +45,30 @@ Explicit Tahoma requests still produced zero intermediate pixels, so this
 does not replace every application font request. The user confirmed that
 Inventor looked better. The Nix launcher now applies this substitution only
 when the real Segoe UI family is available in host fonts or prefix files.
-No Wine patch or L0–L5 validation claim.
+No Wine patch or L0–L5 validation claim. (Replaced on 2026-11-16, below.)
+
+## Tahoma by pixel size, Wine vs Windows (2026-11-16)
+
+`tahoma-ppem.c` draws the same string with `Tahoma`, `Segoe UI` and renamed
+copies of Wine's Tahoma at 11, 12, 13, 15, 16, 17, 19, 21 and 24 px, with
+default, non-antialiased, antialiased and ClearType quality. For each it prints
+the face, partly covered pixels, coloured pixels, grey levels and width.
+`make-tahoma-variants.sh` builds the copies from Wine's `fonts/` at the
+wine-11.20 and wine-11.22 tags with fonttools' `ttx`: `TTR20`/`TTR22`
+unchanged, `TTRNB` without bitmaps, `TTRSG` with `gasp` smooth at every size,
+`TTRBO` both, `TTB22`/`TTBBO` bold. Pass the `.ttf` files as arguments.
+
+```sh
+./make-tahoma-variants.sh out
+x86_64-w64-mingw32-gcc -Wall -O2 -static tahoma-ppem.c -o tahoma-ppem.exe -lgdi32 -luser32
+wine tahoma-ppem.exe out/v-*.ttf                        # host fontconfig
+FONTCONFIG_FILE=rgb.conf wine tahoma-ppem.exe out/v-*.ttf  # rgba=rgb added
+```
+
+Results: on Windows 10 22H2 (ClearType on) Tahoma, Windows' and Wine's, is
+smoothed with ClearType at every size and has no greyscale up to 16 px. Under
+winum-11.20-2 with this host's fontconfig (`rgba` none) nothing up to 16 px is
+smoothed, in any quality; with a fontconfig file that sets `rgba=rgb` the
+pattern matches Windows. Cause and fix: `docs/arch-hyprland.md`, section
+"Small Tahoma text without smoothing (ClearType)". These runs used a
+throwaway prefix and host MinGW, not a flake output.

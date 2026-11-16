@@ -20,69 +20,107 @@ class RuntimeFonts(unittest.TestCase):
         self.root = Path(self.temp.name)
         mock_bin = self.root / "bin"
         mock_bin.mkdir()
+        self.state = self.root / "state"
+        self.state.mkdir()
+        self.base_conf = self.root / "fonts.conf"
+        self.base_conf.write_text("<fontconfig/>\n")
         self.actions = self.root / "actions"
         self.env = os.environ | {
             "PATH": str(mock_bin) + os.pathsep + os.environ["PATH"],
             "WINEPREFIX": str(self.root / "prefix"),
-            "FONT_HOST_FAMILIES": "",
-            "FONT_PREFIX_FAMILIES": "",
+            "inventor_state_dir": str(self.state),
+            "FONTCONFIG_FILE": str(self.base_conf),
             "FONT_CURRENT": "",
             "FONT_ACTIONS": str(self.actions),
         }
+        self.set_desktop(smoothing="2", type="0x1", orientation="0x1")
+        # Output as Wine's reg.exe prints it, with CRLF line ends.
         scripts = {
-            "fc-list": 'printf "%s\\n" "$FONT_HOST_FAMILIES"',
-            "fc-scan": 'printf "%s\\n" "$FONT_PREFIX_FAMILIES"',
-            "wine": '''
+            "wine": r"""
 if [ "$2" = query ]; then
-    if [ -z "$FONT_CURRENT" ]; then
-        printf 'reg: Unable to find the specified registry value\\n'
-        exit 1
-    fi
-    printf 'HKEY_LOCAL_MACHINE\\n    Tahoma    REG_SZ    %s\\n' "$FONT_CURRENT"
+    case "$3" in
+        *Desktop)
+            printf 'HKEY_CURRENT_USER\\Control Panel\\Desktop\r\n'
+            printf '    FontSmoothing    REG_SZ    %s\r\n' "$FONT_SMOOTHING"
+            printf '    FontSmoothingOrientation    REG_DWORD    %s\r\n' "$FONT_ORIENTATION"
+            printf '    FontSmoothingType    REG_DWORD    %s\r\n' "$FONT_TYPE"
+            ;;
+        *FontSubstitutes)
+            if [ -z "$FONT_CURRENT" ]; then
+                printf 'reg: Unable to find the specified registry value\r\n'
+                exit 1
+            fi
+            printf 'HKEY_LOCAL_MACHINE\r\n    Tahoma    REG_SZ    %s\r\n' "$FONT_CURRENT"
+            ;;
+    esac
 else
-    printf '%s\\n' "$*" >> "$FONT_ACTIONS"
+    printf '%s\n' "$*" >> "$FONT_ACTIONS"
 fi
-''',
+""",
         }
         for name, script in scripts.items():
             path = mock_bin / name
             path.write_text(f"#!{shutil.which('bash')}\n{script}\n")
             path.chmod(0o755)
 
+    def set_desktop(self, smoothing, type, orientation):
+        self.env.update(FONT_SMOOTHING=smoothing, FONT_TYPE=type,
+                        FONT_ORIENTATION=orientation)
+
     def apply_fonts(self):
-        result = subprocess.run(["bash", "-euo", "pipefail", str(FONTS)],
-                                env=self.env, text=True, capture_output=True,
-                                timeout=10)
+        """Source the script; return (registry writes, FONTCONFIG_FILE after)."""
+        if self.actions.exists():
+            self.actions.unlink()
+        result = subprocess.run(
+            ["bash", "-euo", "pipefail", "-c",
+             f'. "{FONTS}"; printf "%s" "$FONTCONFIG_FILE"'],
+            env=self.env, text=True, capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
-        return self.actions.read_text() if self.actions.exists() else ""
+        actions = self.actions.read_text() if self.actions.exists() else ""
+        return actions, result.stdout
 
-    def test_real_host_family_enables_substitution(self):
-        self.env["FONT_HOST_FAMILIES"] = "Segoe UI,Segoe UI Semibold"
-        actions = self.apply_fonts()
-        self.assertIn("reg add", actions)
-        self.assertIn("/v Tahoma /t REG_SZ /d Segoe UI /f", actions)
+    def assert_subpixel(self, fontconfig_file, rgba):
+        conf = Path(fontconfig_file)
+        self.assertEqual(conf, self.state / "fonts-subpixel.conf")
+        text = conf.read_text()
+        self.assertIn(f"<include ignore_missing=\"no\">{self.base_conf}</include>", text)
+        self.assertIn(f"<const>{rgba}</const>", text)
 
-    def test_prefix_font_enables_substitution(self):
-        self.env["FONT_PREFIX_FAMILIES"] = "Segoe UI"
-        self.assertIn("reg add", self.apply_fonts())
+    def test_first_launch_switches_greyscale_prefix_to_cleartype(self):
+        actions, fontconfig_file = self.apply_fonts()
+        self.assertIn("/v FontSmoothingType /t REG_DWORD /d 2 /f", actions)
+        self.assertTrue((self.state / "font-smoothing-cleartype").exists())
+        self.assert_subpixel(fontconfig_file, "rgb")
 
-    def test_fallback_and_other_segoe_families_do_not_enable_it(self):
-        self.env["FONT_HOST_FAMILIES"] = "Noto Sans\nSegoe UI Symbol\nSegoe UI Variable"
-        self.assertEqual(self.apply_fonts(), "")
+    def test_later_choice_of_greyscale_is_kept(self):
+        self.apply_fonts()
+        actions, fontconfig_file = self.apply_fonts()
+        self.assertEqual(actions, "")
+        self.assertEqual(fontconfig_file, str(self.base_conf))
 
-    def test_disappearing_font_removes_segoe_substitution(self):
+    def test_cleartype_prefix_needs_no_write(self):
+        self.set_desktop(smoothing="2", type="0x2", orientation="0x1")
+        actions, fontconfig_file = self.apply_fonts()
+        self.assertEqual(actions, "")
+        self.assert_subpixel(fontconfig_file, "rgb")
+
+    def test_bgr_orientation(self):
+        self.set_desktop(smoothing="2", type="0x2", orientation="0x0")
+        self.assert_subpixel(self.apply_fonts()[1], "bgr")
+
+    def test_smoothing_off_leaves_fontconfig_alone(self):
+        self.set_desktop(smoothing="0", type="0x2", orientation="0x1")
+        self.assertEqual(self.apply_fonts()[1], str(self.base_conf))
+
+    def test_former_segoe_substitution_is_removed_once(self):
         self.env["FONT_CURRENT"] = "Segoe UI"
-        self.assertIn("reg delete", self.apply_fonts())
+        self.assertIn("reg delete", self.apply_fonts()[0])
+        # A substitution the user adds again afterwards stays.
+        self.assertEqual(self.apply_fonts()[0], "")
 
-    def test_existing_segoe_substitution_needs_no_write(self):
-        self.env.update(FONT_CURRENT="Segoe UI", FONT_HOST_FAMILIES="Segoe UI")
-        self.assertEqual(self.apply_fonts(), "")
-
-    def test_custom_substitution_is_preserved_with_or_without_segoe(self):
+    def test_custom_substitution_is_preserved(self):
         self.env["FONT_CURRENT"] = "DejaVu Sans"
-        self.assertEqual(self.apply_fonts(), "")
-        self.env["FONT_HOST_FAMILIES"] = "Segoe UI"
-        self.assertEqual(self.apply_fonts(), "")
+        self.assertNotIn("reg delete", self.apply_fonts()[0])
 
 
 class RuntimeState(unittest.TestCase):

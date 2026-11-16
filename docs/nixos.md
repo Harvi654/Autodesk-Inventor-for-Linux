@@ -354,27 +354,38 @@ desktop was stopped, and the authenticated test state was preserved.
 
 ## Fonts and small UI text
 
-The launcher checks actual host font families with `fc-list` and prefix font
-files with `fc-scan`. If **Segoe UI** is available, it adds the Wine
-`FontSubstitutes` entry `Tahoma=Segoe UI` for smoother system menu/status text.
-This is conditional on the actual family, not Wine's Segoe-to-Noto alias or
-Fontconfig's fallback matching. If Segoe UI disappears, that specific mapping
-is removed; substitutions to other families are preserved. The check runs in
-the composed prefix at launch, for both Inventor releases. Microsoft fonts are
-not downloaded or included in the package by this change.
+Small Tahoma text (ribbon, menus, status bar) is smoothed with ClearType, as on
+Windows. At launch the Nix launcher (`nix/launch-fonts.sh`):
 
-On 2026-11-10 the user confirmed the substitution improved Inventor 2027's UI.
-ClearType settings alone had not helped: Wine's font trace showed smoothing
-disabled by small Tahoma glyphs' GASP instructions. Explicit application
-requests for Tahoma can remain unsmoothed; this changes system font selection.
-See the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling).
+- once per release state (marker `font-smoothing-cleartype` in
+  `~/.local/share/autodesk-inventor-<year>/.nix-overlayfs/`) sets
+  `HKCU\Control Panel\Desktop` `FontSmoothingType` to `2` (ClearType), the
+  Windows default; fresh Wine prefixes start with `1` (greyscale). Choosing
+  greyscale again later in the prefix is kept;
+- when the prefix asks for ClearType, writes `fonts-subpixel.conf` next to that
+  marker and points Wine's `FONTCONFIG_FILE` at it. It includes the host's
+  fontconfig unchanged and only sets `rgba` (`rgb`, or `bgr` for
+  `FontSmoothingOrientation=0`). Without it Wine takes each face's smoothing
+  from fontconfig, so a host with `rgba` "none" gets greyscale whatever the
+  prefix says, and Tahoma's `gasp` table turns greyscale off up to 16 ppem
+  (8 pt at up to 144 DPI). The desktop's own fontconfig is not changed.
+
+The earlier workaround, a `FontSubstitutes` entry `Tahoma=Segoe UI` added when
+Segoe UI was installed (2026-11-10), is removed: the same once-per-state step
+deletes that exact entry; substitutions to other families are kept. It only
+changed the system menu/status font, and explicit Tahoma requests stayed
+jagged. ClearType assumes the window is shown 1:1; with compositor scaling of
+XWayland (no `force_zero_scaling`) colour fringes are smeared. To go back to
+greyscale, set `FontSmoothingType` to `1` in the composed prefix. See
+[the diagnosis](arch-hyprland.md#small-tahoma-text-without-smoothing-cleartype)
+and the [probe](wine-repro/win32u-font-smoothing/README.md).
 
 Which fonts to provide:
 
 | Fonts | Purpose and existing coverage |
 |---|---|
-| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family; needed for the conditional substitution. Supply it through your own host fonts or prefix. |
-| Tahoma / Microsoft Sans Serif | Legacy UI families. Providing them does not itself solve small-text smoothing; free replacements already exist. |
+| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family for applications that name it. Supply it through your own host fonts or prefix. |
+| Tahoma / Microsoft Sans Serif | Legacy UI families. Wine's own Tahoma is used; small-text smoothing comes from ClearType (above), not from another font. |
 | Arial, Times New Roman, Courier New | Useful for matching documents that name these fonts. Liberation Sans, Serif and Mono are already bundled as substitutes. |
 | Calibri / Cambria | Optional for documents that use them; Carlito and Caladea substitutes are already bundled. |
 | AIGDT / AMGDT | Autodesk engineering-symbol fonts. Verified present in the built Inventor 2027 application layer from the user's installation media; do not replace them with general-purpose sans fonts. |

@@ -237,8 +237,9 @@ replacements do not override an already available real family. A local
 `Tahoma=Segoe UI`, followed by restart, changed system menu/status fonts to
 Segoe UI. Their probe output then had intermediate pixels; explicit Tahoma
 requests remained unsmoothed. The user confirmed that the change looked good.
-The Nix launcher now checks real host/prefix font families and applies this
-mapping only when Segoe UI is available. It removes that mapping if the family
+The Nix launcher then checked real host/prefix font families and applied this
+mapping only when Segoe UI was available (replaced on 2026-11-16 by ClearType,
+see the next section). It removes that mapping if the family
 disappears and preserves substitutions to other families. No fonts are added
 to the package. Local rollback is to delete that value and restart; the launcher
 will restore it if Segoe UI is still available. Other launchers are unchanged.
@@ -265,6 +266,60 @@ With monitor scale > 1, XWayland apps are upscaled and look blurry. Two options:
 
 Inventor's own UI scaling under Wine DPI changes is untested - please report
 what works.
+
+### Small Tahoma text without smoothing (ClearType)
+
+**Symptom.** Ribbon, menu and status text (8 pt Tahoma) looks jagged on a 4K
+monitor with fractional scaling (NixOS + Hyprland, `force_zero_scaling`,
+120 DPI in the prefix), while larger text and Segoe UI are smooth. Switching
+the prefix to ClearType by hand did not help (2026-11-10, above). Issue #13
+asked whether Wine 11.22's Tahoma changes fix it: they do not.
+
+**Cause.** Two things together, both in `dlls/win32u`:
+1. Wine's Tahoma (`fonts/tahoma.ttf`, the same in 11.20 and 11.22) has a
+   `gasp` table `{8: 0, 16: 1, 65535: 3}`: up to 16 ppem grid-fit without
+   greyscale. `freetype_get_aa_flags()` honours it for greyscale, but skips it
+   for subpixel (ClearType) rendering. Windows does the same (measured below).
+2. Wine never got to ClearType: `font_SelectFont()` uses the face's
+   `aa_flags` first, and those come from fontconfig (`parse_aa_pattern()`:
+   `antialias` true + `rgba` none → `GGO_GRAY4_BITMAP`). The registry's
+   `FontSmoothingType=2` is used only when fontconfig says nothing. On this
+   host fontconfig reports `rgba: 5` (none), so every face got greyscale, and
+   Tahoma ≤ 16 ppem none at all (`+font`: `aa 5`, `aa disabled by GASP`).
+
+**Measurement** (2026-11-16, `docs/wine-repro/win32u-font-smoothing/`,
+`tahoma-ppem.c`): the sample string at 11-24 px, default / antialiased /
+ClearType quality, counting partly covered pixels. Renamed copies of Wine's
+own Tahoma (11.20, 11.22, without bitmaps, with `gasp` smooth everywhere,
+bold) were loaded with `AddFontResourceEx(FR_PRIVATE)`.
+
+| | 11-16 px, ClearType | 11-16 px, greyscale | 17+ px |
+|---|---|---|---|
+| Windows 10 22H2, its Tahoma | ~1100-1800, coloured | 0 | smoothed |
+| Windows 10, Wine's Tahoma 11.20 / 11.22 | ~1150-2100, coloured | 0 | smoothed |
+| Wine (winum-11.20-2), fontconfig `rgba` none | 0 | 0 | greyscale |
+| same, `FONTCONFIG_FILE` with `rgba=rgb` | ~1370-2540, coloured | 0 | smoothed |
+
+11.20 and 11.22 gave identical counts; removing the embedded bitmaps changed
+no smoothing (only widths on Windows). With `rgba=rgb` Wine matches Windows'
+pattern in every column. The Windows host was the contributor's networked
+Windows 10 machine, not the maintainer's offline VM; only Wine's LGPL fonts
+and the probe went there, and only text came back. Wine ran in a throwaway
+prefix, not Inventor's.
+
+**Fix (Nix launcher).** `nix/launch-fonts.sh` sets ClearType once per release
+state and, when the prefix asks for ClearType, gives Wine a fontconfig file
+that includes the host's and sets `rgba` from `FontSmoothingOrientation`.
+The `Tahoma=Segoe UI` substitution is removed (see `docs/nixos.md`). The
+installer's prefixes (`scripts/`) are not changed by this; they rely on the
+host's fontconfig.
+
+**Open.** Check in Inventor on the 4K screen (L4), also for colour fringes.
+Whether Wine should prefer the registry's ClearType setting over
+fontconfig's is a question for a Wine bug report: the application asks for
+`CLEARTYPE_QUALITY` and gets greyscale, and Tahoma then none at ≤ 16 ppem,
+where Windows draws ClearType. Validation: launcher unit tests
+(`checks.runtime-state`), probe measurements; no Wine patch.
 
 ### Native Wayland summary: not ready for Inventor (2026-10-26)
 
@@ -1620,6 +1675,17 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-16 - Nix: small Tahoma text smoothed with ClearType (issue #13):**
+Wine 11.22's Tahoma has the same `gasp` table and bitmaps as 11.20, so it
+does not change smoothing. The jaggies came from Wine taking greyscale from
+fontconfig (`rgba` none) instead of the prefix's ClearType, and Tahoma's
+`gasp` turning greyscale off up to 16 ppem. Windows 10 draws Wine's and its
+own Tahoma with ClearType at every size. The Nix launcher now sets ClearType
+once per release and gives Wine a fontconfig file with `rgba` from the
+prefix; the Segoe UI substitution is removed. 11 runtime tests pass through
+`checks.runtime-state`; both launchers build. Not yet looked at in Inventor.
+Section "Small Tahoma text without smoothing (ClearType)".
 
 **2026-11-16 - Nix: candidate fixture failed evaluation-only CI:**
 After #12, `nix flake check --no-build --show-trace` could fail while reading
