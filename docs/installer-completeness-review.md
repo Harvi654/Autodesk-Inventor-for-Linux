@@ -271,14 +271,14 @@ yet checked on a real install** - the results of the maintainer's run
 
 | Point | What the installer does now | Existing prefixes | Check | Result |
 |---|---|---|---|---|
-| 1 Registration | `Inventor.exe /install 0` once after the product's packages and the .NET 4.8 step, winemenubuilder off for everything it runs, then `wineserver -k`/`-w`; checks `Inventor.Application` and `Inventor.PartDocument` in `user.reg`; not finished = warning, tried again on the next run | migration `0005-inventor-registration` (a registration that does not finish warns, does not stop the launcher; again with `migrate-prefix.sh --run 0005`) | `user.reg` has both keys; no new `~/.local/share/applications/wine-*.desktop`; install.log `registered:` | pending |
-| 2 `setup.xml` properties | `<Properties>` become variables (`INV_INSTALL_PATH`); a `RegistrySearch` whose key and value exist in the prefix wins; logged as `var    %X% = ... (setup.xml; ...)` | none needed for `INSTALLDIR` (files in place); the InvAcNGEN action (.NET native images) did not run in them - open, below | install.log `var    %INV_INSTALL_PATH% = C:\Program Files\Autodesk\Inventor 2027\`; InvAcNGEN runs with `...\Inventor 2027\Bin`; compare: `NGenService` keys | pending |
-| 3 `CONTENT_PATH` | from `SetupRes/locale/<lang>/<app>.xml` (`defaultVal`), else ODIS's default `%PROGRAMDATA%\Autodesk` | none (files in place) | install.log `var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, ...)` | pending |
-| 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | pending |
-| 6 Action parameters | unknown `%VARIABLE%` in path or parameters: action skipped with `WARN skip action ...`; MSI properties left out, install parameters with unknown variables and action types never run are listed | - | install.log: no `WARN skip action` for Inventor's packages | pending |
-| 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | pending |
-| 7 ADIX root files | listed as `not installed (outside VFS, not package metadata): ...` | - | install.log line for InvCore (`SharedComponents.json`) - decide per file | pending |
-| 8 Standard MSI properties | `MSIFASTINSTALL=7`, `REBOOT=ReallySuppress`, `ARPSYSTEMCOMPONENT=1` on every MSI (not on MSP patches) unless the manifest gives one | none: only `SystemComponent=1` in the parts' uninstall entries, nothing reads it | compare-reference section 2: these three no longer "Windows passes ..." | pending |
+| 1 Registration | `Inventor.exe /install 0` once after the product's packages and the .NET 4.8 step, winemenubuilder off for everything it runs, then `wineserver -k`/`-w`; checks `Inventor.Application` and `Inventor.PartDocument` in `user.reg`; not finished = warning, tried again on the next run | migration `0005-inventor-registration` (a registration that does not finish warns, does not stop the launcher; again with `migrate-prefix.sh --run 0005`) | `user.reg` has both keys; no new `~/.local/share/applications/wine-*.desktop`; install.log `registered:` | run 4: both keys, no menu entries; migration 0005 on an existing prefix (run-3 prefix) - L4 2026-11-16 |
+| 2 `setup.xml` properties | `<Properties>` become variables (`INV_INSTALL_PATH`); a `RegistrySearch` whose key and value exist in the prefix wins; logged as `var    %X% = ... (setup.xml; ...)` | none needed for `INSTALLDIR` (files in place); the InvAcNGEN action (.NET native images) did not run in them - open, below | install.log `var    %INV_INSTALL_PATH% = C:\Program Files\Autodesk\Inventor 2027\`; InvAcNGEN runs with `...\Inventor 2027\Bin`; compare: `NGenService` keys | run 4: `INV_INSTALL_PATH` from `setup.xml`, its RegistrySearch read; InvAcNGEN runs with real paths (native images: open) |
+| 3 `CONTENT_PATH` | from `SetupRes/locale/<lang>/<app>.xml` (`defaultVal`), else ODIS's default `%PROGRAMDATA%\Autodesk` | none (files in place) | install.log `var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, ...)` | run 4: from `setup.xml` (`<Setting>`); `DCLibrary64.msi` got `INSTALLDIR=C:\ProgramData\Autodesk\Inventor 2027` as on Windows |
+| 4 `INSTALLDIR` | for every MSI with an `installLocation` that can be filled in; unknown variable: warning, not passed | none (files in place) | compare-reference section 2: no `INSTALLDIR` "Windows passes ..., we don't" | run 4: the same `INSTALLDIR` as Windows for every MSI (MSIs without a location: `%INSTALL_DEST%`); values with a space through a batch file (Wine msiexec quoting) |
+| 6 Action parameters | unknown `%VARIABLE%` in path or parameters: action skipped with `WARN skip action ...`; MSI properties left out, install parameters with unknown variables and action types never run are listed | - | install.log: no `WARN skip action` for Inventor's packages | run 4: no action skipped for an unknown variable |
+| 5 Applications | every `manifest/app.*.xml` except `*.ui` (inventor, dclibrary, aceinvaddin, dwgtrueview); `--no-app`, `install.sh --no-trueview/--no-electrical`, GUI switches; .NET 4.8 (TrueView's dependency) stays with its own step. A file another package already put into the prefix keeps the higher file version (Windows Installer's rule), each logged as `shared file ...` | no migration (the files come from the image): a repair run of `install.sh` with the same download installs the new applications (finished packages are skipped). A prefix that already has an update keeps those applications at the base build - a new installation is the clean way | compare-reference section 3: TrueView and Electrical files no longer missing; section 3a: the seven `Common Files\Autodesk Shared` files have Windows' size; admeta-check: TrueView/Electrical packages complete | run 4: all four applications; Catalog Browser in Inventor's folder (InstallPathMappings), its library via `tar.exe`; shared files and fonts as on Windows (TrueView first). The Catalog Browser asks at start for Microsoft 365 Access Runtime (64-bit), not in the image - future work |
+| 7 ADIX root files | listed as `not installed (outside VFS, not package metadata): ...` | - | install.log line for InvCore (`SharedComponents.json`) - decide per file | run 4: listed (`SharedComponents.json`, MSIX metadata, Material Library's `Registry.reg` - same names as `Registry.dat`, nothing to add) |
+| 8 Standard MSI properties | `MSIFASTINSTALL=7`, `REBOOT=ReallySuppress`, `ARPSYSTEMCOMPONENT=1` on every MSI (not on MSP patches) unless the manifest gives one | none: only `SystemComponent=1` in the parts' uninstall entries, nothing reads it | compare-reference section 2: these three no longer "Windows passes ..." | run 4: the same as Windows for every MSI |
 | Genuine Service | `--with ags` installs it; default without it until the test above | - | the test on a prefix copy ("On purpose") | pending |
 
 Open, to be decided with the results:
@@ -683,7 +683,24 @@ Windows. Comparison with Windows:
   prefix (`HKLM\Software\Classes`) - both are `HKEY_CLASSES_ROOT`, so COM
   finds them; probable cause Wine's per-user type library registration
   (to be checked before a Wine bug report).
-- Smoke test: pending.
+- admeta-check's 7 different files are all in DWG TrueView's list
+  (`dwgviewr.admeta`: the seven shared files in `Common Files\Autodesk
+  Shared`) - the later packages' copies, as on Windows. Confirmed.
+- The registry groups in detail: 521 `CurrentVersion\Installer` and 6
+  `Uninstall` (Windows Installer bookkeeping of the MSIs, also the ones
+  inside the VC++ / .NET 10 bootstrappers), 363 `SharedDLLs` (reference
+  counts of shared files that ODIS keeps), 173 + 35 in `Wow6432Node\...
+  \Windows` (the same for 32-bit), 84 `NGenService` (native images - open),
+  2 `Run` and the services `Autodesk*`, `FlexNet` and the licensing
+  service's security descriptor (Access, Genuine Service, licensing - on
+  purpose or set up by the prefix setup), the rest Windows' own
+  (`bam`, `UFH`, notifications, Process Monitor).
+- **Smoke test (L4, maintainer, 2026-11-16): passed** - "everything seems
+  good". The Electrical Catalog Browser starts with the message
+  "Component Updates Required - Install the latest 64-bit version of
+  Microsoft 365 Access Runtime to use the Catalog Browser": a Microsoft
+  component outside Autodesk's image, which ODIS does not install either.
+  Future work, not an installer gap.
 
 **Dry run with the finished branch (2026-11-16, fresh prefix
 `.wine-inventor2027-review2`):** order `dwgtrueview, inventor, dclibrary,

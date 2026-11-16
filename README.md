@@ -91,7 +91,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Assemblies | ✅ | |
 | Content Center (screws, nuts, profiles, ...) | ✅ | ~12.7 GB, installed by default |
 | DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
-| Electrical Catalog Browser | 🧪 | installed by default, as on Windows; its library package unzips with `tar.exe`, which the prefix now gets (libarchive's bsdtar, as Windows 10 ships it); not tested in use yet |
+| Electrical Catalog Browser | ❌ | installed by default, as on Windows (its library package unzips with `tar.exe`, which the prefix now gets); at start it asks for Microsoft 365 Access Runtime (64-bit), which is not in Autodesk's image and not installed - not usable yet |
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
