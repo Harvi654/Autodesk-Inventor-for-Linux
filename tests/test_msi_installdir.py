@@ -58,6 +58,17 @@ class MsiInstallDir(unittest.TestCase):
         self.assertIn(r"INSTALLDIR=C:\Program Files\Autodesk", self.props("hive"))
         self.assertIn("INSTALLDIR=C:\\Program Files\\Autodesk\\Inventor 2027\\", self.props("InvPrivate"))
 
+    def test_setup_options_are_not_passed(self):
+        # setup.xml fills DC_GOST, but Windows' command line for
+        # InvPrivate.msi has no DC_GOST: ODIS does not pass setup options
+        self.inst.vars["dc_gost"] = "0"
+        self.inst.image_vars.add("dc_gost")
+        self.steps["InvPrivate"]["msiProperties"]["DC_GOST"] = "%DC_GOST%"
+        p = self.props("InvPrivate")
+        self.assertFalse(any(a.startswith("DC_GOST=") for a in p))
+        self.assertIn("MSI properties left out (setup options, ODIS does not pass them): DC_GOST (%DC_GOST%)",
+                      Path(self.inst.logdir, "install.log").read_text())
+
     def test_properties_only_odis_fills_are_still_left_out(self):
         p = self.props("InvPrivate")
         self.assertIn("ADSK_LANG=en-US", p)

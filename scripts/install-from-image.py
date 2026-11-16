@@ -264,6 +264,9 @@ class Installer:
         overrides = self.env.get("WINEDLLOVERRIDES", "")
         if "winemenubuilder.exe=" not in overrides.lower():
             self.env["WINEDLLOVERRIDES"] = (overrides + ";" if overrides else "") + "winemenubuilder.exe=d"
+        # names of the variables the image itself defines (setup.xml
+        # properties and settings, setup UI defaults)
+        self.image_vars = set()
         self.vars = {
             "commonprogramfiles": r"C:\Program Files\Common Files",
             "commonprogramfiles(x86)": r"C:\Program Files (x86)\Common Files",
@@ -426,6 +429,7 @@ class Installer:
                     value = found
                     break
             self.vars[name] = value
+            self.image_vars.add(name)
             self.log("var    %%%s%% = %s (setup.xml%s)" % (pr["name"], self.expand(value),
                                                           "; " + "; ".join(notes) if notes else ""))
 
@@ -446,6 +450,10 @@ class Installer:
         # of the setup UI (a setting need not sit in its application's file)
         files = [p for p in (odis.setup_ui_settings(img, app, self.a.lang)[0] for app in rels) if p]
         files += [p for p in odis.setup_ui_files(img, self.a.lang) if p not in files]
+        # ... and the <Setting name=... defaultVal=...> elements of the image's
+        # setup.xml itself, where Inventor 2027 keeps CONTENT_PATH
+        if os.path.isfile(os.path.join(img.root, "setup.xml")):
+            files.append(os.path.join(img.root, "setup.xml"))
         for path in files:
             found, unnamed = odis.ui_settings_of(path)
             src = os.path.relpath(path, img.root)
@@ -453,12 +461,14 @@ class Installer:
                 if name.lower() in self.vars:
                     continue
                 self.vars[name.lower()] = default
+                self.image_vars.add(name.lower())
                 self.log("var    %%%s%% = %s (setup UI default, %s)" % (name, self.expand(default), src))
             if unnamed:
                 self.log("note   %s: settings without a variable name (not used): %s" % (src, ", ".join(unnamed)))
         for name, default in self.UI_DEFAULTS.items():
             if name.lower() not in self.vars:
                 self.vars[name.lower()] = default
+                self.image_vars.add(name.lower())
                 self.log("var    %%%s%% = %s (ODIS default; no setup UI settings file names it)"
                          % (name, self.expand(default)))
 
@@ -476,8 +486,16 @@ class Installer:
         # Autodesk MSIs have the launch condition "ADSK_ODIS_SETUP OR Installed"
         # ("needs to be run from Setup.exe"); ODIS sets this property.
         argv.append("ADSK_ODIS_SETUP=1")
-        dropped = []
+        dropped, options = [], []
+        own = {k.lower() for k in (s.get("properties") or {})}
         for k, v in s["msiProperties"].items():
+            # a value that is one of the image's setup options (DC_GOST,
+            # STANDALONE_LP from setup.xml): Windows' command lines show that
+            # ODIS does not pass such properties (2026-11-16, run 3)
+            refs = [n for n in VARIABLE.findall(v) if n.lower() in self.image_vars and n.lower() not in own]
+            if refs:
+                options.append("%s (%s)" % (k, ", ".join("%%%s%%" % n for n in refs)))
+                continue
             v = self.expand(v, extra, s)
             if "%" not in v:
                 argv.append("%s=%s" % (k, v))
@@ -487,6 +505,8 @@ class Installer:
                 dropped.append("%s (%s)" % (k, ", ".join("%%%s%%" % x for x in unknown_variables(v)) or v))
         if dropped:
             self.log("      MSI properties left out (unknown variable): %s" % ", ".join(dropped))
+        if options:
+            self.log("      MSI properties left out (setup options, ODIS does not pass them): %s" % ", ".join(options))
         # ODIS's standard properties on every MSI command line (Windows'
         # logs) - "Needed" 8: no restore point and less costing
         # (MSIFASTINSTALL=7), never a reboot, and each part kept out of

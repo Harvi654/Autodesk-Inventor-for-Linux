@@ -95,6 +95,15 @@ class SetupUISettings(unittest.TestCase):
         self.assertEqual(inst.vars["content_path"], "C:\\Elsewhere")
         self.assertIn("inventor-content.xml", self.log(inst))
 
+    def test_setting_in_setup_xml(self):
+        # where Inventor 2027 keeps it (run 3)
+        fx.write(self.image, "setup.xml", '<Bundle><Properties><Property property="DC_GOST" defaultValue="0"/>'
+                 '</Properties><Settings><Setting name="CONTENT_PATH" defaultVal="%PROGRAMDATA%\\Autodesk" '
+                 'deployment="true" standalone="true"><String id="IDC_CONTENT_PATH"/></Setting></Settings></Bundle>')
+        mod, inst = self.inst()
+        self.assertEqual(self.dclibrary_location(mod, inst), r"C:\ProgramData\Autodesk\Inventor 2027")
+        self.assertIn(r"var    %CONTENT_PATH% = C:\ProgramData\Autodesk (setup UI default, setup.xml)", self.log(inst))
+
     def test_settings_of_an_application_not_planned_are_read_too(self):
         fx.write(self.image, "SetupRes/locale/en-US/dclibrary.xml", '<s><CONTENT_PATH defaultVal="C:\\X"/></s>')
         mod, inst = self.inst(apps=("inventor",))
