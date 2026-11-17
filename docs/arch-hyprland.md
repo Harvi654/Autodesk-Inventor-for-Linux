@@ -599,7 +599,7 @@ menu entry when the Vault client is in the prefix.
 | Problem | Cause | Fix |
 |---|---|---|
 | Vault Explorer does not start: `DirectoryNotFoundException` for a path `...\unix\home\...` | Vault's .NET host uses the working directory as content root; started from a Linux folder, which has no drive letter with isolation (no `Z:`), the working directory becomes a `\\?\unix\...` path it cannot use | the launcher starts it from its own folder (`Vault Client <year>\Explorer`) |
-| Black area over the right pane, start page drawn shifted to the left, login dialog with doubled labels (scaling above 96 DPI) | `Connectivity.Vault.exe` is DPI unaware, so Wine scales its window surface; the start page is CefSharp, a child window owned by another process, which draws unscaled straight to the X window - in the wrong place, and the place it belongs stays black | `dpiAwareness=1` (system aware) under `Image File Execution Options\Connectivity.Vault.exe`, which Wine's `user32` reads at process start: Vault scales itself, nothing is scaled by Wine (the launcher sets it once) |
+| Black area over the right pane, start page drawn shifted to the left, login dialog with doubled labels (scaling above 96 DPI) | `Connectivity.Vault.exe` is DPI unaware, so Wine scales its window surface; the start page is CefSharp, a child window owned by another process, which draws unscaled straight to the X window - in the wrong place, and the place it belongs stays black | `dpiAwareness=1` (system aware) under `Image File Execution Options\Connectivity.Vault.exe`, which Wine's `user32` reads at process start: Vault scales itself, nothing is scaled by Wine (prefix migration `0012-vault-dpi-aware`) |
 | Dark-theme menus invisible (opened, but behind a shadow) under KWin | winex11 keeps a window managed although it lost its caption before it was shown | separate draft patch, `patches/drafts/winex11-unmanaged-before-map.patch` |
 
 How the DPI cause was found: at 96 DPI (`wine reg add 'HKCU\Control
@@ -1557,6 +1557,11 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
   not the pinned ones (SHA-256 of each DLL, `VKD3D_DLL_SHA256` in
   common.sh); the old DLLs go to the backup; offline it is put off
   (`MIG_DEFER`) like 0006.
+- `0012-vault-dpi-aware` (2026-11-17): `dpiAwareness=1` for
+  `Connectivity.Vault.exe` (`Image File Execution Options`, HKLM), so Vault
+  Explorer scales itself above 96 DPI (section "Vault Basic 2027 client").
+  Set in every prefix: the value only acts when a program of that name runs,
+  and a prefix that gets the Vault client later is ready.
 - Waiting: optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
 
 **Rule (AGENTS.md):** every change to what a prefix gets is a new step,
