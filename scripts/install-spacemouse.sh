@@ -21,7 +21,7 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 DLL="$P_C/windows/system32/siappdll.dll"
 
 if [ "${1:-}" = --uninstall ]; then
-    rm -f "$DLL"
+    rm -f "$DLL" "$WINEPREFIX/.inventor-on-linux/siappdll-source"
     ok "removed $DLL (Inventor runs without a 3D mouse; spacemouse.ini is kept)"
     exit 0
 fi
@@ -35,6 +35,11 @@ x86_64-w64-mingw32-gcc -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-fiel
     -shared -o "$OUT/siappdll.dll" "$PROJECT_DIR/spacenav/siappdll.c" \
     -lws2_32 -lole32 -loleaut32 -luuid -lgdi32 -luser32 -Wl,--kill-at -static-libgcc
 install -m 644 "$OUT/siappdll.dll" "$DLL"
+# which source the DLL was built from: the launcher compares it with
+# spacenav/siappdll.c and says when to run this script again (the DLL is
+# outside the migrations, so an updated checkout does not rebuild it)
+mkdir -p "$WINEPREFIX/.inventor-on-linux"
+sha256sum "$PROJECT_DIR/spacenav/siappdll.c" | cut -d' ' -f1 > "$WINEPREFIX/.inventor-on-linux/siappdll-source"
 ok "siappdll.dll -> $DLL"
 
 [ -S /run/spnav.sock ] && ok "spacenavd is running" \

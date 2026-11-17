@@ -167,6 +167,11 @@ rm -f "$ICONREG"
 if [ -S /run/spnav.sock ] && [ -f "$P_C/windows/system32/siappdll.dll" ] && command -v socat >/dev/null; then
     socat "TCP-LISTEN:${SIAPPDLL_PORT:-17462},bind=127.0.0.1,reuseaddr,fork" UNIX-CONNECT:/run/spnav.sock 2>/dev/null &
     SPNAV_RELAY=$!
+    # the DLL is built by install-spacemouse.sh, outside the migrations: an
+    # updated checkout keeps the old one until the script runs again
+    if [ "$(cat "$WINEPREFIX/.inventor-on-linux/siappdll-source" 2>/dev/null)" != "$(sha256sum "$SCRIPTS_DIR/../spacenav/siappdll.c" | cut -d' ' -f1)" ]; then
+        warn "siappdll.dll was built from an older spacenav/siappdll.c - run: bash scripts/install-spacemouse.sh"
+    fi
     # its button file stays on the Linux side, read through Wine's \\?\unix
     # path: no drive or link needed (isolation would turn a link into an empty
     # folder), and edits apply while Inventor runs

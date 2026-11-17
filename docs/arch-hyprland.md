@@ -1596,7 +1596,10 @@ bash scripts/install-spacemouse.sh          # builds siappdll.dll into the prefi
 ```
 
 `--uninstall` removes the DLL again. The launcher does the rest while the
-prefix runs.
+prefix runs. The DLL is outside the prefix migrations, so an updated checkout
+keeps the old one: the script records the SHA-256 of the source it built
+(`<prefix>/.inventor-on-linux/siappdll-source`), and the launcher says when
+`spacenav/siappdll.c` has changed since and the script has to run again.
 
 **How it works:**
 
@@ -1605,6 +1608,9 @@ prefix runs.
   `WSAEAFNOSUPPORT`). `launch-inventor.sh` therefore relays it to
   `127.0.0.1:17462` with `socat`, and the DLL reads the relay: spacenavd's old
   protocol, 8 x int32 per event (type, x, y, z, rx, ry, rz, period or button).
+  The relay exists only for this: winum has an `AF_UNIX` candidate in
+  progress (`topic/ws2_32-af-unix`); once it is in the series, the DLL can
+  connect to `/run/spnav.sock` itself and the relay goes.
 - Motion reaches Inventor as on Windows: a message registered as
   `SpaceWareMessage00` is posted to the window Inventor gave `SiOpen`, and
   `SiGetEvent` decodes it.
