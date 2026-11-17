@@ -26,6 +26,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
 - **NixOS:** [NixOS: writable state hid DXVK; 2026 sign-in opened 2027](#nixos-writable-state-hid-dxvk-2026-sign-in-opened-2027)
+- **Desktop entries:** [Wine's menu builder off in the prefix (migration 0011)](#wines-menu-builder-off-in-the-prefix-migration-0011)
 - **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
@@ -1589,6 +1590,68 @@ palette); the NixOS build of the winum series (@krokosik).
   an `mscoree` import): the .NET Framework's native image service, which
   Wine's service manager cannot start; seen on working prefixes too
   (maintainer, 2026-11-16). Inventor does not need it.
+- `Error running cmd ... winemenubuilder.exe -a -r (126)` from `wineboot`:
+  Wine's menu builder is disabled in the prefix (migration 0011; before,
+  through `WINEDLLOVERRIDES`), so it cannot start - intended (section
+  "Wine's menu builder off in the prefix").
+
+## Wine's menu builder off in the prefix (migration 0011)
+
+**Symptom.** After a fresh Inventor 2026 installation had finished (22:56,
+2026-11-16), the maintainer ran `wineserver -k` and then
+`wine reg query ...` by hand in a terminal (diagnostics, 23:09). Wine
+started the prefix again, and `wineboot` ran `winemenubuilder.exe -a -r`.
+It wrote 18 entries into `~/.local/share/applications` that pointed at
+`~/.wine-inventor2026`: `wine-extension-{application, appref-ms, chm, crt,
+dwg, "dwg;*.idw", hlp, iam, ide, ipn, ipt, msp, reg, vbs, xaml,
+xbap}.desktop` and `wine-protocol-{acad-acc, adskidmgr}.desktop` - file
+associations, and the sign-in protocol, that start Autodesk's programs
+without this project's launcher. The same happened earlier that day with
+a Microsoft installer run by hand. `install-desktop-integration.sh`
+removed them.
+
+**Cause.** The menu builder was off only through the environment:
+`WINEDLLOVERRIDES=winemenubuilder.exe=d`, set by `common.sh` and
+`install-from-image.py`, so by the installer and the launcher. A plain
+`wine ...` from a guide or a terminal does not have it.
+
+**Fix.** Migration `0011-winemenubuilder-off` sets
+`HKCU\Software\Wine\DllOverrides` `"winemenubuilder.exe"=""` in the prefix.
+An empty load order is what Wine's loader reads as disabled
+(`dlls/ntdll/unix/loadorder.c`, `parse_load_order` starts from "disabled"
+and only `n`/`b` change it; `remove_dll_ext` strips only `.dll`, so the
+value name keeps its `.exe`) - the same as the environment setting, which
+Wine checks first and which stays (harmless, and it covers the time before
+the migration ran). Then the step removes the prefix's menu entries as
+`install-desktop-integration.sh` does: every `.desktop` file under
+`~/.local/share/applications` with `WINEPREFIX=<this prefix>` in it, Wine's
+own MIME packages and icons for `.ipt/.iam/.idw/.ipn/.ipj`, then
+`update-desktop-database` and `update-mime-database`. Entries of other
+prefixes and other programs stay. Both now use one function,
+`remove_wine_menu_entries` (common.sh). The entries are outside the prefix
+and not in the migration's backup (Wine made them; the registry backup
+holds the key). A new prefix gets the key the same way, since
+`finish-install.sh` runs every migration.
+
+**What changes otherwise.** Nothing for the installer, the launcher,
+Inventor's registration (0005), updates and the uninstall: they already
+ran with the menu builder disabled through the environment, and nothing
+in this project runs it on purpose. `wineboot` logs
+`Error running cmd ... winemenubuilder.exe -a -r (126)` - expected, as
+before under the environment setting. Whoever wants Wine's menu entries
+for this prefix back deletes the value
+(`wine reg delete 'HKCU\Software\Wine\DllOverrides' /v winemenubuilder.exe /f`)
+and runs Wine without `common.sh`.
+
+**Tested.** `tests/test_migrations.py`: the key is written with an empty
+value; the prefix's entries (extension, protocol, a Start-menu shortcut in
+`wine/Programs/...`, Wine's `x-wine-extension-ipt` package) go; another
+prefix's entry, a desktop file of another program and Wine's
+`x-wine-extension-pdf` package stay; a value such as `builtin` is
+replaced; a prefix with the key and no entries is "already so"; with the
+key already set, new entries still make the step run. Open: the
+maintainer's check on a prefix copy (start, sign-in, an update, then a
+plain `wineserver -k; wine reg query ...` without new entries).
 
 ## NixOS: writable state hid DXVK; 2026 sign-in opened 2027
 
@@ -1652,6 +1715,16 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-16 - Wine's menu builder off in the prefix itself:** a plain
+`wine reg query` by hand in the fresh 2026 prefix let `wineboot` run
+`winemenubuilder.exe -a -r`, which wrote 18 file-association and protocol
+entries (`wine-extension-ipt`, `wine-protocol-adskidmgr`, ...) for the
+prefix into `~/.local/share/applications`. The menu builder was off only
+through `WINEDLLOVERRIDES`, which a terminal does not have. Migration
+`0011-winemenubuilder-off` sets `DllOverrides` `"winemenubuilder.exe"=""`
+(disabled, as Wine's loader reads it) and removes the prefix's menu
+entries. Section "Wine's menu builder off in the prefix (migration 0011)".
 
 **2026-11-16 - Fresh installations of 2027 and 2026 from `main` (after
 PR #21):** the maintainer's Arch machine (31 GiB, winum-11.20-2), each

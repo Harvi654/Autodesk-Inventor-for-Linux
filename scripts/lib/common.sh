@@ -277,10 +277,52 @@ export WINEARCH
 # would copy them to ~/.local/share/applications as entries that start the
 # programs without this project's launcher. The launcher entry comes from
 # install-desktop-integration.sh instead.
+# Since migration 0011 the prefix itself has it off too (DllOverrides
+# "winemenubuilder.exe"="", menubuilder_off), so a plain `wine ...` in a
+# terminal does not run it either; this setting covers the time before.
 case ";${WINEDLLOVERRIDES:-};" in
     *";winemenubuilder.exe="*) ;;
     *) export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}winemenubuilder.exe=d" ;;
 esac
+
+# 0 when the prefix's DllOverrides has "winemenubuilder.exe" = "" - what
+# Wine's loader reads as disabled (an empty load order; the name keeps its
+# .exe), the same as WINEDLLOVERRIDES=winemenubuilder.exe=d.
+menubuilder_off() {
+    local out
+    out="$(WINEDEBUG=-all wine_capture reg query 'HKCU\Software\Wine\DllOverrides' /v winemenubuilder.exe)" || return 1
+    printf '%s\n' "$out" | tr -d '\r' | awk '
+        tolower($1) == "winemenubuilder.exe" && $2 ~ /^REG_/ { found = 1; if (NF > 2) set = 1 }
+        END { exit !(found && !set) }'
+}
+
+# The entries Wine's menu builder made for this prefix in the user's menu
+# (Exec=env "WINEPREFIX=<prefix>" wine ...: Autodesk's Start-menu shortcuts,
+# file associations such as wine-extension-ipt.desktop, the adskidmgr://
+# protocol) - they start programs without the launcher - and Wine's own
+# MIME packages for Inventor's file types. Other prefixes' entries stay.
+# Prints how many files went; used by install-desktop-integration.sh and
+# migration 0011.
+remove_wine_menu_entries() {
+    local apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    local mime="${XDG_DATA_HOME:-$HOME/.local/share}/mime" n=0 f e
+    while IFS= read -r -d '' f; do
+        rm -f "$f"; n=$((n + 1))
+    done < <(grep -rlZF -e "WINEPREFIX=$INV_PREFIX\"" -e "WINEPREFIX=\"$INV_PREFIX\"" "$apps" 2>/dev/null || true)
+    find "$apps/wine" -type d -empty -delete 2>/dev/null || true
+    for e in ipt iam idw ipn ipj; do
+        for f in "$mime/packages/x-wine-extension-$e.xml" \
+                 "${XDG_DATA_HOME:-$HOME/.local/share}"/icons/hicolor/*/apps/application-x-wine-extension-$e.png; do
+            [ -e "$f" ] && { rm -f "$f"; n=$((n + 1)); }
+        done
+    done
+    if [ "$n" -gt 0 ]; then
+        # (stdout too: the caller reads the count from it)
+        command -v update-desktop-database >/dev/null && { update-desktop-database "$apps" >/dev/null 2>&1 || true; }
+        command -v update-mime-database >/dev/null && { update-mime-database "$mime" >/dev/null 2>&1 || true; }
+    fi
+    echo "$n"
+}
 
 # Windows-side source paths
 WIN_INV="$WIN_ROOT/Program Files/Autodesk/Inventor $INV_YEAR"

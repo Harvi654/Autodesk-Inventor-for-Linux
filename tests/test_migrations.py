@@ -225,7 +225,8 @@ class Migrations(unittest.TestCase):
         k = "HKCU\\Software\\Wine\\AppDefaults\\Inventor.exe\\X11 Driver"
         (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k)
                                     + "[Software\\\\Classes\\\\Inventor.Application] 1\n"
-                                    + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n")
+                                    + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n"
+                                    + "HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n")
         for d in ("system32", "syswow64"):
             (p / "drive_c/windows" / d / "tar.exe").write_bytes(self.fake_tar)
         self.put_vkd3d(p, winum=True)
@@ -532,6 +533,76 @@ class Migrations(unittest.TestCase):
                                                "Autodesk.SharedViews.Inventor.addin"])
         self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
         self.assertNotIn("SharedViews then crashes", (ROOT / "scripts/addins.sh").read_text())
+
+    # --- 0011: Wine's menu builder off in the prefix ------------------------------
+    def menu_entries(self, p):
+        """What winemenubuilder -a -r left for prefix P (2026-11-16), one for
+        another prefix, a desktop file of something else, Wine's MIME packages."""
+        data = self.home / ".local/share"
+        apps = data / "applications"
+        (apps / "wine/Programs/Autodesk").mkdir(parents=True)
+        mine = {}
+        for name in ("wine-extension-ipt.desktop", "wine-extension-dwg.desktop", "wine-extension-dwg;*.idw.desktop",
+                     "wine-protocol-adskidmgr.desktop", "wine/Programs/Autodesk/Inventor 2026.desktop"):
+            mine[name] = apps / name
+            mine[name].write_text('[Desktop Entry]\nExec=env "WINEPREFIX=%s" wine start /ProgIDOpen x %%f\n' % p)
+        other = apps / "wine-extension-pdf.desktop"
+        other.write_text('[Desktop Entry]\nExec=env "WINEPREFIX=%s" wine start x %%f\n' % (self.home / ".wine"))
+        unrelated = apps / "org.gnome.Nautilus.desktop"
+        unrelated.write_text("[Desktop Entry]\nExec=nautilus\n")
+        (data / "mime/packages").mkdir(parents=True)
+        wine_ipt = data / "mime/packages/x-wine-extension-ipt.xml"
+        wine_ipt.write_text("<mime-info/>")
+        wine_pdf = data / "mime/packages/x-wine-extension-pdf.xml"
+        wine_pdf.write_text("<mime-info/>")
+        return mine, [other, unrelated, wine_pdf], wine_ipt
+
+    def test_menu_builder_off_in_the_prefix_and_its_entries_removed(self):
+        p = self.prefix(runtime="winum")
+        mine, keep, wine_ipt = self.menu_entries(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0011-winemenubuilder-off"])
+        # an empty value: what Wine's loader reads as disabled
+        self.assertIn("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n", (p / "user.reg").read_text())
+        for f in mine.values():
+            self.assertFalse(f.exists(), f)
+        self.assertFalse(wine_ipt.exists())
+        self.assertFalse((self.home / ".local/share/applications/wine").exists())   # empty folders go
+        for f in keep:
+            self.assertTrue(f.exists(), f)
+        self.assertIn("removed 6 Wine menu entries and file types", out.stdout)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_menu_entries_made_again_are_removed_by_a_new_run(self):
+        # key already set (e.g. a new prefix), but a run by hand with
+        # another Wine left entries: the step is still needed
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n")
+        mine, keep, _ = self.menu_entries(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0011-winemenubuilder-off"])
+        self.assertFalse(any(f.exists() for f in mine.values()))
+
+    def test_menu_builder_value_other_than_empty_is_replaced(self):
+        # "builtin" (or "native") would run it again
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|builtin\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        user = (p / "user.reg").read_text()
+        self.assertIn("DllOverrides|winemenubuilder.exe|\n", user)
+        self.assertNotIn("winemenubuilder.exe|builtin", user)
+
+    def test_menu_builder_key_already_off_and_no_entries(self):
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0011-winemenubuilder-off"])
 
     # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
     def test_public_paths_in_autodesk_strings(self):
