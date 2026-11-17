@@ -6,10 +6,11 @@ Install and run **Autodesk Inventor Professional 2026 and 2027** on Linux with
 Wine - from Autodesk's own download, without Windows or a virtual machine,
 with one command. Both releases can be installed side by side.
 
-> **Status: early release (v0.3), in active development.** Works for everyday
-> part, assembly, drawing and Content Center work, iLogic and Stress Analysis
-> on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on AMD RX 580
-> and RX 6400, and an Intel UHD 630 + NVIDIA GTX 1050 laptop; testers report
+> **Status: v0.4, in active development.** Works for everyday part,
+> assembly, drawing and Content Center work, iLogic, Stress Analysis, 3D PDF,
+> Import CAD and GPU ray tracing (Inventor 2027) on **Arch Linux** with
+> **Hyprland** or **KDE Plasma** (tested on AMD RX 580, RX 6400 and
+> RX 9060 XT, and an Intel UHD 630 + NVIDIA GTX 1050 laptop; testers report
 > on other machines, e.g. an NVIDIA RTX 5080). **Ubuntu 26.04** installs and
 > runs too (two clean installations in a virtual machine, the second with 3D
 > PDF and Stress Analysis), **Fedora 44** in a first test. NixOS: a
@@ -20,6 +21,12 @@ with one command. Both releases can be installed side by side.
 > file with Autodesk's installer on Windows, base and update. Inventor 2026
 > keeps working and is maintained, but no longer actively tested - see
 > [Supported releases](#supported-releases).
+>
+> **New in [v0.4.0](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/releases/tag/v0.4.0):**
+> the same installation as Autodesk's installer gives on Windows, GPU ray
+> tracing in Inventor 2027, and prefix migrations - existing installations
+> are brought up to date by the launcher. Coming from v0.3.x? See
+> [Upgrading](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/releases/tag/v0.4.0).
 >
 > New features are added and tested all the time - see
 > [What works](#what-works) and the [Roadmap](#roadmap). Items marked 🧪
@@ -103,7 +110,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
-| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and an NVIDIA RTX 5080. Needs Inventor 2027 with **Application Options > Hardware > Graphics Driver = DirectX 12** (then the viewport and ray tracing run on Direct3D 12, i.e. vkd3d-proton), a card with hardware ray tracing and a Vulkan driver that supports it; a Wine fix and a vkd3d-proton fix (both in winum's builds the installer uses; vkd3d-proton since 2026-11-16, migration 0009) and three settings, partly by hand for now. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
+| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and RX 9060 XT and an NVIDIA RTX 5080. Needs Inventor 2027 with **Application Options > Hardware > Graphics Driver = DirectX 12** (then the viewport and ray tracing run on Direct3D 12, i.e. vkd3d-proton), a card with hardware ray tracing and a Vulkan driver that supports it; a Wine fix and a vkd3d-proton fix (both in winum's builds the installer uses; vkd3d-proton since 2026-11-16, migration 0009) and three settings, partly by hand for now. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
@@ -494,35 +501,38 @@ Done:
 - [x] [winum](https://github.com/Harvi654/winum) as the Wine for Inventor
       (winum-11.20-1): one Wine shared with other engineering programs, with
       tests on real Windows for every fix
-- [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
+- [x] a graphical installer, with several releases side by side (v0.2.1, v0.3, v0.4)
 - [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
 - [x] Ubuntu / Debian (Ubuntu 26.04.1: clean installation of Inventor 2027
       in a VM with the whole current installer - winum, .NET 4.0 + 4.8,
       3D PDF and Stress Analysis working, 2026-11-11)
 - [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
-- [x] GPU ray tracing works in testing (Inventor 2027, AMD and NVIDIA)
-- [x] 3D PDF works in testing (with .NET Framework 4.8)
+- [x] GPU ray tracing in Inventor 2027 (AMD and NVIDIA; winum's
+      vkd3d-proton, v0.4)
+- [x] 3D PDF (with .NET Framework 4.8)
 - [x] .NET Framework 4.8 in the prefix, set up by the installer (3D PDF,
       Import CAD's Property Mapping; clean Inventor 2027.2 installation)
+- [x] Import CAD (STEP) into an assembly in 2027 - Reference and Convert
+      Model, with winum-11.20-2 (four ole32/packager fixes by @krokosik);
+      Property Mapping with .NET 4.8
+      ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10), v0.4)
+- [x] updates that reach existing installations: numbered prefix
+      migrations, run by the launcher at every start (v0.4)
+- [x] the status bar workaround by default, until a Wine fix (migration
+      0003, v0.4)
+- [x] installer completeness review: a prefix compared with a Windows
+      installation of the same image (files and registry), base and update,
+      and the gaps closed ([review](docs/installer-completeness-review.md), v0.4)
 
 Next release (in progress):
 
+- [ ] Wine 11.22 (winum-11.22-1)
 - [ ] GPU ray tracing set up by the installer, with a check whether the card
       and driver support it (Inventor 2027: Graphics Driver = DirectX 12 and
       `EnableHydra`; the registry value of the Graphics Driver choice is still
       to be found)
-- [ ] updates that reach existing installations: "Update project" also
-      updates the Wine prefix (new settings, components), step by step
-- [ ] the status bar workaround by default, until a Wine fix
-- [x] Import CAD (STEP) into an assembly in 2027 - Reference and Convert
-      Model, with winum-11.20-2 (four ole32/packager fixes by @krokosik);
-      Property Mapping with .NET 4.8
-      ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10))
-
-- [ ] installer completeness review: compare a prefix with a Windows
-      installation of the same image (files and registry) and close every
-      gap the installer leaves where ODIS would have done something
-      ([plan](docs/installer-completeness-review.md))
+- [ ] Microsoft's Access Database Engine as an optional installer step, for
+      the Electrical Catalog Browser
 
 Later, roughly in this order:
 
