@@ -622,7 +622,7 @@ Tested setup:
 | Inventor | Inventor 2027 (31.0.19200.0000) |
 | Vault client | Autodesk Vault Basic 2027 (Client) 32.0.71.0, from the Vault Basic Client 2027 image |
 | Vault server | Vault Basic 2027 on Windows, same network |
-| Wine | this project's `wine-11.20-6` |
+| Wine | this project's `wine-11.20-6`; the lifecycle tests below rerun on `winum-11.22-1` (2026-11-18) |
 | Desktop | Arch (CachyOS), KDE Plasma 6 on Wayland, Inventor and Vault through Xwayland |
 | DPI | 144 (150 %), `LogPixels` 144 in the prefix |
 | GPU | NVIDIA RTX 5080 |
@@ -635,6 +635,16 @@ Vault tab (open from Vault, check out, change, check in) and a project
 
 Still open: Content Center libraries from the Vault server (the project's
 libraries point at the server name `localhost`), Vault 2026 (not tried).
+
+Lifecycle of the shared prefix, rerun on `winum-11.22-1` (2026-11-18, after
+the prefix was updated from `wine-inventor-11.20-6` by migrations 0002 to
+0012): Vault started from its menu entry while Inventor runs, both up;
+closing Vault leaves Inventor running; Inventor started from Vault (open a
+file) and closed again leaves Vault running; after the last one closes the
+prefix shuts down; part, assembly, save and reopen, restart. One finding
+from that update: migration 0010 turned `Autodesk.InteractiveTutorial` on,
+and on this prefix (Wine Mono, no .NET Framework 4.8) its DLL crashed the
+Mono runtime at every start until `addins.sh disable InteractiveTutorial`.
 
 **Level:** launcher changes, not Wine patches. `bash -n`, the unit tests, the
 menu entry with a fake prefix in a temporary `HOME` (install and
