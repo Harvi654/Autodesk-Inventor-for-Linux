@@ -176,7 +176,7 @@ class Migrations(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         st = self.state(p)
         self.assertIn("adopted", st["done.0001-base-setup"])
-        for step in ("0002-winum-runtime", "0003-x11-driver-inventor"):
+        for step in ("0002-winum-runtime", "0003-x11-driver-inventor", "0012-vault-dpi-aware"):
             self.assertIn("applied", st["done." + step], out.stdout)
         # 0004 is optional: never without being asked for
         self.assertNotIn("done.0004-enable-hydra", st)
@@ -186,6 +186,9 @@ class Migrations(unittest.TestCase):
         user = (p / "user.reg").read_text()
         self.assertIn("Inventor.exe\\X11 Driver|UseEGL|N", user)
         self.assertIn("Inventor.exe\\X11 Driver|ClientSideWithRender|N", user)
+        # 0012: the Vault DPI value is HKLM, so system.reg; in every prefix
+        self.assertIn("Image File Execution Options\\Connectivity.Vault.exe|dpiAwareness|0x1",
+                      (p / "system.reg").read_text())
         self.assertNotIn("EnableHydra", user)
         self.assertIn("wineboot -u", (p / "calls.log").read_text())
         self.assertTrue((p / ".inventor-on-linux/backup/0002-winum-runtime/files/user.reg").exists())
@@ -217,6 +220,7 @@ class Migrations(unittest.TestCase):
         self.assertIn("already so", st["done.0002-winum-runtime"])
         self.assertNotIn("wineboot", (p / "calls.log").read_text())
         self.assertIn("applied", st["done.0003-x11-driver-inventor"])
+        self.assertIn("applied", st["done.0012-vault-dpi-aware"])
         self.assertNotIn("EnableHydra", (p / "user.reg").read_text())
         self.assertIn("nothing to do", self.migrate(p).stdout)
 
@@ -230,10 +234,12 @@ class Migrations(unittest.TestCase):
         for d in ("system32", "syswow64"):
             (p / "drive_c/windows" / d / "tar.exe").write_bytes(self.fake_tar)
         self.put_vkd3d(p, winum=True)
-        before = (p / "user.reg").read_text()
+        v = "HKLM\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Image File Execution Options\\Connectivity.Vault.exe"
+        (p / "system.reg").write_text("WINE REGISTRY Version 2\n%s|dpiAwareness|0x1\n" % v)
+        before = (p / "user.reg").read_text() + (p / "system.reg").read_text()
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
-        self.assertEqual((p / "user.reg").read_text(), before)
+        self.assertEqual((p / "user.reg").read_text() + (p / "system.reg").read_text(), before)
         self.assertTrue(all("already so" in v for k, v in self.state(p).items()
                             if k.startswith("done.") and k != "done.0001-base-setup"))
         self.assertIn("nothing to do", self.migrate(p).stdout)

@@ -32,7 +32,10 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
 
 ## Rules
 - **One Autodesk release per Wine prefix**, never a second program or release
-  into an existing prefix. Default prefix `~/.wine-inventor<year>`.
+  into an existing prefix. Default prefix `~/.wine-inventor<year>`. One
+  exception: the Vault client of the same year goes into the Inventor prefix
+  (one integration group, see "Vault Basic 2027 client" in
+  `docs/arch-hyprland.md`).
 - **Supported releases** (maintainer, 2026-11-16): the newest Inventor
   release (now 2027) is fully supported - Windows comparisons, update tests
   and new work target it; the previous one (now 2026) is maintained - it

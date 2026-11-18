@@ -21,7 +21,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Installation:** [One command: scripts/install.sh](#one-command-scriptsinstallsh); [Installing from Autodesk's install image (no Windows needed)](#installing-from-autodesks-install-image-no-windows-needed); [Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)](#inventor-2027-unpacked-image-without-a-year-the-20272-update-issue-6)
 - **Desktop:** [Hyprland](#hyprland)
 - **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
-- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping in 2027 (issue #10)](#import-cad-step-and-property-mapping-in-2027-issue-10)
+- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Vault Basic 2027 client](#vault-basic-2027-client-vault-explorer--inventors-vault-add-in); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping in 2027 (issue #10)](#import-cad-step-and-property-mapping-in-2027-issue-10)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
@@ -193,7 +193,8 @@ stricter than needed and say different things - still to be aligned.
   step 1 should say so;
 - in the VM the New dialog showed generic icons without previews, on the
   Arch machine it shows Inventor's icons and previews - not looked into yet;
-- Vault 2026 client/add-in: not tried by anyone yet.
+- Vault 2026 client/add-in: not tried by anyone yet (Vault 2027: see
+  [Vault Basic 2027 client](#vault-basic-2027-client-vault-explorer--inventors-vault-add-in)).
 
 **Wine bug report:** none - these are installer bugs of this project, not Wine.
 
@@ -550,6 +551,105 @@ bash scripts/build-wine-dll.sh kernelbase --install --hook
 ```
 
 Confirmed: Place from Content Center lists and places parts (ISO screws).
+
+## Vault Basic 2027 client (Vault Explorer + Inventor's Vault add-in)
+
+Vault is a client of a Vault server (here a Vault Basic 2027 server on
+Windows in the same network); the server itself is not part of this project.
+The client is the Vault Explorer and the Vault add-in inside Inventor (Vault
+tab: check out, check in, Get, open from Vault).
+
+**Same prefix as Inventor: one integration group.** Inventor and the Vault
+client of the same year are treated as one group in one prefix, an
+intentional exception to "one Autodesk release per prefix": the Vault client
+install brings the Inventor add-in, which has to sit next to Inventor, as on
+Windows, and Vault Explorer starts Inventor when a file is opened from it.
+Unrelated programs and other Inventor releases stay in their own prefixes.
+Vault stays optional: nothing installs it unless `--app vbc` is run, and it
+uses the same launcher, services and menu-entry script as Inventor.
+
+**Install:** the Vault Basic Client 2027 download is an ODIS image like
+Inventor's, with `manifest/app.vbc.xml`:
+
+```bash
+python3 scripts/install-from-image.py <unpacked Vault Basic Client image> \
+    --app vbc --prefix ~/.wine-inventor2027 --dry-run    # shows the steps
+python3 scripts/install-from-image.py <unpacked Vault Basic Client image> \
+    --app vbc --prefix ~/.wine-inventor2027 --only <the Vault client steps>
+```
+
+Left out with `--only`: .NET Framework 4.8 with its language packs (Vault 2027
+is a .NET 10 program, and .NET 10 is in the prefix from Inventor already) and
+DWG TrueView. Done on a btrfs reflink copy of the working prefix first
+(`cp -a --reflink=always`), which costs no space and keeps the original.
+
+**Start:** `INV_APP=vault bash scripts/launch-inventor.sh` (with
+`INV_PREFIX=...` for another prefix). The launcher starts Identity Manager
+and the licensing service as for Inventor - Inventor opened from Vault needs
+both. Inventor and Vault Explorer share the prefix, so a launcher shuts the
+prefix down (`wineserver -k`) only when neither of them runs there any more,
+whichever was started first and whether Inventor was opened from Vault or
+from its own menu entry. Started while the other one runs in the same prefix,
+the launcher only starts the program: a second setup would wipe the running
+Identity Manager's state. Programs of another prefix (another Inventor
+release) are not counted; the launcher tells them apart by the `WINEPREFIX`
+in their environment. `install-desktop-integration.sh` adds an "Autodesk Vault <year>"
+menu entry when the Vault client is in the prefix.
+
+| Problem | Cause | Fix |
+|---|---|---|
+| Vault Explorer does not start: `DirectoryNotFoundException` for a path `...\unix\home\...` | Vault's .NET host uses the working directory as content root; started from a Linux folder, which has no drive letter with isolation (no `Z:`), the working directory becomes a `\\?\unix\...` path it cannot use | the launcher starts it from its own folder (`Vault Client <year>\Explorer`) |
+| Black area over the right pane, start page drawn shifted to the left, login dialog with doubled labels (scaling above 96 DPI) | `Connectivity.Vault.exe` is DPI unaware, so Wine scales its window surface; the start page is CefSharp, a child window owned by another process, which draws unscaled straight to the X window - in the wrong place, and the place it belongs stays black | `dpiAwareness=1` (system aware) under `Image File Execution Options\Connectivity.Vault.exe`, which Wine's `user32` reads at process start: Vault scales itself, nothing is scaled by Wine (prefix migration `0012-vault-dpi-aware`) |
+| Dark-theme menus invisible (opened, but behind a shadow) under KWin | winex11 keeps a window managed although it lost its caption before it was shown | separate draft patch, `patches/drafts/winex11-unmanaged-before-map.patch` |
+
+How the DPI cause was found: at 96 DPI (`wine reg add 'HKCU\Control
+Panel\Desktop' /v LogPixels /t REG_DWORD /d 96 /f`) the black area, the
+shifted start page and the doubled labels were gone, so it was the scaling;
+the shifted page belongs to `CefSharp.BrowserSubprocess.exe`, which runs as
+its own process. Probably the same for any DPI-unaware program that embeds a
+browser from another process.
+
+**For a Wine bug report:** a DPI-unaware window with a child window owned by
+another process: Wine scales the parent's surface but not the cross-process
+child, which `X11DRV_GetDC` draws to the X drawable unscaled. A synthetic test
+needs two processes (a DPI-unaware parent, a child created with `SetParent`
+from another process that paints a known pattern).
+
+Tested setup:
+
+| | Version |
+|---|---|
+| Inventor | Inventor 2027 (31.0.19200.0000) |
+| Vault client | Autodesk Vault Basic 2027 (Client) 32.0.71.0, from the Vault Basic Client 2027 image |
+| Vault server | Vault Basic 2027 on Windows, same network |
+| Wine | this project's `wine-11.20-6`; the lifecycle tests below rerun on `winum-11.22-1` (2026-11-18) |
+| Desktop | Arch (CachyOS), KDE Plasma 6 on Wayland, Inventor and Vault through Xwayland |
+| DPI | 144 (150 %), `LogPixels` 144 in the prefix |
+| GPU | NVIDIA RTX 5080 |
+| Extra dependencies | none (no downloads; .NET Framework 4.8 and DWG TrueView from the image left out) |
+
+Confirmed with Vault Basic 2027 against a Vault Basic 2027 server: sign-in,
+Vault Explorer (folders, files, preview, history), the start page, Inventor's
+Vault tab (open from Vault, check out, change, check in) and a project
+(`.ipj`) of type Vault with its workspace in `D:`.
+
+Still open: Content Center libraries from the Vault server (the project's
+libraries point at the server name `localhost`), Vault 2026 (not tried).
+
+Lifecycle of the shared prefix, rerun on `winum-11.22-1` (2026-11-18, after
+the prefix was updated from `wine-inventor-11.20-6` by migrations 0002 to
+0012): Vault started from its menu entry while Inventor runs, both up;
+closing Vault leaves Inventor running; Inventor started from Vault (open a
+file) and closed again leaves Vault running; after the last one closes the
+prefix shuts down; part, assembly, save and reopen, restart. One finding
+from that update: migration 0010 turned `Autodesk.InteractiveTutorial` on,
+and on this prefix (Wine Mono, no .NET Framework 4.8) its DLL crashed the
+Mono runtime at every start until `addins.sh disable InteractiveTutorial`.
+
+**Level:** launcher changes, not Wine patches. `bash -n`, the unit tests, the
+menu entry with a fake prefix in a temporary `HOME` (install and
+`--uninstall`, with and without `Explorer\Connectivity.Vault.exe`), and the
+whole of the above on Arch (CachyOS) + KDE Plasma (Xwayland) at 144 DPI.
 
 ## Frame Generator: Insert Frame creates nothing
 
@@ -1467,6 +1567,11 @@ ran it in a subshell, where bash ignores `set -e` when the call sits in an
   not the pinned ones (SHA-256 of each DLL, `VKD3D_DLL_SHA256` in
   common.sh); the old DLLs go to the backup; offline it is put off
   (`MIG_DEFER`) like 0006.
+- `0012-vault-dpi-aware` (2026-11-17): `dpiAwareness=1` for
+  `Connectivity.Vault.exe` (`Image File Execution Options`, HKLM), so Vault
+  Explorer scales itself above 96 DPI (section "Vault Basic 2027 client").
+  Set in every prefix: the value only acts when a program of that name runs,
+  and a prefix that gets the Vault client later is ready.
 - Waiting: optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
 
 **Rule (AGENTS.md):** every change to what a prefix gets is a new step,
@@ -2201,6 +2306,14 @@ winum opengl32 window colour-bits fix and the vkd3d-proton ray payload fix,
 *Enable Viewport GPU Ray Tracing* is available and Low/Draft/High render on
 the GPU; part, assembly and save work. Confirmed on an NVIDIA RTX 5080 by a
 tester (PR #3, 2026-11-07). Details: section "GPU ray tracing".
+
+**2026-11-07 - Vault Basic 2027 client (Inventor 2027, Arch/CachyOS + KDE
+Plasma, Xwayland, 144 DPI, NVIDIA):** installed into the Inventor prefix from
+the Vault Basic Client image (`--app vbc`, without .NET 4.8 and DWG TrueView);
+Vault Explorer starts with `INV_APP=vault` and from its menu entry, the start
+page and the login dialog are drawn correctly with `dpiAwareness=1`, and
+Inventor's Vault add-in opens, checks out and checks in files. See
+[Vault Basic 2027 client](#vault-basic-2027-client-vault-explorer--inventors-vault-add-in).
 
 **2026-11-07 - Status bar text overlaps after GPU ray tracing; workaround:**
 the overlap appears only after ray tracing starts in a maximised window.

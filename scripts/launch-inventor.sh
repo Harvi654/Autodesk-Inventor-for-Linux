@@ -2,6 +2,9 @@
 # Launch Inventor under Wine with its required services, in order:
 #   Identity Manager (SSO) -> Licensing Service -> Inventor.exe
 # Works from a terminal or from the app-launcher entry (logs go to logs/).
+# INV_APP=vault starts Vault Explorer instead (Vault client installed with
+# install-from-image.py --app vbc); Inventor opened from Vault then finds the
+# services running.
 
 set -uo pipefail
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
@@ -24,6 +27,25 @@ notify() { command -v notify-send >/dev/null && notify-send -a "Inventor" "Autod
 
 [ -f "$P_INV/Bin/Inventor.exe" ] || { err "prefix not built: $P_INV"; notify "Prefix not built - run rebuild-prefix.sh"; exit 1; }
 [ -n "$LIC_VER" ] || { err "AdskLicensing not found in prefix"; exit 1; }
+
+INV_APP="${INV_APP:-inventor}"
+case "$INV_APP" in
+    inventor) APP_DIR="$P_INV/Bin" APP_EXE=Inventor.exe ;;
+    vault)
+        # Vault's .NET host uses the working directory as content root, and a
+        # Linux folder without a drive letter (no Z: with isolation) makes it
+        # fail with DirectoryNotFoundException "...\unix\home\...": start it
+        # from its own folder.
+        APP_DIR="$(ls -d "$P_C/Program Files/Autodesk/Vault Client "*/Explorer 2>/dev/null | tail -1)"
+        APP_EXE=Connectivity.Vault.exe
+        [ -f "$APP_DIR/$APP_EXE" ] || { err "Vault client not installed (install-from-image.py --app vbc)"; exit 1; }
+        # Vault is DPI unaware; above 96 DPI its CefSharp start page lands in
+        # the wrong place. Migration 0012 sets dpiAwareness=1 for it, so it
+        # scales itself. Started next to a running Inventor below, the
+        # prefix had the migrations at Inventor's start.
+        ;;
+    *) err "INV_APP must be inventor or vault"; exit 1 ;;
+esac
 
 # Files to open (from the file manager or the command line): Linux paths ->
 # the Windows paths the prefix sees. With isolation that is only D: (your
@@ -48,6 +70,29 @@ for a in "$@"; do
 done
 [ $# -eq 0 ] || [ ${#WIN_ARGS[@]} -gt 0 ] || exit 1
 
+# Inventor or Vault Explorer running in this prefix (not in another release's)
+app_running_in_prefix() {   # [pattern] (default: either of them)
+    local pid
+    for pid in $(pgrep -if "(^|[\\\\/])(${1:-inventor|connectivity\\.vault})\\.exe( |\$)"); do
+        tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -qxF "WINEPREFIX=$WINEPREFIX" && return 0
+    done
+    return 1
+}
+
+# The other program of the pair already runs in this prefix: its launcher set
+# the prefix up (services, isolation) and keeps it until both are closed, so
+# only start this one - a second setup would wipe the running Identity
+# Manager's state.
+if [ "$INV_APP" = vault ] && app_running_in_prefix; then
+    info "starting Vault Explorer next to the running Inventor/Vault"
+    cd "$APP_DIR" && wine "$APP_EXE" >>"$LOGDIR/vault-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+    exit 0
+fi
+if [ "$INV_APP" = inventor ] && ! app_running_in_prefix inventor && app_running_in_prefix 'connectivity\.vault'; then
+    info "starting Inventor next to the running Vault Explorer"
+    cd "$APP_DIR" && wine "$APP_EXE" "${WIN_ARGS[@]}" >>"$LOGDIR/inventor-$(date +%Y%m%d-%H%M%S).log" 2>&1 &
+    exit 0
+fi
 if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
     if [ ${#WIN_ARGS[@]} -gt 0 ]; then
         # hand the files to the running Inventor (Windows' "open" for the file type)
@@ -201,17 +246,17 @@ if [ "${INV_DRIVER_NAMES:-0}" = 1 ]; then
     done
 fi
 
-info "[4/4] launching Inventor"
-cd "$P_INV/Bin" || exit 1
+info "[4/4] launching ${APP_EXE%.exe}"
+cd "$APP_DIR" || exit 1
 # Not "wine ... | tee": processes Inventor starts (WebView2, licensing agent)
 # inherit the pipe, so tee - and this script - would wait for them after
 # Inventor itself has exited or crashed. Write to the log and follow it instead.
-LOG="$LOGDIR/inventor-$TS.log"
+LOG="$LOGDIR/$INV_APP-$TS.log"
 if [ -n "$INV_VDESKTOP" ]; then
     info "    inside Wine virtual desktop $INV_VDESKTOP"
-    wine explorer "/desktop=Inventor,$INV_VDESKTOP" Inventor.exe "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
+    wine explorer "/desktop=Inventor,$INV_VDESKTOP" "$APP_EXE" "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
 else
-    wine Inventor.exe "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
+    wine "$APP_EXE" "${WIN_ARGS[@]}" >>"$LOG" 2>&1 &
 fi
 INV_PID=$!
 # Inventor writes the old icons to HKCR (= HKLM in Wine) again while it
@@ -235,4 +280,10 @@ tail -n +1 -f --pid="$INV_PID" "$LOG" &
 wait "$INV_PID"
 RC=$?
 sleep 1
-info "Inventor exited (code $RC)"
+info "${APP_EXE%.exe} exited (code $RC)"
+# Inventor and Vault share the prefix: the other one may still run (started
+# from its own menu entry, or Inventor opened from Vault), and the cleanup
+# trap would kill it with wineserver -k, so wait until both are closed.
+while app_running_in_prefix; do
+    sleep 5
+done
