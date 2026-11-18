@@ -19,7 +19,7 @@ the first setup, which copied a Windows installation. Its sections are in
 ## Contents
 
 - **Installation:** [One command: scripts/install.sh](#one-command-scriptsinstallsh); [Installing from Autodesk's install image (no Windows needed)](#installing-from-autodesks-install-image-no-windows-needed); [Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)](#inventor-2027-unpacked-image-without-a-year-the-20272-update-issue-6)
-- **Desktop:** [Hyprland](#hyprland)
+- **Desktop:** [Hyprland](#hyprland); [3D mouse (SpaceMouse) through spacenavd](#3d-mouse-spacemouse-through-spacenavd)
 - **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
 - **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping in 2027 (issue #10)](#import-cad-step-and-property-mapping-in-2027-issue-10)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
@@ -1580,6 +1580,86 @@ input name the same release) runs in this repository's CI and with
 2027 (start, part, assembly, drawing, save/reopen, restart, plus the symbol
 palette); the NixOS build of the winum series (@krokosik).
 
+## 3D mouse (SpaceMouse) through spacenavd
+
+Inventor navigates with a 3D mouse through `siappdll.dll`, 3Dconnexion's
+client library, which on Windows talks to their driver (3DxWare). 3DxWare
+does not run under Wine, and Inventor 2027 tries no other interface (no
+Navlib). `spacenav/siappdll.c` is a new implementation of that library that
+reads [spacenavd](https://spacenav.sourceforge.net/), the free Linux driver,
+instead.
+
+**Install:**
+
+```bash
+sudo pacman -S --needed spacenavd socat mingw-w64-gcc
+sudo systemctl enable --now spacenavd
+bash scripts/install-spacemouse.sh          # builds siappdll.dll into the prefix
+```
+
+`--uninstall` removes the DLL again. The launcher does the rest while the
+prefix runs. The DLL is outside the prefix migrations, so an updated checkout
+keeps the old one: the script records the SHA-256 of the source it built
+(`<prefix>/.inventor-on-linux/siappdll-source`), and the launcher says when
+`spacenav/siappdll.c` has changed since and the script has to run again.
+
+**How it works:**
+
+- Windows programs under Wine cannot open spacenavd's UNIX socket
+  (`/run/spnav.sock`): Wine's `ws2_32` has no `AF_UNIX` (`socket()` returns
+  `WSAEAFNOSUPPORT`). `launch-inventor.sh` therefore relays it to
+  `127.0.0.1:17462` with `socat`, and the DLL reads the relay: spacenavd's old
+  protocol, 8 x int32 per event (type, x, y, z, rx, ry, rz, period or button).
+  The relay exists only for this: winum has an `AF_UNIX` candidate in
+  progress (`topic/ws2_32-af-unix`); once it is in the series, the DLL can
+  connect to `/run/spnav.sock` itself and the relay goes.
+- Motion reaches Inventor as on Windows: a message registered as
+  `SpaceWareMessage00` is posted to the window Inventor gave `SiOpen`, and
+  `SiGetEvent` decodes it.
+- Buttons: Inventor calls only `SiInitialize`, `SiOpenWinInit`, `SiOpen` and
+  `SiSetUiMode` (seen with `SIAPPDLL_LOG`) and ignores button events, because
+  on Windows 3DxWare runs the button commands itself. So the DLL runs them:
+  views, Fit, Inventor commands through Inventor's COM API
+  (`Inventor.Application`, `ActiveView.Camera`, `ControlDefinitions`), keys,
+  a radial menu, long press, rotation lock, saved views.
+- The buttons are set in `~/.config/inventor-on-linux/spacemouse.ini`, copied
+  from `spacenav/spacemouse.ini` on first start and read at every press, so
+  edits apply at once. The launcher passes it as a `\\?\unix\...` path
+  (`SIAPPDLL_CONFIG`): with isolation a link out of the prefix would become an
+  empty folder.
+- spacenavd 1.4 numbers the SpaceMouse Enterprise buttons 0-30 (keys 1-12 =
+  0-11, Menu 12, Fit 13, T/R/F 14-16, Rotate 17, Esc/Alt/Shift/Ctrl 18-21,
+  Lock 22, Enter 23, Delete 24, Tab 25, Space 26, V1-V3 27-29, ISO1 30),
+  measured from its socket. The default file maps all of them as the labels
+  say, with 3DxWare's second functions on a long press.
+
+Debugging: `SIAPPDLL_LOG='C:\users\<user>\siappdll.log'` before the
+launcher logs every call and event; the action `dumpcmds` on a button writes
+Inventor's command names (for `cmd:<name>`) next to the ini.
+
+Still open:
+
+- spacenavd merges all devices: the Wireless's two buttons (0, 1) are the
+  Enterprise's keys 1 and 2.
+- The Enterprise's display stays dark (its USB protocol is not documented).
+- Saved views (`saveview:<n>`) last until Inventor is closed.
+- Sensitivity and axis directions are spacenavd's (`/etc/spnavrc`, or
+  spnavcfg).
+
+**Clean room:** written for this project. Only interface facts (exported
+names and signatures, struct layouts, constant and event values) were taken,
+for ABI compatibility, from the GPLv3 headers of
+[SpaceNavigatorEmulator](https://github.com/lukenuttall/SpaceNavigatorEmulator);
+no 3Dconnexion or Autodesk binaries were examined. A second model (Claude
+Opus, not the session that wrote it) compared the code with
+SpaceNavigatorEmulator, spacenav's win32 SiAppWrapper, libspnav and
+SpacenavdRadialMenus and found no copied code.
+
+**Level:** not a Wine patch. Built with MinGW without warnings; tested on
+Inventor 2027 (Arch/CachyOS, KDE Plasma, Xwayland) with a SpaceMouse Wireless
+(six axes, both buttons, radial menu) and a SpaceMouse Enterprise (all 31
+buttons, long press, held modifiers, rotation lock, saved views, roll).
+
 ## Known harmless log messages
 
 - `senddmp.exe` / `upi.exe` "does not exist", `failed to launch ... 87`: Autodesk's
@@ -2203,6 +2283,12 @@ winum opengl32 window colour-bits fix and the vkd3d-proton ray payload fix,
 *Enable Viewport GPU Ray Tracing* is available and Low/Draft/High render on
 the GPU; part, assembly and save work. Confirmed on an NVIDIA RTX 5080 by a
 tester (PR #3, 2026-11-07). Details: section "GPU ray tracing".
+
+**2026-11-07 - 3D mouse (Inventor 2027, Arch/CachyOS + KDE Plasma, Xwayland):**
+`spacenav/siappdll.c` replaces 3Dconnexion's `siappdll.dll` and reads
+spacenavd through a `socat` relay; navigation with a SpaceMouse Wireless and
+Enterprise, all buttons, radial menu. See
+[3D mouse (SpaceMouse) through spacenavd](#3d-mouse-spacemouse-through-spacenavd).
 
 **2026-11-07 - Status bar text overlaps after GPU ray tracing; workaround:**
 the overlap appears only after ray tracing starts in a maximised window.
