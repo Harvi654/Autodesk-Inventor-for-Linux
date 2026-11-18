@@ -1,7 +1,7 @@
 #!/bin/bash
 # List / enable / disable Inventor add-ins in the prefix.
 # finish-install.sh / rebuild-prefix.sh turn off a few (notes/disabled-addins.md:
-# the Assistant; without .NET Framework 4.8 also 3D PDF and SharedViews);
+# the Assistant; without .NET Framework 4.8 also 3D PDF, SharedViews and InteractiveTutorial);
 # this lets you turn them on or off one by one.
 #
 # Usage:

@@ -46,4 +46,5 @@ wine --version > "$WINEPREFIX/.inventor-wine-version"
 
 echo
 ok "Prefix ready: $WINEPREFIX ($(du -sh "$WINEPREFIX" | cut -f1))"
-info "Start it with: INV_PREFIX=$WINEPREFIX bash scripts/launch-inventor.sh"
+info "Start it with (two lines): export INV_PREFIX=$WINEPREFIX"
+info "    bash scripts/launch-inventor.sh"

@@ -40,7 +40,7 @@ other_entries() {
 # No entry for a release that is not installed (with no release given, a
 # machine with only 2027 once got one for 2026 after an update)
 if [ "${1:-}" != "--uninstall" ] && [ ! -f "$P_INV/Bin/Inventor.exe" ]; then
-    warn "no Inventor $INV_YEAR in $INV_PREFIX - no app menu entry made (INV_YEAR=... INV_PREFIX=... for another one)"
+    warn "no Inventor $INV_YEAR in $INV_PREFIX - no app menu entry made (export INV_YEAR=... and INV_PREFIX=... for another one)"
     exit 0
 fi
 

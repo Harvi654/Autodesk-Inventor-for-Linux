@@ -184,7 +184,7 @@ class Dotnet48Present(unittest.TestCase):
         # on since 2026-11-16; the Assistant is the one add-in off by default
         self.assertTrue((on / "autodesk.translatorfusion.inventor.addin").exists(), out)
         self.assertFalse((on / "Autodesk.AssistantAddin.Inventor.addin").exists())
-        self.assertIn(".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher) and SharedViews on", out)
+        self.assertIn(".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher), SharedViews and InteractiveTutorial on", out)
         self.assertIn("wine: %s/wine" % self.bin, out)
         self.assertIn("prefix: %s" % self.prefix, out)
         self.assertNotIn("Anark", out.split("off by default here:")[1].splitlines()[0])

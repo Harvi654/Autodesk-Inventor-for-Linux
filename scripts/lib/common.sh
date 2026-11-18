@@ -244,11 +244,15 @@ INV_DEFAULT_DISABLED_ADDINS=(Autodesk.AssistantAddin.Inventor.addin)
 # crashes Anark's corewrapper.exe, and SharedViews is loaded through
 # wine-mono, which cannot load its references and ends Inventor (mono
 # assertion -> Environment.Exit). SharedViews with .NET 4.8: share and
-# Autodesk Viewer work (2026-11-16).
-INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin Autodesk.SharedViews.Inventor.addin)
+# Autodesk Viewer work (2026-11-16). InteractiveTutorial: on wine-mono it
+# crashed Inventor right after the splash at every start (2026-11-18,
+# migration 0012); with .NET 4.8 the tutorial works.
+INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin Autodesk.SharedViews.Inventor.addin
+                     Autodesk.InteractiveTutorial.Inventor.addin)
 # Off by default until 2026-11-16, on since then (migration 0010 turns them
-# on in older prefixes; addins.sh reset turns them on too). SharedViews only
-# with .NET Framework 4.8 (INV_DOTNET48_ADDINS).
+# on in older prefixes; addins.sh reset turns them on too). SharedViews and
+# InteractiveTutorial only with .NET Framework 4.8 (INV_DOTNET48_ADDINS;
+# 0012 turns the tutorial off again where 0010 turned it on without).
 INV_ADDINS_ON_SINCE_2026_11_16=(
     Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
     Autodesk.InteractiveTutorial.Inventor.addin autodesk.translatorfusion.inventor.addin

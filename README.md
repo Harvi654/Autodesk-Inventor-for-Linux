@@ -227,8 +227,8 @@ The folder then looks like this (its name does not matter):
 - The installer reads the version from the file names, or for an unpacked
   image from its manifests: 2026 goes to `~/.wine-inventor2026`, 2027 to
   `~/.wine-inventor2027`. Both can be installed side by side; one download
-  folder per version. If the version cannot be told, set it:
-  `INV_YEAR=2027 bash scripts/install.sh ~/Downloads/Inventor`.
+  folder per version. If the version cannot be told, set it first:
+  `export INV_YEAR=2027`, then `bash scripts/install.sh ~/Downloads/Inventor`.
 - You do **not** need the "Install" web installer or the
   `Create_Installer_*.exe` tools - they are for Windows. If they are in the
   folder, they are skipped.
@@ -318,7 +318,11 @@ With several versions installed, choose one by its prefix - the version is
 read from it:
 
 ```bash
-INV_PREFIX=~/.wine-inventor2027 bash ~/inventor-on-linux/scripts/launch-inventor.sh
+export INV_PREFIX=~/.wine-inventor2027
+```
+
+```bash
+bash ~/inventor-on-linux/scripts/launch-inventor.sh
 ```
 
 The first start opens your browser for the Autodesk sign-in.
@@ -339,8 +343,8 @@ If it is the integrated one, add part of the name of the GPU you want to
   Update button) applies the prefix changes made since it was installed -
   numbered steps, each saved first and put back if it fails. By hand, with
   Inventor closed: `bash scripts/migrate-prefix.sh --status`, then
-  `bash scripts/migrate-prefix.sh` (`INV_PREFIX=... INV_YEAR=...` for a
-  prefix other than the default). Tested on copies of a 2026 prefix from
+  `bash scripts/migrate-prefix.sh` (for a prefix other than the default,
+  `export INV_PREFIX=...` and `export INV_YEAR=...` first). Tested on copies of a 2026 prefix from
   before winum and a 2027 prefix with .NET 4.8 (2026-11-11).
 - Inventor runs on [winum](https://github.com/Harvi654/winum), a Wine with the
   fixes for Inventor and other engineering programs, installed in
@@ -375,7 +379,11 @@ mv ~/.wine-inventor2026 ~/.wine-inventor2026.old
 ```
 
 ```bash
-INV_YEAR=2026 bash ~/inventor-on-linux/scripts/install.sh ~/Downloads/Inventor
+export INV_YEAR=2026
+```
+
+```bash
+bash ~/inventor-on-linux/scripts/install.sh ~/Downloads/Inventor
 ```
 
 (`~/Downloads/Inventor` is the folder with Autodesk's download, as for the
