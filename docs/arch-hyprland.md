@@ -2315,3 +2315,23 @@ directory gone). The hidden-file check reported the shim's two `start.exe`
 copies: the state was copied while a session of the user was running, so
 its writable layer held them; the check runs before the launcher installs
 the shim, unchanged from the earlier pin.
+
+**2026-11-18 - v0.4.0 regression: the Interactive Tutorial crashed
+Inventor on Wine Mono (migration 0012):** found by @Lukas10999 while
+updating an old prefix (`wine-inventor-11.20-6`, Wine Mono, no .NET
+Framework 4.8) to winum-11.22-1 through migrations 0002-0012 (#8):
+Inventor crashed right after the splash at every start ("Can't find custom
+attr constructor image: ...InteractiveTutorial.dll", then a native crash
+in `CCWInvokeInternal`); `addins.sh disable InteractiveTutorial` fixed it.
+Cause: migration 0010 turns the tutorial on in every prefix, but it was
+only tested with .NET Framework 4.8; only SharedViews was gated on
+`dotnet48_present`. Every installation from before 2026-11-11 has no .NET
+Framework 4.8, so every v0.3.x installation upgraded to v0.4.0 was hit.
+Fix: migration `0012-tutorial-off-without-dotnet48` moves
+`Autodesk.InteractiveTutorial.Inventor.addin` back to `Addins.disabled`
+in a prefix without .NET Framework 4.8 (its two libraries stay in `Bin`, as
+in the tested workaround); the add-in is now in `INV_DOTNET48_ADDINS`, so a
+reinstall, `addins.sh enable-safe` and `addins.sh reset` keep it off
+without .NET 4.8 and on with it. 0010 itself is unchanged (old migrations
+are never edited). Tests: `tests/test_migrations.py` (0012 with and
+without .NET 4.8, an add-in in both folders, `addins.sh`), 239 OK.

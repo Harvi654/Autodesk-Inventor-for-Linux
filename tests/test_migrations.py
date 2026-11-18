@@ -456,9 +456,14 @@ class Migrations(unittest.TestCase):
         out = self.migrate(p)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("applied", self.state(p)["done.0010-default-addins-on"])
+        # 0012: without .NET Framework 4.8 the tutorial is off again (it
+        # crashed Inventor on Wine Mono); its libraries stay in Bin
+        self.assertIn("applied", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
         on, off = self.on_off(inv)
-        self.assertEqual(off, ["Autodesk.AssistantAddin.Inventor.addin", "Autodesk.SharedViews.Inventor.addin"])
-        for f in self.FORMER_OFF[:4] + ["iLogic.addin"]:
+        self.assertEqual(off, ["Autodesk.AssistantAddin.Inventor.addin",
+                               "Autodesk.InteractiveTutorial.Inventor.addin",
+                               "Autodesk.SharedViews.Inventor.addin"])
+        for f in self.FORMER_OFF[:2] + [self.FORMER_OFF[3], "iLogic.addin"]:
             self.assertIn(f, on)
         self.assertEqual((inv / "Bin/InteractiveTutorial.dll").read_bytes(), b"MZ tutorial")
         self.assertEqual((inv / "Bin/en-US/InteractiveTutorial.resources.dll").read_bytes(), b"MZ tutorial en-US")
@@ -472,7 +477,10 @@ class Migrations(unittest.TestCase):
         self.assertIn("absent\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/InteractiveTutorial.dll", man)
         self.assertNotIn("AssistantAddin", man)
         self.assertIn("nothing to do", self.migrate(p).stdout)
-        # put back by hand: as it was
+        # put back by hand, newest first: as it was
+        out = self.migrate(p, "--restore", "0012-tutorial-off-without-dotnet48")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
         out = self.migrate(p, "--restore", "0010-default-addins-on")
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertEqual(self.on_off(inv)[1], sorted(self.FORMER_OFF))
@@ -485,6 +493,57 @@ class Migrations(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertEqual(self.on_off(inv)[1], ["Autodesk.AssistantAddin.Inventor.addin"])
         self.assertIn("Autodesk.SharedViews.Inventor.addin", self.on_off(inv)[0])
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        self.assertIn("already so", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+
+    # --- 0012: the tutorial off without .NET Framework 4.8 ------------------------
+    def upgraded_with_tutorial_on(self, p, dotnet48=False):
+        """A v0.3.x prefix that already went through 0010 (tutorial on), 0012 not yet."""
+        inv = self.old_addins(p, dotnet48=dotnet48)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        off = inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin"
+        if off.exists():
+            off.rename(inv / "Bin/Addins/Autodesk.InteractiveTutorial.Inventor.addin")
+        st = p / ".inventor-on-linux/state"
+        st.write_text("".join(l for l in st.read_text().splitlines(True)
+                              if not l.startswith("done.0012-")))
+        return inv
+
+    def test_tutorial_off_after_0010_without_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.upgraded_with_tutorial_on(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[1])
+        self.assertNotIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        # the libraries stay where 0010 put them, the other add-ins stay on
+        self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
+        self.assertIn("Autodesk.Feedback.Inventor.addin", self.on_off(inv)[0])
+        man = (p / ".inventor-on-linux/backup/0012-tutorial-off-without-dotnet48/manifest").read_text()
+        self.assertIn("saved\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/Addins/"
+                      "Autodesk.InteractiveTutorial.Inventor.addin", man)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_tutorial_stays_on_with_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.upgraded_with_tutorial_on(p, dotnet48=True)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+
+    def test_tutorial_in_both_folders_is_left_alone(self):
+        p = self.prefix(runtime="winum")
+        inv = self.upgraded_with_tutorial_on(p)
+        (inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin").write_text("<Addin old/>")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        self.assertTrue((inv / "Bin/Addins/Autodesk.InteractiveTutorial.Inventor.addin").exists())
+        self.assertEqual((inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin").read_text(),
+                         "<Addin old/>")
 
     def test_addin_already_on_is_not_overwritten(self):
         p = self.prefix(runtime="winum")
@@ -512,24 +571,32 @@ class Migrations(unittest.TestCase):
         p = self.prefix(runtime="winum")
         inv = self.old_addins(p)
         self.migrate(p)
-        out = self.addins(p, "disable", "tutorial")
-        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        # after 0010 and 0012 without .NET 4.8: the tutorial is off
         self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[1])
+        out = self.addins(p, "disable", "feedback.inventor")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.Feedback.Inventor.addin", self.on_off(inv)[1])
         out = self.addins(p, "enable", "assistant")
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
-        # enable-safe without .NET 4.8: SharedViews stays off
+        # enable-safe without .NET 4.8: SharedViews and the tutorial stay off
         out = self.addins(p, "enable-safe")
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertIn("kept disabled: Autodesk.SharedViews.Inventor.addin (needs .NET Framework 4.8)", out.stdout)
-        self.assertEqual(self.on_off(inv)[1], ["Autodesk.SharedViews.Inventor.addin"])
-        # reset: the defaults - only the Assistant (and without .NET 4.8
-        # SharedViews) off, the tutorial and its libraries on
+        self.assertIn("kept disabled: Autodesk.InteractiveTutorial.Inventor.addin (needs .NET Framework 4.8)",
+                      out.stdout)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.InteractiveTutorial.Inventor.addin",
+                                               "Autodesk.SharedViews.Inventor.addin"])
+        # by name it can still be turned on (a user who wants to try it)
+        out = self.addins(p, "enable", "tutorial")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        # reset: the defaults - the Assistant off, and without .NET 4.8
+        # SharedViews and the tutorial; the tutorial's libraries in Bin
         (inv / "Bin/InteractiveTutorial.dll").rename(inv / "Addins.disabled/libs/InteractiveTutorial.dll")
-        (inv / "Bin/Addins/Autodesk.InteractiveTutorial.Inventor.addin").rename(
-            inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin")
         out = self.addins(p, "reset")
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
         self.assertEqual(self.on_off(inv)[1], ["Autodesk.AssistantAddin.Inventor.addin",
+                                               "Autodesk.InteractiveTutorial.Inventor.addin",
                                                "Autodesk.SharedViews.Inventor.addin"])
         self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
         self.assertNotIn("SharedViews then crashes", (ROOT / "scripts/addins.sh").read_text())
