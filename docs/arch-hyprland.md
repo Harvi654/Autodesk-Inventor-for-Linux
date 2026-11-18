@@ -21,7 +21,7 @@ the first setup, which copied a Windows installation. Its sections are in
 - **Installation:** [One command: scripts/install.sh](#one-command-scriptsinstallsh); [Installing from Autodesk's install image (no Windows needed)](#installing-from-autodesks-install-image-no-windows-needed); [Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)](#inventor-2027-unpacked-image-without-a-year-the-20272-update-issue-6)
 - **Desktop:** [Hyprland](#hyprland)
 - **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
-- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping in 2027 (issue #10)](#import-cad-step-and-property-mapping-in-2027-issue-10)
+- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [DWG TrueView: first start crashes, Insert AutoCAD file does nothing](#dwg-trueview-first-start-crashes-insert-autocad-file-does-nothing-migration-0013); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping in 2027 (issue #10)](#import-cad-step-and-property-mapping-in-2027-issue-10)
 - **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
 - **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
 - **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
@@ -550,6 +550,107 @@ bash scripts/build-wine-dll.sh kernelbase --install --hook
 ```
 
 Confirmed: Place from Content Center lists and places parts (ISO screws).
+
+## DWG TrueView: first start crashes, Insert AutoCAD file does nothing (migration 0013)
+
+Autodesk's image installs DWG TrueView with Inventor (since 2026-11-16, as
+on Windows). Inventor uses it in one place: the sketch command **Insert
+AutoCAD file** starts `dwgviewr.exe /Automation /InPlaceServer -Embedding`
+as an in-place OLE server for the preview and the import. File > Open of a
+DWG or DXF goes through Inventor's own DWG/DXF wizard and does not need it.
+Three things kept the viewer from working under Wine (2027 prefix, winum
+11.20-6 and 11.22-1, 2026-11-14 to 2026-11-18):
+
+**1. The first start crashes (`RegLoadAppKey`).** With `WINEDEBUG=+seh,
++loaddll` the first `dwgviewr.exe` ends in `Unhandled page fault on read
+access to 000000000000022B` inside `dwgviewr.exe` a moment after it opened
+`UserDataCache\User.dat`, the registry hive Autodesk's installer leaves next
+to the program (`UserDataCache\UserData.ini`: `Registry=HKCU\Software\
+Autodesk\DWG TrueView\R25`, `RoamingFolders=Plotters;Support`,
+`LocalFolders=Template`). On Windows the viewer's first start for a user
+loads that hive with `RegLoadAppKey` and copies its keys under the user's
+`HKCU\Software`; the hive's strings hold the installer's folder tokens
+(`[{AppData}]`, `[{Local AppData}]`, `[{Documents}]`, `[{ProgramFilesX64}]`,
+`[{Common Documents}]`, ...), filled in at that moment. Wine's `RegLoadAppKey`
+is a stub (`dlls/advapi32/registry.c`, returns `ERROR_CALL_NOT_IMPLEMENTED`),
+the viewer goes on with an invalid key handle and faults. Autodesk's binary
+was only observed from outside (Wine channels and the fault address).
+
+Workaround: write the same keys into the prefix before the first start.
+Migration `0013-trueview-user-seed` exports the hive with `hivexregedit`
+(hivex, already used by `import-file-types.sh`), `scripts/lib/trueview-seed.py`
+turns the export into a `.reg` for Wine's `regedit`: re-rooted under
+`HKEY_CURRENT_USER`, `hex(1)` strings as plain strings, the folder tokens
+filled in for the prefix (the installer's `FOLDER_TOKENS` table in
+`lib/odis.py` plus the per-user ones, `C:\users\<user>\AppData\Roaming`
+and so on). 225 keys for 2027 (`Software\Autodesk\DWG TrueView\R25\
+dwgviewr-A128:409\{FixedProfile,Profiles,DwgConvert}`, the
+`DWGTrueView*.26` classes). With the keys in place the viewer starts,
+creates `Profile.aws` and `dwgviewr.startup` under `AppData` itself and
+exits again when Inventor is done with it. The seed is not shipped in the
+repository: it is read from the user's own installation at run time
+(the hive is Autodesk's).
+
+**2. The viewer hangs on its first shader (`d3dcompiler_47`).** The prefix
+has the global override `d3dcompiler_47=native` for Inventor, which ships
+the DLL in its `Bin`. The override applies to every program in the prefix,
+and `dwgviewr.exe`'s folder has none: Wine finds no native file, the
+viewer's shader compile fails and it waits forever, Inventor with it (the
+sketch command shows nothing; Inventor is not crashed, it comes back when
+the viewer is killed). Autodesk ships the DLL in TrueView's own
+`d3dcompiler_v2\` (SHA-256 equal to Inventor's `Bin\d3dcompiler_47.dll`);
+the migration copies it next to `dwgviewr.exe`. A per-program override
+(`AppDefaults\dwgviewr.exe\DllOverrides`, `d3dcompiler_47=builtin`) would
+be the registry-only alternative; not tried, the copy is what was tested.
+
+**3. msxml3 loops on `replaceChild(node, node)` (winum PR 4).** With 1 and
+2 solved the viewer started, loaded the drawing and then spun at 100 % CPU
+in `msxml3`: while writing its profile it calls
+`IXMLDOMNode::replaceChild(newChild, oldChild)` with the same node for
+both. Wine's `node_replace_child` unlinks the node and inserts it before
+itself, which leaves the sibling list self-linked; every later walk of the
+list loops. Windows returns `S_OK` and leaves the tree as it is. The fix
+is a winum candidate with a Wine test
+([msxml3-replacechild-same-node](https://github.com/Harvi654/winum/pull/4),
+L0, L2, L4; L1 open): compare the tree nodes, and when they are the same
+return the node without touching the list. It is not in `winum-11.22-1`;
+until a release has it, a prefix on 11.22-1 needs a locally built `msxml3`
+or the viewer stays off (`dwgviewr.exe` renamed, Inventor then shows only
+the wizard).
+
+**Found with:** `WINEDEBUG=+seh,+loaddll,+relay` on the viewer process
+(`pgrep -f '^C:.*dwgview[r].exe'` - the `[r]` so the pattern does not match
+its own shell over SSH), `winedbg --auto`'s backtrace, and for 3 a `+msxml`
+trace showing the same node pointer twice in `replaceChild`. The seed
+import was first done by hand on 2026-11-14 (export, tokens filled in,
+`regedit`), the migration repeats that. Clean room: no Autodesk file was
+opened beyond the hive export and the `.ini`; Wine's side is in the
+candidate's `docs/wine-repro/msxml3-replacechild-same-node/`.
+
+**Validation:** migration 0013 with the fake-Wine tests
+(`tests/test_migrations.py`: seed and DLL applied, keys re-rooted and
+tokens filled in, seed already there, hivex missing or an export that
+fails -> put off and `--run 0013` later, a hive without the key the ini
+names -> warning and the DLL only, prefix without TrueView). Cross review
+by a second model (Opus, 2026-11-18): no bug in the bash under `set -Eeuo
+pipefail` or the `.reg` format; it found that a failed export or a hive
+without `CurVer` would have failed the step at every start (fixed: put off,
+respectively warn and skip), a temp directory left behind on failure
+(fixed: EXIT trap) and that REG_EXPAND_SZ/REG_MULTI_SZ values would keep a
+token (none in 2027's hive; the converter now says so if one appears). L4 on the maintainer-side user's
+2027 prefix (RTX 5080, 144 DPI, 2026-11-18): Insert AutoCAD file shows the
+preview, imports the DXF, the viewer exits by itself about ten seconds
+later, `Profile.aws` written; Inventor start, part, assembly, drawing,
+save/reopen, restart unchanged. Open: the stand-alone viewer (double-click
+on a DWG outside Inventor) is untested; Nix needs `hivex` in the
+launcher's closure for the step to run there (until then it is put off
+with the message); Harvi's L1 for the msxml3 test.
+
+**For a Wine bug report:** `RegLoadAppKeyW` is a stub since it was added;
+a synthetic test would call it on a small hive created with `RegSaveKeyEx`
+and read a value back. The msxml3 case is in winum PR 4's test
+(`test_replaceChild` in `dlls/msxml3/tests/domdoc.c`: `replaceChild` and
+`insertBefore` with the same node, `S_OK`, tree unchanged).
 
 ## Frame Generator: Insert Frame creates nothing
 
@@ -2315,3 +2416,17 @@ directory gone). The hidden-file check reported the shim's two `start.exe`
 copies: the state was copied while a session of the user was running, so
 its writable layer held them; the check runs before the launcher installs
 the shim, unchanged from the earlier pin.
+
+**2026-11-18 - DWG TrueView usable from Inventor (migration 0013, winum PR
+4):** the viewer Autodesk's image installs with Inventor crashed on its
+first start (`RegLoadAppKey` is a Wine stub; the installer's per-user seed
+`UserDataCache\User.dat` never reached HKCU), then hung on its first shader
+(the prefix's global `d3dcompiler_47=native` with no DLL next to
+`dwgviewr.exe`), then looped in msxml3 (`replaceChild` of a node with
+itself). Migration `0013-trueview-user-seed` writes the seed into HKCU
+(hivex export, folder tokens filled in by `scripts/lib/trueview-seed.py`)
+and copies Autodesk's `d3dcompiler_v2\d3dcompiler_47.dll` next to the
+viewer; the msxml3 fix is winum candidate `msxml3-replacechild-same-node`
+(PR 4, not yet in a release). L4 on a 2027 prefix: sketch Insert AutoCAD
+file previews and imports, the viewer exits by itself. Section "DWG
+TrueView: first start crashes, Insert AutoCAD file does nothing".

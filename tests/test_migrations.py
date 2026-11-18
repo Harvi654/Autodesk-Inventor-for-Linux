@@ -56,6 +56,34 @@ case "$1" in
         fi
         [ -n "${FAIL_WINEBOOT:-}" ] && exit 1
         exit 0 ;;
+    regedit)
+        # /S C:\windows\temp\x.reg: a UTF-16 .reg (import_reg_file) into the registry files
+        f="$WINEPREFIX/drive_c/windows/temp/${3##*\\}"
+        python3 - "$f" "$WINEPREFIX" <<'PYREG'
+import re, sys
+text = open(sys.argv[1], "rb").read().decode("utf-16")
+unesc = lambda s: re.sub(r"\\(.)", r"\1", s)
+key = None
+for line in text.splitlines():
+    m = re.match(r"^\[(HKEY_[A-Z_]+)\\?(.*)\]$", line)
+    if m:
+        hive = {"HKEY_CURRENT_USER": "HKCU", "HKEY_LOCAL_MACHINE": "HKLM"}[m.group(1)]
+        key = hive + ("\\" + m.group(2) if m.group(2) else "")
+        continue
+    m = re.match(r'^(@|"((?:[^"\\]|\\.)*)")=(.*)$', line)
+    if not m or key is None:
+        continue
+    name = "" if m.group(1) == "@" else unesc(m.group(2))
+    data = m.group(3)
+    if data.startswith('"'):
+        data = unesc(data[1:-1])
+    elif data.startswith("dword:"):
+        data = "0x%x" % int(data[6:], 16)
+    out = sys.argv[2] + ("/system.reg" if hive == "HKLM" else "/user.reg")
+    with open(out, "a") as f:
+        f.write("%s|%s|%s\n" % (key, name, data))
+PYREG
+        exit 0 ;;
     reg)
         export K="$3"; f="$(regfile "$3")"; touch "$f"
         case "$2" in
@@ -533,6 +561,128 @@ class Migrations(unittest.TestCase):
                                                "Autodesk.SharedViews.Inventor.addin"])
         self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
         self.assertNotIn("SharedViews then crashes", (ROOT / "scripts/addins.sh").read_text())
+
+    # --- 0013: DWG TrueView's per-user registry seed ------------------------------
+    # what `hivexregedit --export UserDataCache/User.dat '\'` prints for the
+    # installer's hive: strings as UTF-16LE hex(1) with the installer's folder
+    # tokens, a dword, the CurVer the step checks
+    TV_EXPORT = ("Windows Registry Editor Version 5.00\n\n[\\]\n\n[\\Software]\n\n[\\Software\\Autodesk]\n"
+                 '"CurProd"=hex(1):%s\n\n[\\Software\\Autodesk\\DWG TrueView\\R25]\n"CurVer"=hex(1):%s\n\n'
+                 "[\\Software\\Autodesk\\DWG TrueView\\R25\\dwgviewr-A128:409]\n@=hex(1):00,00\n"
+                 '"RoamableRootFolder"=hex(1):%s\n"MaxRecentFiles"=dword:00000009\n\n'
+                 "[\\Software\\Classes\\DWGTrueViewTemplate.26\\shell\\open\\command]\n@=hex(1):%s\n\n")
+
+    @staticmethod
+    def hex1(text):
+        return ",".join("%02x" % b for b in (text + "\0").encode("utf-16-le"))
+
+    def trueview(self, p, year=2027, seed=True, compiler=True):
+        """TrueView as the image installs it: dwgviewr.exe, the installer's
+        UserDataCache (User.dat hive, UserData.ini), d3dcompiler_v2/."""
+        tv = p / "drive_c/Program Files/Autodesk" / ("DWG TrueView %s - English" % year)
+        (tv / "UserDataCache").mkdir(parents=True)
+        (tv / "dwgviewr.exe").write_bytes(b"MZ dwgviewr")
+        (tv / "UserDataCache/UserData.ini").write_text(
+            "[UserData]\r\nRegistry=HKCU\\Software\\Autodesk\\DWG TrueView\\R25\r\n"
+            "Roaming=Autodesk\\DWG TrueView %s - English\\R25\\enu\r\n" % year)
+        if seed:
+            (tv / "UserDataCache/User.dat").write_bytes(b"regf fake hive")
+        if compiler:
+            (tv / "d3dcompiler_v2").mkdir()
+            (tv / "d3dcompiler_v2/d3dcompiler_47.dll").write_bytes(b"MZ d3dcompiler_47 of TrueView")
+        export = self.TV_EXPORT % (
+            self.hex1("DWG TrueView"), self.hex1("dwgviewr-A128:409"),
+            self.hex1("[{AppData}]\\Autodesk\\DWG TrueView %s - English\\R25\\enu\\" % year),
+            self.hex1('"[{ProgramFilesX64}]\\Autodesk\\DWG TrueView %s - English\\dwgviewr.exe" "%%1"' % year))
+        (self.rt / "tv-export.reg").write_text(export)
+        # a hivexregedit that prints that export for the hive
+        h = self.rt / "bin" / "hivexregedit"
+        h.write_text(shell_script('#!/bin/bash\n[ "$1" = --export ] && [ -f "$2" ] && [ -z "${FAIL_HIVEX:-}" ] || exit 1\n'
+                                  'cat "%s"\n' % (self.rt / "tv-export.reg")))
+        h.chmod(0o755)
+        return tv
+
+    def test_trueview_seed_and_compiler_dll(self):
+        p = self.prefix(runtime="winum")
+        tv = self.trueview(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0013-trueview-user-seed"])
+        user = (p / "user.reg").read_text()
+        # re-rooted under HKCU, strings plain, the folder tokens filled in for the Wine user
+        self.assertIn("HKCU\\Software\\Autodesk\\DWG TrueView\\R25|CurVer|dwgviewr-A128:409\n", user)
+        self.assertIn("HKCU\\Software\\Autodesk\\DWG TrueView\\R25\\dwgviewr-A128:409|RoamableRootFolder|"
+                      "C:\\users\\test\\AppData\\Roaming\\Autodesk\\DWG TrueView 2027 - English\\R25\\enu\\\n", user)
+        self.assertIn("HKCU\\Software\\Classes\\DWGTrueViewTemplate.26\\shell\\open\\command||"
+                      '"C:\\Program Files\\Autodesk\\DWG TrueView 2027 - English\\dwgviewr.exe" "%1"\n', user)
+        self.assertIn("dwgviewr-A128:409|MaxRecentFiles|0x9\n", user)
+        self.assertNotIn("[{", user)
+        self.assertIn("5 keys under HKCU", out.stdout)
+        self.assertEqual((tv / "d3dcompiler_47.dll").read_bytes(), b"MZ d3dcompiler_47 of TrueView")
+        self.assertIn("d3dcompiler_47.dll next to dwgviewr.exe", out.stdout)
+        # the copied DLL is in the backup list (absent before the step)
+        manifest = (p / ".inventor-on-linux/backup/0013-trueview-user-seed/manifest").read_text()
+        self.assertIn("absent\tdrive_c/Program Files/Autodesk/DWG TrueView 2027 - English/d3dcompiler_47.dll", manifest)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_trueview_already_seeded_gets_only_the_dll(self):
+        p = self.prefix(runtime="winum")
+        tv = self.trueview(p)
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Autodesk\\DWG TrueView\\R25|CurVer|dwgviewr-A128:409\n")
+        (self.rt / "bin" / "hivexregedit").unlink()   # not needed, so not missed
+        out = self.migrate(p, INV_HIVEXREGEDIT="hivexregedit-not-installed")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0013-trueview-user-seed"])
+        self.assertNotIn("keys under HKCU", out.stdout)
+        self.assertTrue((tv / "d3dcompiler_47.dll").exists())
+
+    def test_trueview_without_hivex_is_put_off(self):
+        p = self.prefix(runtime="winum")
+        tv = self.trueview(p)
+        out = self.migrate(p, INV_HIVEXREGEDIT="hivexregedit-not-installed")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("hivexregedit not found (package hivex)", out.stderr)
+        self.assertIn("0013-trueview-user-seed put off", out.stderr)
+        st = self.state(p)
+        self.assertNotIn("done.0013-trueview-user-seed", st)
+        self.assertIn("deferred.0013-trueview-user-seed", st)
+        self.assertFalse((tv / "d3dcompiler_47.dll").exists())   # nothing half done
+        self.assertNotIn("DWG TrueView", (p / "user.reg").read_text())
+        out = self.migrate(p, "--run", "0013")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0013-trueview-user-seed"])
+
+    def test_trueview_hive_without_the_named_key_is_left_alone(self):
+        # the hive is not the viewer's seed (no CurVer under the ini's key):
+        # a warning, the DLL still copied, the step done, no start blocked
+        p = self.prefix(runtime="winum")
+        tv = self.trueview(p)
+        (self.rt / "tv-export.reg").write_text(
+            "Windows Registry Editor Version 5.00\n\n[\\]\n\n[\\Software\\Other]\n\"X\"=dword:00000001\n\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("has no CurVer under HKCU\\Software\\Autodesk\\DWG TrueView\\R25 - seed not imported", out.stderr)
+        self.assertIn("applied", self.state(p)["done.0013-trueview-user-seed"])
+        self.assertNotIn("Software\\Other", (p / "user.reg").read_text())
+        self.assertTrue((tv / "d3dcompiler_47.dll").exists())
+
+    def test_trueview_export_that_fails_is_put_off(self):
+        p = self.prefix(runtime="winum")
+        tv = self.trueview(p)
+        out = self.migrate(p, FAIL_HIVEX="1")   # the export fails (unreadable hive, hivex half installed)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("could not export", out.stderr)
+        self.assertIn("0013-trueview-user-seed put off", out.stderr)
+        self.assertNotIn("done.0013-trueview-user-seed", self.state(p))
+        self.assertFalse((tv / "d3dcompiler_47.dll").exists())
+
+    def test_prefix_without_trueview_has_nothing_to_do_for_0013(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0013-trueview-user-seed"])
+        self.assertNotIn("hivexregedit", out.stdout + out.stderr)
 
     # --- 0011: Wine's menu builder off in the prefix ------------------------------
     def menu_entries(self, p):

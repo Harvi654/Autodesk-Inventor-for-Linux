@@ -102,7 +102,7 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 | Part modelling (extrude, hole, ...) | ✅ | |
 | Assemblies | ✅ | |
 | Content Center (screws, nuts, profiles, ...) | ✅ | about 7.5 GB (2027), installed by default |
-| DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
+| DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review). Inventor's sketch command Insert AutoCAD file (preview and import) works with migration 0013 (its first start otherwise crashes: `RegLoadAppKey` is a Wine stub) and the msxml3 fix of winum PR 4, which no winum release has yet; stand-alone viewer not tested |
 | Electrical Catalog Browser | ⚠️ | as on Windows: needs Microsoft 365 Access Runtime (64-bit, not in Autodesk's image - Windows asks for it too, the user installs it there). It works on AutoCAD Electrical's catalog database; without AutoCAD Electrical it is empty on Windows too. Installed by default like on Windows (`--no-electrical` leaves it out). Tested: with Microsoft Access Database Engine 2016 (its `aceredist.msi`, installed by hand) the Browser opens and reads a catalog database; an optional installer step for it is planned |
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
