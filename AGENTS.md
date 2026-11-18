@@ -51,9 +51,25 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
 - Autodesk files are never fetched, mirrored or cached publicly (NixOS uses
   `requireFile` + `unfree`).
 - Downloads (DXVK, vkd3d-proton, Wine) are version-pinned and SHA-256 checked.
-  Something new that `finish-install.sh` downloads must also be added to
-  `nix/inventor.nix` (fetchurl + link into `DOWNLOAD_DIR`) - the Nix build
-  sandbox has no network.
+  Something new that the installation downloads is named in the pull
+  request ("new download: ..."), because the Nix build sandbox has no
+  network and `nix/inventor.nix` needs it too (fetchurl + link into
+  `DOWNLOAD_DIR`).
+- **Nix is updated in batches** (agreed with @krokosik, 2026-11-18, #30):
+  no pull request waits for a Nix test or asks for one, and contributors
+  are not pinged about Nix on every change. @krokosik brings the flake up
+  to date at a release or when he needs to; the CI Nix check stays as the
+  guard against outright breakage, and a red one is fixed before merging
+  as always. With the narrowed filesets @krokosik proposed, the Nix build
+  depends only on the files it runs, so most script changes do not
+  rebuild it.
+- **A fix in Wine comes first** (in winum, with a test that passes on
+  Windows). A workaround here (installer step, migration, launcher
+  setting) only when a Wine fix is not feasible or far too large, and
+  its docs then say why (e.g. DWG TrueView's per-user seed, #28:
+  RegLoadAppKey would need a binary hive reader in wineserver). Settings
+  that are this project's own choices (overrides, add-ins, fonts) are
+  not workarounds and belong here.
 - No AUR packages. Microsoft DLLs only as black boxes (no disassembly).
 - Don't reverse engineer or work around Autodesk licensing or copy protection.
 - Commits: plain English subject, body says why; signed release tags `v*` are

@@ -17,6 +17,15 @@ is missing from the list. Add a step, then add its line:
 cd scripts/lib/migrations && sha256sum [0-9][0-9][0-9][0-9]-*.sh > SHA256SUMS
 ```
 
+What is frozen is the file, not always the result: `0001-base-setup`
+calls the current functions of `configure.sh` and `common.sh` (DXVK,
+add-ins, fonts, ...), so a **new** installation gets today's base setup
+through it. That is on purpose - a prefix that already ran 0001 never
+runs it again, so a change to those functions reaches existing prefixes
+only through a new step. When a change to such a function matters for
+existing prefixes, it needs its own step (as 0012 did for the add-in
+list).
+
 ## A step
 
 `NNNN-<what>.sh`, sourced by a new `bash -Eeuo pipefail` for the prefix in
