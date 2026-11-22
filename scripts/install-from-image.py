@@ -37,6 +37,7 @@ import os
 import re
 import shlex
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -76,6 +77,22 @@ def win_split(cmdline):
     if have:
         args.append("".join(cur))
     return args
+
+def write_json_atomic(path, data, indent=1):
+    """Write JSON so that a crash or a full disk leaves the old file or the
+    new one, never half of one: a temporary file next to it, flushed to
+    disk, then renamed over it (os.replace is atomic on one filesystem)."""
+    tmp = "%s.tmp-%d" % (path, os.getpid())
+    try:
+        with open(tmp, "w") as f:
+            json.dump(data, f, indent=indent)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 # Run from the project (scripts/), not as a copy: odis.py and regf.py are in
@@ -430,8 +447,7 @@ class Installer:
             return
         st = self.state()
         st[key] = time.strftime("%Y-%m-%d %H:%M:%S")
-        with open(self.state_file, "w") as f:
-            json.dump(st, f, indent=1)
+        write_json_atomic(self.state_file, st)
 
     # --- variables of the image -------------------------------------------
     # ODIS fills in more variables than the folders above: the image's
@@ -841,9 +857,10 @@ class Installer:
         if self.a.dry_run:
             return
         os.makedirs(self.adix_record_dir(), exist_ok=True)
-        with open(self.adix_record_path(identity), "w") as f:
-            json.dump({"identity": identity, "package": s.get("display") or s["name"], "version": s.get("version", ""),
-                       "files": sorted(set(files), key=str.lower)}, f, indent=0)
+        write_json_atomic(self.adix_record_path(identity),
+                          {"identity": identity, "package": s.get("display") or s["name"],
+                           "version": s.get("version", ""), "files": sorted(set(files), key=str.lower)},
+                          indent=0)
 
     def replace_adix_record(self, identity, s, files, logname):
         records = self.read_adix_records()
@@ -1707,7 +1724,15 @@ class Installer:
         self.log("      starting the licensing service as a process (%s)" % win)
         out = open(os.path.join(self.logdir, "licensing-service.log"), "ab")
         self._lic_proc = subprocess.Popen(["wine", win], env=self.env, stdout=out, stderr=subprocess.STDOUT)
-        time.sleep(8)   # it answers on 127.0.0.1:44511 within a few seconds
+        # It answers on 127.0.0.1:44511 within a few seconds; a slow machine
+        # gets up to LICENSING_WAIT, a fast one goes on as soon as it is there.
+        waited = wait_for_port("127.0.0.1", LICENSING_PORT, LICENSING_WAIT,
+                               alive=lambda: self._lic_proc.poll() is None)
+        if waited is None:
+            self.log("      WARN licensing service not answering on port %d after %ds - going on"
+                     % (LICENSING_PORT, LICENSING_WAIT))
+        else:
+            self.log("      licensing service answering after %.1fs" % waited)
 
     def stop_licensing_service(self):
         if self._lic_proc is None:
@@ -1721,14 +1746,54 @@ class Installer:
         self._lic_proc = None
 
 
+LICENSING_PORT = 44511
+LICENSING_WAIT = int(os.environ.get("INV_LICENSING_WAIT", "60"))
+
+
+def wait_for_port(host, port, timeout, alive=lambda: True, step=0.5):
+    """Seconds until host:port accepted a connection, or None after timeout
+    (or as soon as alive() says the process ended)."""
+    start = time.monotonic()
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                return time.monotonic() - start
+        except OSError:
+            pass
+        if time.monotonic() - start >= timeout or not alive():
+            return None
+        time.sleep(step)
+
+
+def media_stamp(*files):
+    """What identifies a download for the unpack cache: name, size and
+    modification time of each file (the same as install.sh writes)."""
+    return " ".join(sorted("%s:%d:%d" % (os.path.basename(f), os.stat(f).st_size, int(os.stat(f).st_mtime))
+                           for f in files))
+
+
 def unpack_exe(exe, dry_run=False):
-    """Autodesk's downloaded .exe files are 7-Zip self-extractors."""
+    """Autodesk's downloaded .exe files are 7-Zip self-extractors.
+    The folder's ".unpacked" marker records the download it came from (name,
+    size, modification time) on its first line and, when the image is one
+    folder deeper, that folder on the second. A newer download with the same
+    name, an old marker without a stamp or a marker whose image is gone makes
+    it unpack again into a clean folder."""
     name = os.path.splitext(os.path.basename(exe))[0]
     dest = os.path.join(os.environ.get("XDG_CACHE_HOME", os.path.expanduser("~/.cache")),
                         "inventor-on-linux", "media", name)
     marker = os.path.join(dest, ".unpacked")
+    stamp = media_stamp(exe)
     if os.path.isfile(marker):
-        return dest
+        with open(marker) as f:
+            lines = f.read().splitlines() + ["", ""]
+        image = os.path.normpath(os.path.join(dest, lines[1])) if lines[1] else dest
+        if (lines[0] == stamp and os.path.commonpath([dest, image]) == dest
+                and odis.image_kind(image)):
+            return image
+        print("unpacked copy in %s is not from this download - unpacking again" % dest, flush=True)
+        if not dry_run:
+            shutil.rmtree(dest)
     sevenzip = shutil.which("7zz") or shutil.which("7z") or shutil.which("7za")
     if not sevenzip:
         sys.exit("7z not found - install the 7zip (Arch) / p7zip-full (Debian) package")
@@ -1738,14 +1803,16 @@ def unpack_exe(exe, dry_run=False):
     os.makedirs(dest, exist_ok=True)
     if subprocess.call([sevenzip, "x", "-y", "-o" + dest, exe], stdout=subprocess.DEVNULL) != 0:
         sys.exit("could not unpack %s with 7z" % exe)
+    image = dest
     # some packages put the image one folder deeper
     if odis.image_kind(dest) is None:
         subs = [os.path.join(dest, d) for d in os.listdir(dest) if os.path.isdir(os.path.join(dest, d))]
         hits = [d for d in subs if odis.image_kind(d)]
         if len(hits) == 1:
-            dest = hits[0]
-    open(os.path.join(dest, ".unpacked"), "w").close()
-    return dest
+            image = hits[0]
+    with open(marker, "w") as f:
+        f.write(stamp + "\n" + (os.path.relpath(image, dest) if image != dest else "") + "\n")
+    return image
 
 
 def main():
