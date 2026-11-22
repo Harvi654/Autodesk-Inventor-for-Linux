@@ -1718,6 +1718,31 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-22 - installer robustness after a code review:** an outside
+review of `install-from-image.py` (static reading) found four weak spots;
+three were real and are fixed, one is on purpose. (1) The install state
+(`.odis-install-state.json`) and the ADIX file records are written to a
+temporary file and renamed over the old one (`write_json_atomic`), so a
+crash or a full disk cannot leave half a file. (2) The unpack cache of
+downloaded `.exe`/`.7z` files was keyed by the file name only: a newer
+download with the same name reused the old unpacked image. The
+`.unpacked` marker now records name, size and modification time of the
+download (install.sh and install-from-image.py alike) and a mismatch
+unpacks again into a clean folder; the marker of an image one folder
+deeper was also written into the inner folder and never found, so such a
+download was unpacked on every run - fixed. Caches unpacked before this
+change have no stamp and are unpacked once more. (3) The installer waited
+a fixed 8 s for the licensing service started as a process; it now waits
+until the service answers on the address in
+`C:\ProgramData\Autodesk\AdskLicensingService\AdskLicensingService.data`
+(`"Addr"`, read again on every try - at most `INV_LICENSING_WAIT`, 60 s)
+and says so in the log. The port is the service's own choice per
+installation (39843 and 37413 in two of the maintainer's prefixes); the
+44511 an earlier comment named was not measured. (4) `win_split` keeps backslashes before a closing quote on
+purpose - Windows' own argv rules would turn `INSTALLDIR="C:\...\"` into a
+broken value - and now has a test that says so.
+`tests/test_installer_robustness.py`; 250 tests OK.
+
 **2026-11-16 - Wine's menu builder off in the prefix itself:** a plain
 `wine reg query` by hand in the fresh 2026 prefix let `wineboot` run
 `winemenubuilder.exe -a -r`, which wrote 18 file-association and protocol

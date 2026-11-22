@@ -156,6 +156,15 @@ unpack() {
     local parts=() f7=()
     for f in "$@"; do case "${f,,}" in *.7z) f7+=("$f") ;; esac; done
     if [ ${#f7[@]} -gt 0 ]; then parts=("${f7[@]}"); else parts=("$@"); fi
+    # The marker records which download it came from (name, size, mtime of
+    # each part, as install-from-image.py's media_stamp): a newer download
+    # with the same name, or an old marker without it, unpacks again.
+    local stamp
+    stamp="$(for f in "${parts[@]}"; do printf '%s:%s:%s\n' "$(basename "$f")" "$(stat -c %s "$f")" "$(stat -c %Y "$f")"; done | sort | paste -sd' ')"
+    if [ -f "$dest/.unpacked" ] && [ "$(head -n1 "$dest/.unpacked")" != "$stamp" ]; then
+        info "the unpacked copy in $dest is not from this download - unpacking again" >&2
+        rm -rf -- "$dest"
+    fi
     if [ ! -f "$dest/.unpacked" ]; then
         mkdir -p "$dest"
         for f in "${parts[@]}"; do
@@ -165,7 +174,7 @@ unpack() {
                 rm -rf "$dest"; return 0
             fi
         done
-        touch "$dest/.unpacked"
+        printf '%s\n' "$stamp" > "$dest/.unpacked"
     fi
     find_image "$dest"
 }
