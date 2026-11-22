@@ -86,6 +86,23 @@ What had to be worked around (all handled by the scripts):
 | Login never returns to Inventor | `adskidmgr://` callback went to the default prefix | `launch-inventor.sh` records the running prefix for the callback |
 | "Failed to initialize a component for accessing AutoCAD files. Error 82" | no `RealDWGSettings.xml` in the profile | `finish-install.sh` writes it |
 
+### Autodesk Access and ODIS in the install plan
+
+Autodesk Access offers product updates. ODIS is Autodesk's installation
+engine. The project reads the ODIS image manifests and runs the selected
+packages directly. The AutoCAD 2027 manifest used different dependency
+names from Inventor's, so both packages made it into the plan. The
+planner now also recognizes `AdAccess-installer.exe` and
+`AdODIS-installer.exe` by their exact filenames. The filter applies to
+product images and update bundles. `--with` retains the explicit package
+selection for product images.
+
+To check an image, run `python3 scripts/odis-plan.py IMAGE --app acad.en-US`
+for AutoCAD or omit `--app` for Inventor. The plan shows skipped packages
+and the reason. The synthetic test covers the alternate names, a nested
+dependency, and a licensing installer stored in an ODIS directory.
+Validation with the maintainer's images is pending.
+
 ### Updates (e.g. 2026.4)
 
 ```bash
@@ -1717,6 +1734,11 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-21 - Access and ODIS in AutoCAD's default install plan:**
+the planner recognizes their installer filenames even when the manifest
+uses different dependency names. The synthetic plan retains Autodesk
+Licensing and explicit package selection.
 
 **2026-11-16 - Wine's menu builder off in the prefix itself:** a plain
 `wine reg query` by hand in the fresh 2026 prefix let `wineboot` run

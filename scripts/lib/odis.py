@@ -48,6 +48,12 @@ SKIP = {
     "odis": "Autodesk installer (ODIS) itself",
 }
 
+# Product manifests can use different names for the same installer.
+SKIP_INSTALLERS = {
+    "adaccess-installer.exe": SKIP["access"],
+    "adodis-installer.exe": SKIP["odis"],
+}
+
 
 LOCALE = re.compile(r"^[a-z]{2}-[A-Z]{2}$")
 
@@ -523,8 +529,8 @@ def _plan(img, roots, lang, include_all, extra=()):
         if key in seen:
             return
         seen.add(key)
-        # asked for by name (--with ags): installed although on the skip list
-        if not include_all and name.lower() in SKIP and name.lower() not in extra:
+        skip_optional = not include_all and name.lower() not in extra
+        if skip_optional and name.lower() in SKIP:
             skipped.append((name, "%s - install it with --with %s" % (SKIP[name.lower()], name)))
             return
         # language-specific packages (x64/de-DE/...) only for the chosen language
@@ -537,6 +543,14 @@ def _plan(img, roots, lang, include_all, extra=()):
             missing.append((name, rel, " <- ".join(chain)))
             return
         root = ET.parse(mpath).getroot()
+        if skip_optional:
+            install = root.find("m:Configuration/m:InstallFile", NS)
+            if install is not None:
+                filename = os.path.basename(install.get("file", "").replace("\\", "/")).lower()
+                reason = SKIP_INSTALLERS.get(filename)
+                if reason:
+                    skipped.append((name, "%s - install it with --with %s" % (reason, name)))
+                    return
         for dep in root.findall("m:Dependencies/m:Package", NS):
             visit(dep.get("name", "?"), dep.get("path"), dep.get("installAs", ""), chain + [name])
         s = _step(root, name, install_as, rel, img, lang)

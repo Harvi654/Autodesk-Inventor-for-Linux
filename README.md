@@ -279,6 +279,10 @@ out DWG TrueView, which Autodesk's own installer adds with Inventor on
 Windows), `--no-electrical` (likewise for the Electrical Catalog Browser),
 `--prefix DIR`, `--help` for the rest.
 
+The default install plan skips Autodesk Access and the Autodesk ODIS
+installer. Product updates are installed explicitly from a downloaded
+Autodesk update with `scripts/install-from-image.py`.
+
 **Or with a window (new, being tested):**
 
 ```bash
