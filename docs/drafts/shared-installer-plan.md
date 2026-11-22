@@ -148,8 +148,15 @@ build. In steps, each time-boxed (three rounds):
    `WF5\Inventor_2027.2_Update.exe` (3.5 GB) with its own `WF5\setup.xml`,
    linked by a `setup_ext.xml` in the image root ("Inventor Professional
    2027.2 Update", depending on the product). Nothing was installed.
-   Open: a dry run of the project's installer on that image (product plus
-   `WF5\` update), then a real install into a fresh prefix; whether the
+   Checked the same night: a dry run of `install-from-image.py` on that
+   image passes all 34 steps. The download was repeated from scratch in
+   a new prefix on another disk and, from the same `Create_Installer`
+   file (SHA-256 compared), in an online Windows 10 VM snapshot;
+   `tools/image-manifest.py compare` against `tools/image-manifest.ps1`'s
+   list: 261 files, 9.78 GB on both sides, all 261 identical (SHA-256,
+   size, path), nothing missing or extra. Wine downloads exactly what
+   Windows does.
+   Open: a real install from that image into a fresh prefix; whether the
    work cache can be removed once the image is written; and whether the
    download link inside `Create_Installer_*.exe` expires (re-running it
    later would then need a new download from Autodesk Account).
