@@ -102,6 +102,38 @@ build. In steps, each time-boxed (three rounds):
    installing, so the project's installer installs from what it fetched?
    First test 2026-11-22: what the web installer downloads, where, and
    whether the latest update comes with it.
+
+   Result of the first test (2026-11-23, Inventor Professional 2027.2
+   web installer, "Install" method, throwaway prefix, winum-11.22-1):
+   - The web installer is a 7-Zip self-extractor. It unpacks `Setup.exe`
+     (the ODIS bootstrap) to `%TEMP%\7zD...\` and runs it.
+   - Under Wine `Setup.exe` does not start: its private side-by-side
+     assemblies `odis.bs.win` and `odis.bs.wx` (wxWidgets, `AdHttpLib.dll`)
+     sit in `ODIS\odis.bs.win\` and `ODIS\odis.bs.wx\`, found on Windows
+     through `<probing privatePath="ODIS"/>` in `Setup.exe.config`. Wine's
+     `lookup_assembly` (ntdll `actctx.c`) never reads the application
+     configuration file, so `+actctx` shows "Could not find dependent
+     assembly odis.bs.win" and the loader fails with c0000135. This is a
+     fourth Wine gap. Known upstream: bug 56648 (DWG TrueView), bug 58527
+     (AutoCAD Electrical 2026), merge request 10753 under review. If it
+     is merged by Wine 11.23 we get it with the rebase; otherwise it is a
+     winum fix of our own (MEASURE first, then a test in `ntdll/tests`).
+   - For the test only (not for the installer), the layout was arranged so
+     Wine's existing lookup finds the assemblies (`Setup.exe` moved into
+     `ODIS\`, a copy of `ODIS\` under it). Then the bootstrap window
+     ("Preparing for installation...") works: it downloads one package,
+     `%TEMP%\odis_download_dest\<GUID>\pkg.odis.tar` (430 MB, containing only
+     `ODIS/AdODIS-installer.exe`), i.e. ODIS itself, and then opens the
+     ODIS window. It was cancelled there; nothing was installed.
+   - ODIS's own log names "Inventor Professional 2027.2": the web
+     installer targets the latest update directly, it is not 2027.0 plus
+     a separate update.
+   - Autodesk Account offers a separate "Download" method that downloads
+     the installer without running it and, according to Autodesk's
+     download-method pages, includes the latest updates like "Install"
+     does ("Direct download" mostly does not). That is the method to test
+     next for download-only: what it produces (an image like the one the
+     project installs from today?) and whether it needs ODIS installed.
 2. **The project's own update service**, shared by all products: a timer
    (monthly by default) that says updates are available and, on the
    user's yes, takes a reflink copy of the prefix, gets the update (step 1
