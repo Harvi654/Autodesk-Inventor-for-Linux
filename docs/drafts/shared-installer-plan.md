@@ -134,6 +134,25 @@ build. In steps, each time-boxed (three rounds):
      does ("Direct download" mostly does not). That is the method to test
      next for download-only: what it produces (an image like the one the
      project installs from today?) and whether it needs ODIS installed.
+
+   Result of the second test (2026-11-23, same prefix): **download-only
+   works.** The "Download" method gives `Create_Installer_<product>_<ver>_
+   <lang>_WIN64.exe` (32 MB, a 7-Zip self-extractor holding
+   `AdOdisDeployTool.exe`, a Qt tool with its own downloader, plus the
+   image's `setup.xml` and manifests). Under winum-11.22-1 it runs with no
+   Wine errors, asks for no sign-in, downloads the packages into
+   `C:\Autodesk\WI\<id>\pkg.*.tar(.xz)` (9.7 GB, a work cache) and writes
+   an ordinary unpacked image to `Downloads\Autodesk\Inventor Professional
+   2027 - (EN)\` (9.8 GB: `Setup.exe`, `setup.xml`, `manifest\`, `x64\`,
+   `x86\`, `3rdParty\`, `Content\`). The latest update comes with it:
+   `WF5\Inventor_2027.2_Update.exe` (3.5 GB) with its own `WF5\setup.xml`,
+   linked by a `setup_ext.xml` in the image root ("Inventor Professional
+   2027.2 Update", depending on the product). Nothing was installed.
+   Open: a dry run of the project's installer on that image (product plus
+   `WF5\` update), then a real install into a fresh prefix; whether the
+   work cache can be removed once the image is written; and whether the
+   download link inside `Create_Installer_*.exe` expires (re-running it
+   later would then need a new download from Autodesk Account).
 2. **The project's own update service**, shared by all products: a timer
    (monthly by default) that says updates are available and, on the
    user's yes, takes a reflink copy of the prefix, gets the update (step 1
