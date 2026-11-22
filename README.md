@@ -541,6 +541,9 @@ Next release (in progress):
       to be found)
 - [ ] Microsoft's Access Database Engine as an optional installer step, for
       the Electrical Catalog Browser
+- [ ] Autodesk's terms shown before installing, with an explicit yes (as
+      Autodesk's own installer does), and one installer for Inventor,
+      AutoCAD and Revit ([plan](docs/drafts/shared-installer-plan.md))
 
 Later, roughly in this order:
 
