@@ -1733,8 +1733,12 @@ deeper was also written into the inner folder and never found, so such a
 download was unpacked on every run - fixed. Caches unpacked before this
 change have no stamp and are unpacked once more. (3) The installer waited
 a fixed 8 s for the licensing service started as a process; it now waits
-until port 44511 answers (at most `INV_LICENSING_WAIT`, 60 s), and says so
-in the log. (4) `win_split` keeps backslashes before a closing quote on
+until the service answers on the address in
+`C:\ProgramData\Autodesk\AdskLicensingService\AdskLicensingService.data`
+(`"Addr"`, read again on every try - at most `INV_LICENSING_WAIT`, 60 s)
+and says so in the log. The port is the service's own choice per
+installation (39843 and 37413 in two of the maintainer's prefixes); the
+44511 an earlier comment named was not measured. (4) `win_split` keeps backslashes before a closing quote on
 purpose - Windows' own argv rules would turn `INSTALLDIR="C:\...\"` into a
 broken value - and now has a test that says so.
 `tests/test_installer_robustness.py`; 250 tests OK.

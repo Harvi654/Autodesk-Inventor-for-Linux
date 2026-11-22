@@ -75,42 +75,57 @@ class AtomicJson(unittest.TestCase):
         self.assertEqual(os.listdir(self.tmp.name), ["state.json"])
 
 
-class WaitForPort(unittest.TestCase):
+class WaitForLicensing(unittest.TestCase):
+    """The licensing service's port is its own choice per installation and
+    is read from AdskLicensingService.data each time."""
+
     def setUp(self):
         self.ins = load_installer()
+        self.tmp = tempfile.TemporaryDirectory(prefix="inventor-licensing-")
+        self.addCleanup(self.tmp.cleanup)
+        self.data = os.path.join(self.tmp.name, "AdskLicensingService.data")
 
-    def test_returns_when_the_port_answers(self):
+    def free_port(self):
+        s = socket.socket()
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+        s.close()
+        return port
+
+    def test_reads_the_address(self):
+        Path(self.data).write_text('{"Version":"x","Addr":"127.0.0.1:39843","Other":1}')
+        self.assertEqual(self.ins.licensing_addr(self.data), ("127.0.0.1", 39843))
+        self.assertIsNone(self.ins.licensing_addr(self.data + ".missing"))
+        Path(self.data).write_text("{}")
+        self.assertIsNone(self.ins.licensing_addr(self.data))
+
+    def test_follows_a_port_written_while_waiting(self):
+        Path(self.data).write_text('{"Addr":"127.0.0.1:%d"}' % self.free_port())   # old, nobody there
         srv = socket.socket()
         srv.bind(("127.0.0.1", 0))
         port = srv.getsockname()[1]
 
-        def listen_later():
+        def start_service():
             time.sleep(0.6)
             srv.listen(1)
-        threading.Thread(target=listen_later, daemon=True).start()
+            Path(self.data).write_text('{"Addr":"127.0.0.1:%d"}' % port)
+        threading.Thread(target=start_service, daemon=True).start()
         try:
-            waited = self.ins.wait_for_port("127.0.0.1", port, 10, step=0.1)
+            waited = self.ins.wait_for_addr(lambda: self.ins.licensing_addr(self.data), 10, step=0.1)
         finally:
             srv.close()
         self.assertIsNotNone(waited)
         self.assertLess(waited, 5)
 
     def test_gives_up_after_the_timeout(self):
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        s.close()                       # nothing listens there
         start = time.monotonic()
-        self.assertIsNone(self.ins.wait_for_port("127.0.0.1", port, 1, step=0.1))
-        self.assertLess(time.monotonic() - start, 5)
+        self.assertIsNone(self.ins.wait_for_addr(lambda: None, 1, step=0.1))
+        self.assertIsNone(self.ins.wait_for_addr(lambda: ("127.0.0.1", self.free_port()), 1, step=0.1))
+        self.assertLess(time.monotonic() - start, 6)
 
     def test_gives_up_when_the_process_ended(self):
-        s = socket.socket()
-        s.bind(("127.0.0.1", 0))
-        port = s.getsockname()[1]
-        s.close()
         start = time.monotonic()
-        self.assertIsNone(self.ins.wait_for_port("127.0.0.1", port, 30, alive=lambda: False, step=0.1))
+        self.assertIsNone(self.ins.wait_for_addr(lambda: None, 30, alive=lambda: False, step=0.1))
         self.assertLess(time.monotonic() - start, 5)
 
 

@@ -1724,13 +1724,15 @@ class Installer:
         self.log("      starting the licensing service as a process (%s)" % win)
         out = open(os.path.join(self.logdir, "licensing-service.log"), "ab")
         self._lic_proc = subprocess.Popen(["wine", win], env=self.env, stdout=out, stderr=subprocess.STDOUT)
-        # It answers on 127.0.0.1:44511 within a few seconds; a slow machine
-        # gets up to LICENSING_WAIT, a fast one goes on as soon as it is there.
-        waited = wait_for_port("127.0.0.1", LICENSING_PORT, LICENSING_WAIT,
+        # It answers on the address in its .data file within a few seconds;
+        # a slow machine gets up to LICENSING_WAIT, a fast one goes on as
+        # soon as it is there.
+        data_file = self.unix(LICENSING_DATA)
+        waited = wait_for_addr(lambda: licensing_addr(data_file), LICENSING_WAIT,
                                alive=lambda: self._lic_proc.poll() is None)
         if waited is None:
-            self.log("      WARN licensing service not answering on port %d after %ds - going on"
-                     % (LICENSING_PORT, LICENSING_WAIT))
+            self.log("      WARN licensing service not answering (address from AdskLicensingService.data: %s)"
+                     " after %ds - going on" % (licensing_addr(data_file), LICENSING_WAIT))
         else:
             self.log("      licensing service answering after %.1fs" % waited)
 
@@ -1746,20 +1748,38 @@ class Installer:
         self._lic_proc = None
 
 
-LICENSING_PORT = 44511
 LICENSING_WAIT = int(os.environ.get("INV_LICENSING_WAIT", "60"))
+# The service picks its own local port and writes it to this file ("Addr":
+# "127.0.0.1:<port>"); it differs per installation (39843 and 37413 in two
+# of the maintainer's prefixes, 2026-11-22). Autodesk's support articles
+# point to the same file for checking the service and for firewall rules.
+LICENSING_DATA = r"C:\ProgramData\Autodesk\AdskLicensingService\AdskLicensingService.data"
 
 
-def wait_for_port(host, port, timeout, alive=lambda: True, step=0.5):
-    """Seconds until host:port accepted a connection, or None after timeout
-    (or as soon as alive() says the process ended)."""
+def licensing_addr(data_file):
+    """(host, port) from the service's .data file, or None."""
+    try:
+        with open(data_file, errors="replace") as f:
+            m = re.search(r'"Addr"\s*:\s*"([^"]+):(\d+)"', f.read())
+    except OSError:
+        return None
+    return (m.group(1), int(m.group(2))) if m else None
+
+
+def wait_for_addr(get_addr, timeout, alive=lambda: True, step=0.5):
+    """Seconds until the address get_addr() returns accepted a connection,
+    or None after timeout (or as soon as alive() says the process ended).
+    get_addr is asked again each time: the service may write a new port
+    when it starts."""
     start = time.monotonic()
     while True:
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                return time.monotonic() - start
-        except OSError:
-            pass
+        addr = get_addr()
+        if addr:
+            try:
+                with socket.create_connection(addr, timeout=1):
+                    return time.monotonic() - start
+            except OSError:
+                pass
         if time.monotonic() - start >= timeout or not alive():
             return None
         time.sleep(step)
