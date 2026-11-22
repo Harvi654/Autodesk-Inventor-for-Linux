@@ -59,3 +59,24 @@ a reflink copy of a prefix made from the same image, with
 installer's state, so only the update runs). `compare-reference.py
 --changed` also lists files whose size the update changed but the prefix
 did not (an update mostly replaces files).
+
+## Tracing Inventor 2027 DWG export
+
+Close Inventor and any Wine processes using the source prefix before copying
+it. Pass an installed Inventor 2027 prefix, a prepared Wine runtime containing
+`bin/wine` and `bin/wineserver`, and an existing writable output directory
+outside the prefix.
+
+```bash
+bash tools/trace-inventor-dwg-export.sh /path/to/prefix /path/to/wine /path/to/output
+```
+
+The tool makes a private copy of the prefix under the output directory and
+launches Inventor with the chosen runtime. Follow the prompt to export a sheet
+as DWG, then close Inventor to finish the capture. Keep the prefix copy and raw
+logs local. To regenerate the filtered summary, use the directory printed as
+`inventor_export_work`.
+
+```bash
+python3 -I tools/summarize-inventor-dwg-export.py /path/to/output/inventor-dwg-export.RUN
+```
