@@ -20,6 +20,7 @@ names, SIDs and long hex IDs masked.
 | `admeta-check.py` | Linux | File integrity of a prefix: every file the image's `.admeta` lists for an ADIX package is present and identical (size, SHA-256) to the file inside the package. |
 | `installdir-check.py` | Linux | Per MSI package of the image: its `installLocation` next to the `INSTALLDIR` Windows' command line had (does ODIS pass `%INSTALL_DEST%` to MSIs without an `installLocation`?). |
 | `adix-registry-names.py` | Linux | ADIX packages with a `Registry.reg` next to `Registry.dat`: key and value NAMES of both compared (never the data) - does the `.reg` hold anything the imported `.dat` does not? |
+| `image-manifest.ps1` / `image-manifest.py` | Windows VM / Linux | SHA-256, size and path of every file of an install image in one format (`make`), and a comparison of two such lists (`compare`): is the image Autodesk's Create Installer writes under Wine the same as on Windows? |
 
 ## How the 2026-11-15 comparison was made
 
