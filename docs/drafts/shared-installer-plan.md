@@ -83,6 +83,43 @@ what ODIS does:
 - The terms' text is not copied into the repository, only linked.
 - Nix: the flag in its configuration, at @krokosik's next batch update.
 
+## Downloads and updates without manual steps (decided 2026-11-22)
+
+Two questions are kept apart: **who installs** (the project's installer,
+which follows the ODIS manifests and is checked against Windows) and
+**where the files and updates come from** (today: the user downloads the
+image and each update by hand). The installer stays the base; ODIS is
+not made the base, because it updates itself and changes under the
+project, it can only be observed from outside (clean room), it needs
+Wine gaps closed first (the signing timestamp of Autodesk's packages,
+services in session 0, WebView2), some of its custom actions need
+Windows PowerShell 5.1 (part of Windows, not redistributable; PowerShell 7
+is no drop-in for InstallShield's actions), and it does not fit the Nix
+build. In steps, each time-boxed (three rounds):
+
+1. **Research: ODIS only for downloading.** Can Autodesk's web installer
+   (or Autodesk Access) under Wine fetch the image and its updates without
+   installing, so the project's installer installs from what it fetched?
+   First test 2026-11-22: what the web installer downloads, where, and
+   whether the latest update comes with it.
+2. **The project's own update service**, shared by all products: a timer
+   (monthly by default) that says updates are available and, on the
+   user's yes, takes a reflink copy of the prefix, gets the update (step 1
+   or files the user downloaded), installs it with the project's
+   installer, checks it (golden plan, a start of the program), goes back
+   to the copy if anything fails, and then rests until the next window.
+   Updates come in batches, never in the middle of work.
+3. **The three Wine gaps as proper winum fixes** (tests, L1); they also
+   help licensing and WebView2 (sign-in, Assistant).
+4. **Only then: ODIS as an optional full path**, run on a copy of the
+   prefix with the project's GUI watching it and comparing the result with
+   what the project's installer does; actions that cannot run under Wine
+   (PowerShell) are skipped and listed. It becomes the default only if
+   that comparison holds over several releases.
+
+If step 1 does not work, step 2 still works with files the user
+downloads, so no step is wasted.
+
 ## Not part of the installer
 
 - **Autodesk Genuine Service** stays optional (`--with ags`): AutoCAD 2027
