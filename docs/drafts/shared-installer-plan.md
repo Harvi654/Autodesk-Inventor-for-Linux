@@ -156,7 +156,19 @@ build. In steps, each time-boxed (three rounds):
    list: 261 files, 9.78 GB on both sides, all 261 identical (SHA-256,
    size, path), nothing missing or extra. Wine downloads exactly what
    Windows does.
-   Open: a real install from that image into a fresh prefix; whether the
+   Installed the same night (2026-11-23) from that image into a fresh
+   prefix on another disk: `scripts/install.sh IMAGE UPDATE --prefix ...
+   --skip-packages --no-desktop`, with `WF5\Inventor_2027.2_Update.exe`
+   unpacked by hand first (the installer would unpack it into `~/.cache`).
+   Product 34 steps, update 19 steps, migrations to 0012; Inventor starts,
+   signs in, and About shows Release 2027.2, Build 334. Two update steps
+   fail and are allowed by the manifest: the WebView2 runtime installer
+   (known; `finish-install` installs WebView2) and ".NET Windows Desktop
+   Runtime 10.0.0", whose runtimes (10.0.9) are in the prefix all the
+   same; why it returns an error is open. The uninstall entries say
+   31.0.19200 in both this and an updated prefix: Autodesk does not change
+   them with an update, so the release is read from About.
+   Open: whether the
    work cache can be removed once the image is written; and whether the
    download link inside `Create_Installer_*.exe` expires (re-running it
    later would then need a new download from Autodesk Account).
