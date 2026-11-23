@@ -120,7 +120,7 @@
             year = "2027";
             inherit (mediaSources2027) media;
             updates = [ mediaSources2027.update ];
-            version = "2027.1";
+            version = "2027.2";
           };
           inventor2026 = mkInventor {
             year = "2026";
@@ -151,7 +151,7 @@
         inventor-2027 = {
           type = "app";
           program = "${inventor2027}/bin/inventor-2027";
-          meta.description = "Autodesk Inventor Professional 2027.1";
+          meta.description = "Autodesk Inventor Professional 2027.2";
         };
         inventor-2026 = {
           type = "app";
@@ -454,14 +454,14 @@
               year = "2027";
               inherit (mediaSources2027) media;
               updates = [ mediaSources2027.update ];
-              version = "2027.1";
+              version = "2027.2";
               dxvkLayer = otherDxvk;
             };
             withUpstreamVkd3d = releases.mkInventor {
               year = "2027";
               inherit (mediaSources2027) media;
               updates = [ mediaSources2027.update ];
-              version = "2027.1";
+              version = "2027.2";
               vkd3dLayer = modules.vkd3d-proton;
             };
             # The layers the launcher mounts (passthru of nix-overlayfs).

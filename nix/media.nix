@@ -11,8 +11,8 @@ let
     };
     "2027" = {
       archiveHash = "sha256-h6AZa9Ue6wRmlffS7uR32xYjeMXQMGBANwn1PQXbM/0=";
-      updateVersion = "2027.1";
-      updateHash = "sha256-3K0IZ/7jlDSmL4Ra233dI3YgR3TM0569GvqabO8ll6Y=";
+      updateVersion = "2027.2";
+      updateHash = "sha256-1tWI9sbDZBu6xrHElZXpLWN1kgKEwEBp3VvCMTBfEGw=";
     };
   };
   source = sources.${year};

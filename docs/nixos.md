@@ -12,7 +12,7 @@ packaged fonts, and valid licensing and Identity Manager links. Fresh-state
 GUI validation passed browser sign-in and basic part creation, save, and reopen.
 Broader application compatibility has not been validated.
 
-The default flake target is Inventor Professional 2027 English with the 2027.1
+The default flake target is Inventor Professional 2027 English with the 2027.2
 update and Content Center, on x86_64 Linux. Inventor 2026 English with update
 2026.4 is also available as a separate package. The runtime builds Wine 11.20 with the patches of
 [winum](https://github.com/Harvi654/winum) `winum-11.20-2` (its `patches/series`,
@@ -90,7 +90,7 @@ when installing both releases):
 
 ```sh
 nix-store --add-fixed sha256 ~/downloads/Inventor/2027/Inventor_Professional_2027_English_Win_64bit_db_002_002.7z
-nix-store --add-fixed sha256 ~/downloads/Inventor/2027/Inventor_2027.1_Update.exe
+nix-store --add-fixed sha256 ~/downloads/Inventor/2027/Inventor_2027.2_Update.exe
 ```
 
 The small `001_002.exe` unpacker is unnecessary. The archive and update must
