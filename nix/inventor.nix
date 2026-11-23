@@ -353,7 +353,7 @@ withInventorMeta (overlayfsLib.composeWindowsLayers {
         ]
       )
     }:$PATH
-    ${builtins.readFile ./launch-lock.sh}
+    ${builtins.readFile ./launch-state.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
       inherit (launchModules) runtime;
       defaultMode = "system";

@@ -88,7 +88,7 @@ if [ -z "$licensing_version" ]; then
     exit 1
 fi
 # bbolt memory-maps this database. Keep its live inode on the native filesystem,
-# outside the composed overlay, and serialize users of it with launch-lock.sh.
+# outside the composed overlay, and rely on nix-overlayfs's session lock for one user of it at a time.
 licensing_state="$WINEPREFIX/drive_c/ProgramData/Autodesk/AdskLicensingService"
 licensing_native_state="$inventor_state_dir/licensing-data"
 mkdir -p "$licensing_native_state" || exit 1

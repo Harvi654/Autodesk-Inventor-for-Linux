@@ -1,4 +1,6 @@
-"""Exercise session exclusion and native licensing-state migration without Wine."""
+"""Exercise the launch scripts (release state, native licensing-state migration,
+fonts, registry refresh) without Wine. One session per release is nix-overlayfs's
+session lock, tested there."""
 from pathlib import Path
 import os
 import pwd
@@ -8,7 +10,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-LOCK = ROOT / "nix/launch-lock.sh"
+STATE = ROOT / "nix/launch-state.sh"
 SERVICES = ROOT / "nix/launch-services.sh"
 FONTS = ROOT / "nix/launch-fonts.sh"
 
@@ -103,32 +105,28 @@ class RuntimeState(unittest.TestCase):
         return subprocess.run(["bash", "-c", script], env=self.env,
                               text=True, capture_output=True, timeout=10)
 
-    def test_lock_survives_exec_and_blocks_overlap(self):
-        script = f'. "{LOCK}"; exec bash -c \'echo ready; read -r line\''
+    def test_state_takes_no_lock(self):
+        # Two launches of one release must not be serialized here: nix-overlayfs
+        # does it before touching the state, and a descriptor opened here would
+        # be inherited by Wine. Sourcing opens nothing and blocks nothing.
+        script = f'. "{STATE}"; echo ready; ls -l /proc/$$/fd; read -r line'
         owner = subprocess.Popen(["bash", "-c", script], env=self.env,
                                  text=True, stdin=subprocess.PIPE,
                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.addCleanup(lambda: owner.poll() is None and owner.kill())
         self.assertEqual(owner.stdout.readline().strip(), "ready")
-        blocked = self.run_script(f'. "{LOCK}"')
-        self.assertNotEqual(blocked.returncode, 0)
-        self.assertIn("already in use", blocked.stderr)
-        owner.communicate("release\n", timeout=5)
-        self.assertEqual(owner.returncode, 0)
-        self.assertEqual(self.run_script(f'. "{LOCK}"').returncode, 0)
+        second = self.run_script(f'. "{STATE}"; printf "%s" "$inventor_state_dir"')
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertTrue(second.stdout.endswith("autodesk-inventor-2026/.nix-overlayfs"), second.stdout)
+        fds, _ = owner.communicate("release\n", timeout=5)
+        self.assertNotIn("inventor.lock", fds)
 
-    def test_different_releases_can_hold_locks_simultaneously(self):
-        script = f'. "{LOCK}"; echo ready; read -r line'
-        owner = subprocess.Popen(["bash", "-c", script], env=self.env,
-                                 text=True, stdin=subprocess.PIPE,
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        self.addCleanup(lambda: owner.poll() is None and owner.kill())
-        self.assertEqual(owner.stdout.readline().strip(), "ready")
+    def test_releases_have_separate_state(self):
         self.env["INVENTOR_YEAR"] = "2027"
-        other = self.run_script(f'. "{LOCK}"; printf "%s" "$inventor_state_dir"')
+        other = self.run_script(f'. "{STATE}"; printf "%s" "$inventor_state_dir"')
         self.assertEqual(other.returncode, 0, other.stderr)
         self.assertIn("autodesk-inventor-2027", other.stdout)
-        owner.communicate("release\n", timeout=5)
+        self.assertTrue(Path(other.stdout).is_dir())
 
     def test_database_migration_preserves_native_updates(self):
         self.check_database_migration("2026")
@@ -159,7 +157,7 @@ class RuntimeState(unittest.TestCase):
             path.write_text(f"#!{shutil.which('bash')}\nexit 0\n")
             path.chmod(0o755)
         self.env["PATH"] = str(mock_bin) + os.pathsep + self.env["PATH"]
-        script = f'. "{LOCK}"; . "{SERVICES}"'
+        script = f'. "{STATE}"; . "{SERVICES}"'
         first = self.run_script(script)
         self.assertEqual(first.returncode, 0, first.stderr)
         public_macros = prefix / f"drive_c/users/Public/Documents/Autodesk/Inventor {year}/Macros"
@@ -223,7 +221,7 @@ class RuntimeState(unittest.TestCase):
         for name in ["wine", "sleep"]:
             (mock_bin / name).chmod(0o755)
         self.env["PATH"] = str(mock_bin) + os.pathsep + self.env["PATH"]
-        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
         self.assertEqual(out.returncode, 0, out.stderr)
         calls = log.read_text()
         key = f"reg add HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\{year}"
@@ -241,7 +239,7 @@ class RuntimeState(unittest.TestCase):
             f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;"
             f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
         log.write_text("")
-        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertNotIn("/v Path /t", log.read_text())
         # a custom subdirectory of the Shared Components folder is not the
@@ -252,7 +250,7 @@ class RuntimeState(unittest.TestCase):
             f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.2;"
             f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
         log.write_text("")
-        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn(f"/d C:\\windows\\system32;{custom};"
                       f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;", log.read_text())
@@ -262,7 +260,7 @@ class RuntimeState(unittest.TestCase):
             f"printf '%s\\n' \"$*\" >> {log}\n"
             "if [ \"$1 $2\" = 'reg query' ]; then exit 1; fi\n")
         log.write_text("")
-        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertNotIn("/v Path /t", log.read_text())
         self.assertIn("could not read the Windows Path", out.stderr)
