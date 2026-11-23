@@ -224,14 +224,6 @@
         "type": "github"
       }
     },
-    "root": {
-      "inputs": {
-        "nix-overlayfs": "nix-overlayfs",
-        "nixpkgs": "nixpkgs_3",
-        "winum": "winum",
-        "winum-candidates": "winum-candidates"
-      }
-    },
     "winum": {
       "flake": false,
       "locked": {
@@ -244,12 +236,12 @@
       },
       "original": {
         "owner": "Harvi654",
+        "ref": "winum-11.20-2",
         "repo": "winum",
-        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
         "type": "github"
       }
     },
-    "winum-candidates": {
+    "winum-install": {
       "flake": false,
       "locked": {
         "lastModified": 1794502212,
@@ -261,9 +253,17 @@
       },
       "original": {
         "owner": "Harvi654",
+        "ref": "winum-11.20-2",
         "repo": "winum",
-        "rev": "98a6feda5d55b739c9fdfd363b060631a2004447",
         "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "nix-overlayfs": "nix-overlayfs",
+        "nixpkgs": "nixpkgs_3",
+        "winum": "winum",
+        "winum-install": "winum-install"
       }
     }
   },

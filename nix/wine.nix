@@ -2,21 +2,21 @@
   lib,
   wineWow64Packages,
   fetchurl,
-  # The winum source at the release tag (flake input "winum", see flake.nix).
+  # The winum source at a release tag (flake input "winum" or "winum-install",
+  # see flake.nix).
   winum,
   # Topics under winum's patches/candidates/ to test on top of the series
   # (each applied in the order of its own series file). Empty for a normal
   # build: candidates are never part of a release.
   candidates ? [ ],
-  # Where the candidates come from (flake input "winum-candidates", for example
-  # a winum checkout). Separate from `winum`, so that taking candidates from
-  # elsewhere leaves the release patches - and the Wine built from them - as
-  # they are.
+  # Where the candidates come from (the launch Wine's `winum`, possibly a
+  # winum checkout; the flake checks use a fixture). Not read when there are
+  # no candidates.
   candidatesSource ? winum,
 }:
 let
-  # Release this project uses; wine/version.env names the same one and the
-  # flake check "winum-pin" fails when the two disagree.
+  # The release, from winum's own wine/version.env; the flake check
+  # "winum-pin" fails when it differs from the input's tag.
   winumEnv = builtins.readFile "${winum}/wine/version.env";
   envValue =
     key:
@@ -47,10 +47,13 @@ let
   ) candidates;
   # Which prefixes this Wine runs as built (nix-overlayfs compares it between
   # the Wine that built the layers and the one that runs them): the winum
-  # release, plus a hash of the candidate patches that change prefix contents.
+  # release, plus a hash of the patches - of the release series and the
+  # candidates - that change prefix contents. The series' are included so that
+  # a winum checkout given as `winum` (to test candidates) with the same
+  # release name but changed prefix patches is refused, not run.
   prefixChangingPatches = lib.filter (
     patch: (import ./wine-prefix.nix { inherit lib; }).changesPrefix (builtins.readFile patch)
-  ) candidatePatches;
+  ) (map (name: "${winum}/patches/${name}") series ++ candidatePatches);
   prefixCompatibility =
     "winum-${wineVersion}-${winumBuild}"
     +

@@ -7,18 +7,20 @@
       url = "github:krokosik/nix-overlayfs/182757dbf0057db8f067d9675f1cda3f0faf4176";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # winum-11.20-2 (signed tag), the Wine release wine/version.env names.
-    # Only its patches/series and the patches it lists are used.
-    winum = {
-      url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
+    # winum releases by their signed tags; only patches/series and the patches
+    # it lists are used. Two inputs, so the launcher can move to a newer
+    # release while the installation layers stay (a new install Wine
+    # reinstalls Inventor):
+    # - winum-install: the Wine that builds the installation layers;
+    # - winum: the Wine Inventor runs, and where wineCandidates come from. To
+    #   test candidates from a winum checkout: `--override-input winum
+    #   path:/path/to/winum` (rebuilds the launch Wine and the launcher only).
+    winum-install = {
+      url = "github:Harvi654/winum/winum-11.20-2";
       flake = false;
     };
-    # Where wineCandidates come from; the same commit unless overridden, for
-    # example `--override-input winum-candidates path:/path/to/winum`. The
-    # release patches always come from `winum`, so taking candidates from a
-    # checkout does not rebuild the installations.
-    winum-candidates = {
-      url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
+    winum = {
+      url = "github:Harvi654/winum/winum-11.20-2";
       flake = false;
     };
   };
@@ -68,25 +70,25 @@
           wineCandidates ? [ ],
           installWineCandidates ? [ ],
           winum ? inputs.winum,
-          candidatesSource ? inputs.winum-candidates,
+          installWinum ? inputs.winum-install,
+          candidatesSource ? winum,
         }:
         let
           inherit (pkgs) lib;
           launchCandidates = lib.unique (installWineCandidates ++ wineCandidates);
           # Builds the base environment, WebView2, .NET Framework and Inventor.
           installWine = pkgs.callPackage ./nix/wine.nix {
-            inherit winum candidatesSource;
+            inherit candidatesSource;
+            winum = installWinum;
             candidates = lib.unique installWineCandidates;
           };
-          # Runs Inventor: the same winum release plus the candidates under test.
-          wine =
-            if launchCandidates == lib.unique installWineCandidates then
-              installWine
-            else
-              pkgs.callPackage ./nix/wine.nix {
-                inherit winum candidatesSource;
-                candidates = launchCandidates;
-              };
+          # Runs Inventor: the `winum` release plus the candidates under test.
+          # With the same release and candidates as installWine it is the same
+          # derivation, built once.
+          wine = pkgs.callPackage ./nix/wine.nix {
+            inherit winum candidatesSource;
+            candidates = launchCandidates;
+          };
           modules = scope.moduleScopes.makeNativeModules {
             wine = installWine;
             windowsArch = "wow64";
@@ -158,26 +160,16 @@
         };
       };
       checks.${system} = {
-        # wine/version.env (get-wine.sh) and the flake input (nix/wine.nix)
-        # must name the same winum release.
+        # Each winum input names its release by tag; the source behind it must
+        # be that release (winum's own wine/version.env, read by nix/wine.nix).
+        # Checks the committed flake.lock, not an --override-input.
         winum-pin =
           let
-            env = builtins.readFile ./wine/version.env;
-            value =
-              key:
-              let
-                m = builtins.match ".*\n${key}=([^\n]*)\n.*" ("\n" + env + "\n");
-              in
-              if m == null then throw "wine/version.env has no ${key}" else builtins.head m;
-          in
-          let
-            # The committed pins (not any --override-input): candidates are
-            # taken from the same winum commit as the release.
             locked = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes;
+            release = package: "winum-${package.wineVersion}-${package.winumBuild}";
           in
-          assert value "WINUM_VERSION" == wine.wineVersion;
-          assert value "WINUM_BUILD" == wine.winumBuild;
-          assert locked.winum.locked.rev == locked.winum-candidates.locked.rev;
+          assert locked.winum.original.ref == release wine;
+          assert locked.winum-install.original.ref == release releases.installWine;
           pkgs.runCommand "inventor-winum-pin" { } ''
             touch "$out"
           '';
@@ -235,6 +227,23 @@
                   "inf-change"
                   "code-only"
                 ];
+              # A winum checkout given as `winum` (the documented way to test
+              # candidates) under the install release's name: a changed
+              # code patch in its series is accepted, a changed wine.inf
+              # patch refused.
+              "a checkout whose series changes only code is accepted" =
+                evaluates
+                  (mkReleases {
+                    winum = ./tests/fixtures/fake-winum-checkout-code;
+                    installWinum = fixture;
+                  }).inventor2027;
+              "a checkout whose series changes the prefix is refused" =
+                !(evaluates
+                  (mkReleases {
+                    winum = ./tests/fixtures/fake-winum-checkout-inf;
+                    installWinum = fixture;
+                  }).inventor2027
+                );
               "the same candidates reuse the install Wine" =
                 drv
                   (mkReleases {
