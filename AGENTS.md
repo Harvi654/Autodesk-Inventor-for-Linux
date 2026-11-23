@@ -33,6 +33,10 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
 ## Rules
 - **One Autodesk release per Wine prefix**, never a second program or release
   into an existing prefix. Default prefix `~/.wine-inventor<year>`.
+  Exception (maintainer, 2026-11-23): a **companion product** of the same
+  year that works together with the product inside it - the Vault client
+  with its Inventor add-in - goes into that product's prefix, through the
+  same installer path. Nothing else does.
 - **Supported releases** (maintainer, 2026-11-16): the newest Inventor
   release (now 2027) is fully supported - Windows comparisons, update tests
   and new work target it; the previous one (now 2026) is maintained - it

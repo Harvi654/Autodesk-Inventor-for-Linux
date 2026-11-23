@@ -28,6 +28,70 @@ that stop a change for one product, or one release, from breaking another.
   Access/ODIS names, migration 0012) would have had to be ported by hand,
   and a bug like 0010's would repeat in each copy.
 
+## Architecture (decided 2026-11-23)
+
+Not a rewrite: the installation core is proven (the Create Installer image
+is identical to Windows' and installs to Inventor 2027.2, below). What
+changes is the shape around it - five layers, each with a defined input and
+output, so each can be tested and replaced on its own, and the same layers
+serve every product through its profile:
+
+1. **Get the image.** Input: `Create_Installer_<product>_<ver>_<lang>_WIN64.exe`
+   (recommended: it brings the latest update and is verified against
+   Windows), the parts of a Browser download, or an unpacked image. The
+   Create Installer runs under winum in a small throwaway download prefix,
+   never in the product's prefix, and writes the image to a folder the user
+   chooses (any disk). Output: the image folder and its file list
+   (`tools/image-manifest.py`), so it can be checked again later.
+2. **Plan.** From the image's manifests (`odis.py`): applications,
+   packages, options, what is skipped and why. Shown before installing;
+   kept as golden plans.
+3. **Install.** `install-from-image.py` as it is: runs the plan into the
+   prefix, state per step.
+4. **Set up the prefix.** The migrations, as now.
+5. **Update.** The same path with a newer image: a reflink copy of the
+   prefix, the update part (`WF5\`), the check, back to the copy if it
+   fails. Create Installer fits this: for a new update it downloads the
+   image with the update in it.
+
+**Components.** The Electrical Catalog Browser (`aceinvaddin`) and Nastran
+(`InvNastran`, part of `app.inventor`) are in Inventor's image and install
+with it; the browser stays optional and on by default as on Windows,
+Nastran needs a feature test (study, solve, results), not an installer
+step. **Vault** is the one separate product: its own download and image,
+installed as a companion product into the Inventor prefix of the same year
+(AGENTS.md exception, 2026-11-23) through the same layers; whether its
+Create Installer works like Inventor's is to be checked. PR #8 moves to
+this path.
+
+**GUI.** GTK 4 and Python stay. The installer emits machine-readable
+events (JSON lines: step, state, progress, error) instead of the GUI
+parsing `@@phase` lines, and the GUI only shows them: the source (Create
+Installer, image, Browser download) and the disks for image and prefix,
+the plan with components to tick (Content Center, TrueView, Electrical
+Catalog Browser, Vault), install / repair / update / roll back, and a
+Start button per release. The same GUI serves AutoCAD and Revit through
+their profiles.
+
+**README:** Create Installer ("Download" method in Autodesk Account)
+becomes the recommended way to get the files; Browser download stays as
+the fallback (maintainer, 2026-11-23).
+
+**Order:**
+1. `install.sh` takes `Create_Installer_*.exe` directly: get the image,
+   check it, install.
+2. The update unpacked next to the image, not into `~/.cache`; the full
+   exit code of Autodesk's installers (`.cmd` wrapper and `%ERRORLEVEL%`),
+   so .NET's "newer version already installed" is not logged as FAILED.
+3. JSON events in the installer, the GUI on them.
+4. Vault as a companion product (PR #8 on the new path).
+5. The update service with the snapshot (step 2 of "Downloads and
+   updates" below).
+6. The core in its own repository, once AutoCAD needs it.
+
+**Fonts and text rendering** are a separate workstream (section "Fonts"
+below), as they concern every product.
+
 ## Safety net
 
 1. **Release checklist per product:** a fresh install from the image; an
@@ -202,6 +266,39 @@ build. In steps, each time-boxed (three rounds):
 
 If step 1 does not work, step 2 still works with files the user
 downloads, so no step is wasted.
+
+## Fonts (2026-11-23)
+
+What is known: Wine ships its own Tahoma (LGPL) and maps the classic
+Win32 UI font (`MS Shell Dlg`) to it; WPF and newer UI ask for Segoe UI,
+which may not be distributed. The installer's default
+(`scripts/linux-fonts.sh`) copies Liberation, Noto and DejaVu into the
+prefix and maps Windows family names (Arial -> Liberation Sans, Segoe UI
+-> Noto Sans, ...); `INV_FONTS=windows` copies fonts from the user's own
+Windows installation. Without any Windows fonts WPF's fallback fails fast
+(`docs/arch-hyprland.md`, "Windows fonts are required"). Autodesk brings
+its own engineering fonts (AIGDT/AMGDT in Inventor; AutoCAD its SHX fonts
+and a few TrueType fonts) - to be listed per product from the prefix and
+the Windows reference, not assumed. @krokosik found (#13, #18, Nix only)
+that small Tahoma text is jagged because Wine takes anti-aliasing from
+fontconfig first: with `rgba` none it never reaches ClearType, while
+Windows uses ClearType by default (`FontSmoothingType=2`).
+
+Order:
+1. **Inventory, measured:** which families Inventor and AutoCAD ask for
+   and what Wine gives them (a `+font` trace summary), and which fonts the
+   Windows reference install puts into `C:\Windows\Fonts`
+   (`compare-reference.py` already lists the files).
+2. **Wine first:** whether Wine should follow the registry's ClearType
+   setting over fontconfig is a winum candidate (test measured in the
+   offline VM; krokosik's probe ran on a networked machine, so it is
+   re-run there).
+3. **Project settings like Windows:** `FontSmoothingType=2` and the
+   family mappings as a migration, after step 2 decides what the Wine
+   side covers; krokosik's Nix logic ported to `scripts/` where still
+   needed, so both paths render the same.
+4. Segoe UI stays the user's own (their Windows fonts); the free mapping
+   remains the default.
 
 ## Not part of the installer
 
