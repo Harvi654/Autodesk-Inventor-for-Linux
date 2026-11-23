@@ -5,9 +5,9 @@ Used to compare what Autodesk's installer (ODIS) does on Windows with what
 image. See [docs/installer-completeness-review.md](../docs/installer-completeness-review.md).
 
 Everything these tools read stays local: captures, registry exports, logs
-and `.PML` files are never committed. What they print is names (files,
-registry keys and value names, MSI property names, a few paths), with user
-names, SIDs and long hex IDs masked.
+and `.PML` files are never committed. The installer-review tools report
+names, MSI properties and a few paths with identifying information masked.
+The companion capture also reports selected registry values and file hashes.
 
 | Tool | Runs on | What it does |
 |---|---|---|
@@ -60,3 +60,125 @@ a reflink copy of a prefix made from the same image, with
 installer's state, so only the update runs). `compare-reference.py
 --changed` also lists files whose size the update changed but the prefix
 did not (an update mostly replaces files).
+
+## Inventor Nastran 2027 companion capture
+
+Use these tools to compare the registrations and files added by Nastran
+before installation, after installation, and after Inventor first opens the
+Nastran environment. The last phase matters because Nastran registers its
+per-user NEWPFUI class at startup. Use Inventor 2027.2 and the same Autodesk
+Create Installer images for Inventor and Nastran on both systems.
+[Observed Wine behavior](../docs/arch-hyprland.md#result-log).
+
+Keep captures, comparison reports and Fusion logs in a private folder outside
+the checkout. Only the masked text captures leave the VM. Review them before
+sharing filtered excerpts. The tools never transmit data, and their outputs
+stay out of Git.
+
+### Windows 10 reference
+
+Use Windows PowerShell 5.1. Capture as the Inventor user so HKCU belongs to
+the account that ran Inventor. Use elevated PowerShell for enabling and
+disabling Fusion logging.
+
+In the offline snapshot with Inventor 2027.2 installed, copy in the Nastran
+image and capture script. Use a private output folder that already exists.
+
+~~~powershell
+powershell.exe -NoProfile -File .\companion-capture.ps1 -Phase before -DryRun
+powershell.exe -NoProfile -File .\companion-capture.ps1 -Phase before -Output C:\capture\win-before.txt
+# Install Nastran from its image. Wait for setup to exit with Inventor closed.
+powershell.exe -NoProfile -File .\companion-capture.ps1 -Phase installed -Output C:\capture\win-installed.txt
+~~~
+
+Use the separate online snapshot for sign-in and first startup. Prepare it
+independently with the same Inventor and Nastran versions and an empty
+`C:\fusionlog`. Turn on failure logging before launching Inventor.
+
+~~~powershell
+# Elevated PowerShell
+powershell.exe -NoProfile -File .\companion-capture.ps1 -FusionLog on
+# Sign in to Inventor, open Nastran and note whether 0x80040154 appears.
+# After startup, capture as the Inventor user.
+powershell.exe -NoProfile -File .\companion-capture.ps1 -Phase started -FusionLog collect -Output C:\capture\win-started.txt
+# Elevated PowerShell
+powershell.exe -NoProfile -File .\companion-capture.ps1 -FusionLog off
+~~~
+
+The `on` switch sets `LogFailures=1` (DWORD) and `LogPath=C:\fusionlog\` in
+native `HKLM\SOFTWARE\Microsoft\Fusion`. The `off` switch removes those two
+values. It leaves the log files in place. Collect records the `.HTM` names
+and the Calling assembly, DisplayName and Bind result lines. A dry run
+lists the selected scope or planned Fusion operation without opening the
+registry or inspecting paths. Use the offline before-to-installed pair
+to attribute installer changes. The online started capture can also
+include differences between snapshots.
+
+### Wine
+
+Start with a fresh copy of the Inventor 2027.2 prefix and a Wine runtime with
+all three candidates (`wbemdisp-method-invoke`, `msado15-stream-charset`,
+`combase-per-user-classes`). Close the original prefix before copying it.
+Set `prefix` to the copy, `out` to an existing private output directory,
+`nastran_image` to the installer image and `runtime` to the candidate
+Wine directory. Wait for Wine to finish and flush `system.reg` and `user.reg`
+before each capture.
+
+~~~bash
+(
+    set -e
+    export PATH="$runtime/bin:$PATH"
+    export WINE="$runtime/bin/wine" WINESERVER="$runtime/bin/wineserver" WINELOADER="$runtime/bin/wine"
+    export WINEDLLOVERRIDES='wbemdisp,msado15,combase=b'
+
+    python3 tools/companion-capture.py capture "$prefix" before --output "$out/wine-before.txt"
+    python3 scripts/install-from-image.py "$nastran_image" --prefix "$prefix"
+    python3 tools/companion-capture.py capture "$prefix" installed --output "$out/wine-installed.txt"
+
+    # Optional Fusion capture. Use a copy without earlier Fusion logs.
+    mkdir -p -- "$prefix/drive_c/fusionlog"
+    fusion='HKLM\SOFTWARE\Microsoft\Fusion'
+    WINEPREFIX="$prefix" "$WINE" reg add "$fusion" /v LogFailures /t REG_DWORD /d 1 /f /reg:64
+    WINEPREFIX="$prefix" "$WINE" reg add "$fusion" /v LogPath /t REG_SZ /d 'C:\fusionlog\' /f /reg:64
+
+    # Switch to Nastran and note the dialog. Close Inventor before capturing.
+    INV_PREFIX="$prefix" INV_YEAR=2027 INV_WINE=system bash scripts/launch-inventor.sh
+    python3 tools/companion-capture.py capture "$prefix" started --fusion-log collect \
+        --output "$out/wine-started.txt"
+
+    WINEPREFIX="$prefix" "$WINE" reg delete "$fusion" /v LogFailures /f /reg:64
+    WINEPREFIX="$prefix" "$WINE" reg delete "$fusion" /v LogPath /f /reg:64
+)
+~~~
+
+Omit the Fusion setup, cleanup and collect option for a capture without bind
+diagnostics. The Linux tool reads Wine registry files directly and opens
+vendor files solely to compute their hashes. Linux skips symlinks and Windows
+skips reparse points. The default output is `companion-capture-PHASE.txt`.
+Both collectors require a new output path.
+
+### Compare the captures
+
+~~~bash
+python3 tools/companion-capture.py compare "$out/win-before.txt" "$out/win-installed.txt" \
+    --details "$out/windows-install-diff.txt"
+python3 tools/companion-capture.py compare "$out/wine-before.txt" "$out/wine-installed.txt" \
+    --details "$out/wine-install-diff.txt"
+python3 tools/companion-capture.py compare "$out/win-started.txt" "$out/wine-started.txt" \
+    --details "$out/started-diff.txt"
+~~~
+
+The comparison shows the first 40 changes per registry root or file folder.
+`--details` writes the complete comparison to a new file. Compare
+installed-to-started within either environment to isolate the startup
+registrations before comparing the two environments.
+
+The collectors write UTF-8 with LF in ordinal order. Registry paths, value
+names and relative file paths are lowercase. `REG` records keep the registry
+type, use a blank name for the default value, and use `KEY` for an empty
+selected key. PATH and `REG_MULTI_SZ` data list their entries in order,
+separated by ` ; `. A literal percent, pipe, control character or semicolon
+within a list entry is percent-escaped. GAC names use `FILE path | - | -`.
+Optional `FUSION` rows identify an HTM name and field. Account names,
+profiles, SIDs and machine names are masked. Sensitive registry values appear
+as `<masked>`, and licensing and identity paths are skipped.

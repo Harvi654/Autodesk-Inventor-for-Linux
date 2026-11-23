@@ -8,3 +8,5 @@ downloads/
 __pycache__/
 dist/
 .codex/
+
+companion-capture-*.txt
