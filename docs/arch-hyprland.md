@@ -926,6 +926,22 @@ the frame-changed call and the move. Third round (case H): a frame without
 `0x1837` call and the move. If that matches Windows too, the rounds stop
 here and the issue waits for a trace that shows more.
 
+**2026-11-23, third round (case H, winum `a8469ff`).** A frame without
+`WS_CLIPCHILDREN` that paints a band across a child container, then
+`RedrawWindow(frame, RDW_INVALIDATE|RDW_UPDATENOW)`: **Windows 10 repaints
+the overlapped container at once** (its update region is empty when the
+call returns; its own child gets no new `WM_PAINT`), **Wine leaves the
+container's repaint pending** (vanilla 11.22 and winum 11.22-2 alike,
+x86_64 and i686). The red pixel carried by the later move is not the
+whole story (on Windows it also survived in one variant), so this does
+not yet explain why Inventor's pane stays stale - but it is the first
+measured difference on the way. The three rounds of guessing end here.
+Next, as a narrow task: a `user32` test for this `RDW_UPDATENOW`
+difference (passes on Windows), a candidate fix in `win32u`, a test build,
+and the Frame Analysis switch as its L4; if the panes still go stale, the
+candidate is not added (the test stays as the record and for a Wine bug
+report).
+
 ### Still open (found by the fuzzer, not needed by Inventor)
 
 - `Commit` on a transacted substorage whose parent was reverted dereferences
