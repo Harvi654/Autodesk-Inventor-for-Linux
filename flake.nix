@@ -400,7 +400,7 @@
             ! LOG=/dev/null ${dispatcher} 2>/dev/null
             touch "$out"
           '';
-        # DXVK and vkd3d-proton are layers above the installation, not in it.
+        # DXVK and vkd3d-proton are separate layers, not in the installation.
         # Builds only the two layers; the installation is compared by evaluation.
         graphics-layers =
           let
@@ -451,6 +451,57 @@
           in
           assert lib.assertMsg (failed == [ ]) "graphics-layers: ${lib.concatStringsSep "; " failed}";
           pkgs.runCommand "inventor-graphics-layers" { } "touch $out";
+        # The installation layer and what it is built from. Evaluation only.
+        installation =
+          let
+            inherit (pkgs) lib;
+            drv = package: package.drvPath;
+            built = inventor2027.installation;
+            checks = {
+              "the launcher starts from the installation layer" =
+                drv inventor2027.basePackage == drv built.layer.basePackage;
+            };
+            failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
+          in
+          assert lib.assertMsg (failed == [ ]) "installation: ${lib.concatStringsSep "; " failed}";
+          pkgs.runCommand "inventor-installation" { } "touch $out";
+        # Every script migration has a decision for the Nix package
+        # (nix/migrations.nix); the Nix build does not run them.
+        migration-parity =
+          let
+            inherit (pkgs) lib;
+            table = import ./nix/migrations.nix;
+            files = builtins.attrNames (builtins.readDir ./scripts/lib/migrations);
+            ids = map (lib.removeSuffix ".sh") (
+              builtins.filter (name: builtins.match "[0-9]{4}-.*[.]sh" name != null) files
+            );
+            kinds = [
+              "post-install"
+              "config-layer"
+              "installer"
+              "launcher"
+              "layers"
+              "not-applicable"
+            ];
+            missing = lib.subtractLists (builtins.attrNames table) ids;
+            stale = lib.subtractLists ids (builtins.attrNames table);
+            badKinds = lib.filter (
+              id: table.${id}.nix == [ ] || !(lib.all (k: lib.elem k kinds) table.${id}.nix)
+            ) (builtins.attrNames table);
+          in
+          # A new or removed migration is a warning, not a failure: it comes
+          # from the script installer's side, whose commits should not turn the
+          # Nix checks red. A malformed entry is this file's own mistake.
+          assert lib.assertMsg (
+            badKinds == [ ]
+          ) "migration-parity: unknown or empty kinds for ${lib.concatStringsSep ", " badKinds}";
+          lib.warnIf (missing != [ ])
+            "migration-parity: the Nix package does not have ${lib.concatStringsSep ", " missing} yet - port it (nix/post-install.sh, nix/config-layer.sh) or say why it is not needed, in nix/migrations.nix"
+            (
+              lib.warnIf (stale != [ ])
+                "migration-parity: nix/migrations.nix names migrations that do not exist: ${lib.concatStringsSep ", " stale}"
+                (pkgs.runCommand "inventor-migration-parity" { } "touch $out")
+            );
         # Evaluates the module with both releases; builds nothing from Autodesk.
         nixos-module =
           let
