@@ -15,9 +15,14 @@
   candidatesSource ? winum,
 }:
 let
+  # A file of a winum source. A local path (a checkout given with
+  # --override-input, or a test fixture) stays a path: string interpolation
+  # would need a store copy, which `nix flake check --no-build` (CI) does not
+  # make. A flake input is already a store path.
+  under = source: file: if builtins.isPath source then source + "/${file}" else "${source}/${file}";
   # The release, from winum's own wine/version.env; the flake check
   # "winum-pin" fails when it differs from the input's tag.
-  winumEnv = builtins.readFile "${winum}/wine/version.env";
+  winumEnv = builtins.readFile (under winum "wine/version.env");
   envValue =
     key:
     let
@@ -29,8 +34,9 @@ let
   # patches/series of winum: the patches of a normal winum build, in order.
   # Nothing else in winum's patches/ (candidates, debug) is applied.
   series = lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
-    map lib.trim (lib.splitString "\n" (builtins.readFile "${winum}/patches/series"))
+    map lib.trim (lib.splitString "\n" (builtins.readFile (under winum "patches/series")))
   );
+  seriesPatches = map (name: under winum "patches/${name}") series;
   readSeries =
     file:
     lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
@@ -39,11 +45,9 @@ let
   candidatePatches = lib.concatMap (
     topic:
     let
-      # Keep local fixture paths as paths: string interpolation would require
-      # copying them to the store, which --no-build evaluation does not do.
-      directory = candidatesSource + "/patches/candidates/${topic}";
+      directory = under candidatesSource "patches/candidates/${topic}";
     in
-    map (name: directory + "/${name}") (readSeries (directory + "/series"))
+    map (name: under directory name) (readSeries (under directory "series"))
   ) candidates;
   # Which prefixes this Wine runs as built (nix-overlayfs compares it between
   # the Wine that built the layers and the one that runs them): the winum
@@ -53,7 +57,7 @@ let
   # release name but changed prefix patches is refused, not run.
   prefixChangingPatches = lib.filter (
     patch: (import ./wine-prefix.nix { inherit lib; }).changesPrefix (builtins.readFile patch)
-  ) (map (name: "${winum}/patches/${name}") series ++ candidatePatches);
+  ) (seriesPatches ++ candidatePatches);
   prefixCompatibility =
     "winum-${wineVersion}-${winumBuild}"
     +
@@ -74,7 +78,7 @@ in
       url = "https://dl.winehq.org/wine/source/11.x/wine-${wineVersion}.tar.xz";
       hash = "sha256-6sjKRI+cAIf5YwJrTcJ20eK3+7ZAVu3Ak+Wbu35W/ig=";
     };
-    patches = (old.patches or [ ]) ++ map (name: "${winum}/patches/${name}") series ++ candidatePatches;
+    patches = (old.patches or [ ]) ++ seriesPatches ++ candidatePatches;
     passthru = (old.passthru or { }) // {
       inherit
         wineVersion
