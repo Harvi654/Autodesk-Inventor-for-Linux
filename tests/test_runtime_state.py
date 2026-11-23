@@ -184,6 +184,89 @@ class RuntimeState(unittest.TestCase):
         self.assertTrue(database.is_symlink())
         self.assertEqual(database.read_bytes(), b"updated-genuine-authorization")
 
+    def test_shared_components_values_follow_the_installation(self):
+        # The writable registry is merged after the layers: after an update
+        # that moves the Shared Components version, the launcher writes the
+        # installed version again, so old values cannot win.
+        year = "2027"
+        self.env["INVENTOR_YEAR"] = year
+        prefix = Path(self.env["WINEPREFIX"])
+        service = prefix / "drive_c/ProgramData/Autodesk/AdskLicensingService"
+        service.mkdir(parents=True)
+        (service / "AdskLicensingService.sds").write_bytes(b"state")
+        (prefix / ("drive_c/Program Files (x86)/Common Files/"
+                   "Autodesk Shared/AdskLicensing/1.0")).mkdir(parents=True)
+        components = prefix / f"drive_c/Program Files/Common Files/Autodesk Shared/Components/{year}"
+        for version in ["31.0.2", "31.0.10"]:
+            (components / version).mkdir(parents=True)
+        profile = prefix / "drive_c/users" / self.env["USER"] / (
+            f"AppData/Roaming/Autodesk/Inventor {year}/RealDWGSettings.xml")
+        profile.parent.mkdir(parents=True)
+        profile.write_text("settings")
+        log = self.root / "wine.log"
+        # what `reg query ... /v Path` answers: a user's own segment and the
+        # Shared Components folder of the version before the update
+        current_path = self.root / "path.txt"
+        current_path.write_text(
+            "C:\\windows\\system32;C:\\windows;C:\\Tools\\mine;"
+            f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.2;"
+            f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
+        mock_bin = self.root / "bin"
+        mock_bin.mkdir()
+        (mock_bin / "wine").write_text(
+            f"#!{shutil.which('bash')}\n"
+            f"printf '%s\\n' \"$*\" >> {log}\n"
+            "if [ \"$1 $2\" = 'reg query' ]; then\n"
+            f"  printf '\\r\\n%s\\r\\n    Path    REG_EXPAND_SZ    %s\\r\\n' \"$3\" \"$(cat {current_path})\"\n"
+            "fi\n")
+        (mock_bin / "sleep").write_text(f"#!{shutil.which('bash')}\nexit 0\n")
+        for name in ["wine", "sleep"]:
+            (mock_bin / name).chmod(0o755)
+        self.env["PATH"] = str(mock_bin) + os.pathsep + self.env["PATH"]
+        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        self.assertEqual(out.returncode, 0, out.stderr)
+        calls = log.read_text()
+        key = f"reg add HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\{year}"
+        self.assertIn(f"{key} /v Version /t REG_EXPAND_SZ /d 31.0.10 /f", calls)
+        self.assertIn(f"{key} /v InstallPath /t REG_EXPAND_SZ "
+                      f"/d C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year} /f", calls)
+        # only the Shared Components segment changes; the user's stays
+        self.assertIn("/v Path /t REG_EXPAND_SZ /d C:\\windows\\system32;C:\\windows;C:\\Tools\\mine;"
+                      f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;"
+                      f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin /f", calls)
+        self.assertNotIn("31.0.2", calls)
+        # a Path that is already current is not written again
+        current_path.write_text(
+            "C:\\windows\\system32;C:\\Tools\\mine;"
+            f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;"
+            f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
+        log.write_text("")
+        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertNotIn("/v Path /t", log.read_text())
+        # a custom subdirectory of the Shared Components folder is not the
+        # managed version directory: it stays, only 31.0.2 is replaced
+        custom = f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\Plugins"
+        current_path.write_text(
+            f"C:\\windows\\system32;{custom};"
+            f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.2;"
+            f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
+        log.write_text("")
+        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn(f"/d C:\\windows\\system32;{custom};"
+                      f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;", log.read_text())
+        # a failed query leaves Path alone instead of writing defaults
+        (mock_bin / "wine").write_text(
+            f"#!{shutil.which('bash')}\n"
+            f"printf '%s\\n' \"$*\" >> {log}\n"
+            "if [ \"$1 $2\" = 'reg query' ]; then exit 1; fi\n")
+        log.write_text("")
+        out = self.run_script(f'. "{LOCK}"; . "{SERVICES}"')
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertNotIn("/v Path /t", log.read_text())
+        self.assertIn("could not read the Windows Path", out.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()
