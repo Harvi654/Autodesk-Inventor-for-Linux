@@ -5,8 +5,8 @@
 # schemes"):
 #   0  delivered;
 #   3  no session of that release was there: try the next release;
-#   4  its session is starting or closing, the URL was taken back: ask the
-#      same release again, a few times;
+#   4  its session is starting or closing, and the URL was taken back: ask
+#      the same release again, a few times;
 #   5  its session was there but ended before taking the URL: the callback
 #      belongs to that release, so it is started with it.
 # A 3 after a 4 from the same release means the same as 5 (its session went
@@ -17,7 +17,7 @@
 {
   lib,
   writeShellScript,
-  # Forward attempts per release while it answers 4 (each waits up to
+  # Number of forward attempts per release while it answers 4 (each waits up to
   # NIX_OVERLAYFS_URL_FORWARD_WAIT, 30 s by default, inside the launcher).
   retries ? 4,
 }:

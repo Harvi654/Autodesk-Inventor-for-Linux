@@ -7,14 +7,14 @@
       url = "github:krokosik/nix-overlayfs/006dd3b3f1f973a60e394747e500c5cfb5721599";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # winum releases by their signed tags; only patches/series and the patches
-    # it lists are used. Two inputs, so the launcher can move to a newer
-    # release while the installation layers stay (a new install Wine
-    # reinstalls Inventor):
+    # winum releases, named by their signed tags. Only patches/series and the
+    # patches it lists are used. There are two inputs so that the launcher can
+    # move to a newer release while the installation layers stay as they are
+    # (a new install Wine reinstalls Inventor):
     # - winum-install: the Wine that builds the installation layers;
-    # - winum: the Wine Inventor runs, and where wineCandidates come from. To
-    #   test candidates from a winum checkout: `--override-input winum
-    #   path:/path/to/winum` (rebuilds the launch Wine and the launcher only).
+    # - winum: the Wine that runs Inventor, and the source of wineCandidates.
+    #   To test candidates from a winum checkout, use `--override-input winum
+    #   path:/path/to/winum` (this rebuilds only the launch Wine and the launcher).
     winum-install = {
       url = "github:Harvi654/winum/winum-11.20-2";
       flake = false;
@@ -160,9 +160,10 @@
         };
       };
       checks.${system} = {
-        # Each winum input names its release by tag; the source behind it must
-        # be that release (winum's own wine/version.env, read by nix/wine.nix).
-        # Checks the committed flake.lock, not an --override-input.
+        # Each winum input names its release by tag, and the source it points to
+        # must be that release (winum's own wine/version.env, read by
+        # nix/wine.nix). This checks the committed flake.lock, not an
+        # --override-input.
         winum-pin =
           let
             locked = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes;
@@ -228,9 +229,9 @@
                   "code-only"
                 ];
               # A winum checkout given as `winum` (the documented way to test
-              # candidates) under the install release's name: a changed
-              # code patch in its series is accepted, a changed wine.inf
-              # patch refused.
+              # candidates) that has the install release's name. A changed
+              # code patch in its series is accepted, and a changed wine.inf
+              # patch is refused.
               "a checkout whose series changes only code is accepted" =
                 evaluates
                   (mkReleases {
@@ -412,8 +413,8 @@
             test "$status" -eq 1
             test "$(cat failing.log)" = "2027 --nix-overlayfs-forward-url $lib_url"
 
-            # 2027 is starting (4), then ready: retried until it takes the
-            # callback; 2026 is never asked and nothing starts.
+            # 2027 is starting (4), then ready: the dispatcher asks again until
+            # 2027 takes the callback. 2026 is never asked, and nothing starts.
             run starting env SEQ_2027="4 4 0"
             test "$(cat starting.log)" = "2027 --nix-overlayfs-forward-url $lib_url
             2027 --nix-overlayfs-forward-url $lib_url
@@ -428,13 +429,14 @@
             ! grep -q '^2026 ' busy.log
 
             # 2027 was closing (4) and then gone (3): the callback was its
-            # own, so 2027 starts with it; 2026 is not asked.
+            # own, so 2027 starts with it. 2026 is not asked.
             run closed env SEQ_2027="4 3" STATUS_2026=0
             test "$(cat closed.log)" = "2027 --nix-overlayfs-forward-url $lib_url
             2027 --nix-overlayfs-forward-url $lib_url
             2027 $lib_url"
 
-            # 2027's session ended before taking it (5): 2027 starts with it.
+            # 2027's session ended before taking the callback (5): 2027 starts
+            # with it.
             run ended env SEQ_2027="5" STATUS_2026=0
             test "$(cat ended.log)" = "2027 --nix-overlayfs-forward-url $lib_url
             2027 $lib_url"
@@ -505,8 +507,8 @@
             checks = {
               "the launcher starts from the installation layer" =
                 drv inventor2027.basePackage == drv built.layer.basePackage;
-              # The same expectations as tests/test_bsdtar.py for Python's
-              # read_env_file: both readers agree on the format.
+              # The same expectations as in tests/test_bsdtar.py for Python's
+              # read_env_file, so that both readers agree on the format.
               "nix/env-file.nix reads like install-from-image.py" =
                 import ./nix/env-file.nix { inherit lib; } ./tests/fixtures/env-file.env == {
                   PLAIN = "value";
@@ -525,8 +527,8 @@
           in
           assert lib.assertMsg (failed == [ ]) "installation: ${lib.concatStringsSep "; " failed}";
           pkgs.runCommand "inventor-installation" { } "touch $out";
-        # Every script migration has a decision for the Nix package
-        # (nix/migrations.nix); the Nix build does not run them.
+        # Every script migration has an entry in nix/migrations.nix that says
+        # where the Nix package has it. The Nix build does not run migrations.
         migration-parity =
           let
             inherit (pkgs) lib;
@@ -549,9 +551,10 @@
               id: table.${id}.nix == [ ] || !(lib.all (k: lib.elem k kinds) table.${id}.nix)
             ) (builtins.attrNames table);
           in
-          # A new or removed migration is a warning, not a failure: it comes
-          # from the script installer's side, whose commits should not turn the
-          # Nix checks red. A malformed entry is this file's own mistake.
+          # A new or removed migration gives a warning, not a failure: migrations
+          # come from the script installer's side, and its commits should not
+          # turn the Nix checks red. A malformed entry is a mistake in
+          # nix/migrations.nix itself, so it fails.
           assert lib.assertMsg (
             badKinds == [ ]
           ) "migration-parity: unknown or empty kinds for ${lib.concatStringsSep ", " badKinds}";
@@ -618,8 +621,8 @@
                 in
                 lib.elem "graphical-session.target" service.wantedBy
                 && lib.hasInfix "autodesk-inventor-desktop-check" (plain service.serviceConfig.ExecStart);
-              # WantedBy orders the target after the unit; After= the target
-              # as well would be an ordering cycle.
+              # WantedBy orders the target after the unit, so an After= on the
+              # target as well would make an ordering cycle.
               "the desktop-entry check is not ordered after its own target" =
                 !(lib.elem "graphical-session.target" (
                   config.systemd.user.services.autodesk-inventor-desktop-check.after or [ ]

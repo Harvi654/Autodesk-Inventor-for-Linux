@@ -84,34 +84,36 @@ Each release has its own state. nix-overlayfs allows one session per writable
 layer: it locks the state before the registry merge and the mount, keeps the
 lock out of Wine's processes, refuses a second launch with exit status 75,
 and runs the session (Inventor's licensing and Identity Manager services
-included) in its own PID namespace so nothing outlives it. Do not add a lock
-of our own in the launch scripts (Wine would inherit it); `launch-state.sh`
+included) in its own PID namespace so that nothing outlives it. Do not add a
+lock of our own in the launch scripts (Wine would inherit it). `launch-state.sh`
 only sets the release and its state directory. The licensing database is kept
 on the native filesystem under `.nix-overlayfs/licensing-data` and linked into
 the composition because it needs memory-mapped access outside the FUSE overlay.
 
 ## Prefix setup without migrations
 
-The installation layer runs `install-from-image.py` and `post-install.sh`;
-fixed settings (fonts, WebView2, X11) are the `inventor-config` layer
-(`config-layer.sh`), a separate layer. The script migrations are not run: every one
-gets an entry in `migrations.nix`; `migration-parity` warns about one without
-(do not ignore that warning: the Nix package lacks that change). Put a new
-setting in the config layer unless it needs the installed files - a change
-to `post-install.sh` reinstalls Inventor.
+The installation layer runs `install-from-image.py` and `post-install.sh`.
+Fixed settings (fonts, WebView2, X11) are in the separate `inventor-config`
+layer (`config-layer.sh`). The script migrations are not run. Instead, every
+migration gets an entry in `migrations.nix`, and `migration-parity` warns
+about a migration without one. Do not ignore that warning: it means that the
+Nix package lacks that change. Put a new setting in the config layer unless
+it needs the installed files, because a change to `post-install.sh`
+reinstalls Inventor.
 
 The installation is one layer: install image, update and post-install.sh
 (diagrams and rebuild table: [LAYERS.md](LAYERS.md)). Do not split the update
 into its own layer: nix-overlayfs drops the MSI cache (`windows/Installer`)
-an MSP update needs, and layer builds (direct mode) cannot delete files of a
-lower layer. Wine is the one duplicated input: `winum-install` builds the
-layers, `winum` is what Inventor runs (both by winum's release tag, now
-winum-11.20-2). Updating nixpkgs, nix-overlayfs or winum-install, a new
-Autodesk update, or editing the files in `installerSource` or
-`post-install.sh` reinstalls Inventor - batch such updates and say so in the
-commit. The writable state's registry wins over changed packaged defaults
-for existing users; a value that must follow the installation (like the
-Shared Components version) is rewritten by `launch-services.sh` at start.
+that an MSP update needs, and layer builds (direct mode) cannot delete files
+of a lower layer. Wine is the one duplicated input: `winum-install` builds
+the layers, and `winum` is the Wine that runs Inventor (both named by winum's
+release tag, now winum-11.20-2). Inventor is reinstalled by any of these:
+updating nixpkgs, nix-overlayfs or winum-install, a new Autodesk update, or
+editing the files in `installerSource` or `post-install.sh`. Batch such
+updates and say so in the commit. The writable state's registry wins over
+changed packaged defaults for existing users. A value that must follow the
+installation (like the Shared Components version) is rewritten by
+`launch-services.sh` at start.
 
 ## Runtime and integration
 

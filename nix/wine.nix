@@ -51,10 +51,10 @@ let
   ) candidates;
   # Which prefixes this Wine runs as built (nix-overlayfs compares it between
   # the Wine that built the layers and the one that runs them): the winum
-  # release, plus a hash of the patches - of the release series and the
-  # candidates - that change prefix contents. The series' are included so that
-  # a winum checkout given as `winum` (to test candidates) with the same
-  # release name but changed prefix patches is refused, not run.
+  # release, plus a hash of the release series and candidate patches that
+  # change prefix contents. The release series' patches are included so that a
+  # winum checkout given as `winum` (to test candidates) that has the same
+  # release name but changed prefix patches is refused rather than run.
   prefixChangingPatches = lib.filter (
     patch: (import ./wine-prefix.nix { inherit lib; }).changesPrefix (builtins.readFile patch)
   ) (seriesPatches ++ candidatePatches);

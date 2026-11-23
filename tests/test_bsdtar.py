@@ -94,7 +94,7 @@ class PinnedValues(unittest.TestCase):
         self.assertNotIn(cfg["BSDTAR_SHA256"], nix)
 
     # The same expectations are in flake.nix (check "installation") for
-    # nix/env-file.nix, so both readers agree on the format.
+    # nix/env-file.nix, so that both readers agree on the format.
     ENV_FILE_EXPECTED = {
         "PLAIN": "value",
         "INDENTED": "spaced value",

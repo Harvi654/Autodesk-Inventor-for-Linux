@@ -1,5 +1,6 @@
-"""nix/post-install.sh (the Nix installation's prefix setup) on a fake prefix,
-with stub wine/wineserver that record what they were asked to do."""
+"""Runs nix/post-install.sh (the Nix installation's prefix setup) on a fake
+prefix, with stub wine and wineserver programs that record what they were
+asked to do."""
 import os
 import sys
 import shutil
@@ -42,8 +43,8 @@ class PostInstall(unittest.TestCase):
         self.calls = self.root / "wine.log"
         bin_dir = self.root / "bin"
         bin_dir.mkdir()
-        # wine: logs every call; `reg add` stores the value in a small
-        # database and `reg query` answers from it, as Wine prints it.
+        # The wine stub logs every call. `reg add` stores the value in a small
+        # database, and `reg query` answers from it in the format Wine prints.
         self.db = self.root / "registry.tsv"
         self.db.write_text("")
         wine = bin_dir / "wine"

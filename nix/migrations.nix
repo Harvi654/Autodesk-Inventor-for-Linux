@@ -1,9 +1,10 @@
-# Where the Nix package has each prefix migration of the script installer
-# (scripts/lib/migrations/). The Nix build does not run them: an installation
-# layer is built in one go, so there is no older prefix to bring up to date.
-# The flake check `migration-parity` warns when a migration file has no entry
-# here (it does not fail: migrations come from the script installer's side),
-# so a new migration gets a decision for the Nix package too:
+# This table says where the Nix package has each prefix migration of the
+# script installer (scripts/lib/migrations/). The Nix build does not run
+# them: an installation layer is built in one go, so there is no older prefix
+# to bring up to date. The flake check `migration-parity` warns when a
+# migration file has no entry here (it does not fail, because migrations come
+# from the script installer's side), so that a new migration gets a decision
+# for the Nix package too. The kinds are:
 #   post-install   nix/post-install.sh, in the installation layer (needs the
 #                  installed files; a change reinstalls Inventor)
 #   config-layer   nix/config-layer.sh, a separate layer from the installation

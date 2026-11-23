@@ -2,14 +2,15 @@
 # module's Inventor entries: a file in $XDG_DATA_HOME/applications with the
 # same name as a module entry wins over the system one, so clicking the menu
 # item starts whatever that file names (for example an older launcher, which
-# then misses the current one's checks). Run by a systemd user service at the
-# start of a graphical session, independently of any menu entry. Changes
-# nothing: it names each file and what it starts, and leaves it in place.
+# lacks the checks of the current one). A systemd user service runs this
+# script at the start of a graphical session, independently of any menu
+# entry. It changes nothing: it names each file and what it starts, and
+# leaves the file in place.
 #
 # Usage: desktop-check.sh MODULE_ENTRY... -- CURRENT_LAUNCHER...
 #   MODULE_ENTRY      desktop file names the module installs
 #   CURRENT_LAUNCHER  the launchers the module's entries start
-# Exit code 0 always; findings go to stderr (the journal) and, when
+# The exit code is always 0. Findings go to stderr (the journal) and, when
 # notify-send is available, to one desktop notification.
 set -u
 
@@ -22,9 +23,10 @@ launchers=("$@")
 apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 [ -d "$apps" ] || exit 0
 
-# What the entry starts: the program of its Exec line, resolved. Handles a
-# double-quoted program path (spaces) and an `env [VAR=value...] program`
-# wrapper; when the program cannot be found, the raw Exec line is shown.
+# Prints what the entry starts: the resolved program of its Exec line. It
+# handles a double-quoted program path (with spaces) and an
+# `env [VAR=value...] program` wrapper. When the program cannot be found, it
+# prints the raw Exec line.
 exec_target() {
     local line rest target word
     line=$(grep -m1 '^Exec=' "$1" 2>/dev/null) || { echo "(no Exec line)"; return; }

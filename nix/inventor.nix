@@ -102,11 +102,11 @@ let
     pkgs.xz
     pkgs.zstd
   ];
-  # Only the files the installation build runs: install-from-image.py with
+  # Only the files that the installation build runs: install-from-image.py and
   # what it imports and reads. The prefix setup after it is nix/post-install.sh,
   # not finish-install.sh and the script migrations (nix/migrations.nix), so
-  # edits to the rest of scripts/ do not reinstall. A new file
-  # install-from-image.py starts using must be added here.
+  # edits to the rest of scripts/ do not reinstall Inventor. When
+  # install-from-image.py starts using a new file, add that file here.
   installerSource = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -117,8 +117,8 @@ let
       ../scripts/lib/licenses
     ];
   };
-  # What nix/config-layer.sh runs: common.sh with what it sources and reads,
-  # and linux-fonts.sh.
+  # The files that nix/config-layer.sh runs: common.sh with what it sources
+  # and reads, and linux-fonts.sh.
   configSource = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -139,16 +139,17 @@ let
     ];
   };
   # tar.exe for the prefix: libarchive's signed Windows build of bsdtar,
-  # which the Electrical Catalog Browser's installer needs. URL and SHA-256
-  # come from scripts/lib/bsdtar.env, the file install-from-image.py checks
-  # the archive against; it takes the archive from DOWNLOAD_DIR.
+  # which the Electrical Catalog Browser's installer needs. The URL and SHA-256
+  # come from scripts/lib/bsdtar.env, which install-from-image.py also uses to
+  # check the archive. install-from-image.py takes the archive from
+  # DOWNLOAD_DIR.
   bsdtarEnv = import ./env-file.nix { inherit lib; } ../scripts/lib/bsdtar.env;
   bsdtarArchive = pkgs.fetchurl {
     name = bsdtarEnv.BSDTAR_ZIP;
     url = bsdtarEnv.BSDTAR_URL;
     sha256 = bsdtarEnv.BSDTAR_SHA256;
   };
-  # Direct3D 8-11 and 12 on Vulkan, as separate layers the launcher adds
+  # Direct3D 8-11 and 12 on Vulkan, as separate layers that the launcher adds
   # (mounted below the installation, which has none of their files):
   # a new version rebuilds only the launcher. Their DLL overrides are in the
   # layers' registry, so the per-program exception the prefix setup writes
@@ -178,10 +179,10 @@ let
           sha256 = "7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7";
         };
       };
-  # WebView2 (Home page, sign-in and licensing windows): nix-overlayfs's
-  # pinned layer (154.0.4258.62, x64; it checks the installed
-  # msedgewebview2.exe), on the same base environment as the installation
-  # (no Wine Mono, see below). Its registry settings for Wine are in the
+  # WebView2 (Home page, sign-in and licensing windows) is nix-overlayfs's
+  # pinned layer (154.0.4258.62, x64), built on the same base environment as
+  # the installation (no Wine Mono, see below). The layer's build checks the
+  # installed msedgewebview2.exe. Its registry settings for Wine are in the
   # config layer (webview2_reg).
   webview2 = modules.webview2.override { managedRuntime = "external"; };
   # Microsoft's .NET Framework 4.8 (3D PDF, Import CAD's Property Mapping) as
@@ -189,9 +190,9 @@ let
   # place of Wine Mono; the installer's own .NET step is skipped here. It
   # exports mscoree=native (dllOverrides) to the launcher.
   dotnet48 = modules.dotnet-framework-4-8;
-  # Fonts, WebView2 and X11 settings (nix/config-layer.sh), a separate layer
-  # the launcher adds, independent of the installation: a change rebuilds this layer and the
-  # launcher only. The same layer for every release.
+  # Fonts, WebView2 and X11 settings (nix/config-layer.sh): a separate layer
+  # that the launcher adds, independent of the installation. A change rebuilds
+  # only this layer and the launcher. Every release uses the same layer.
   configLayer =
     (overlayfsLib.mkWindowsPackage {
       inherit (modules) runtime;
@@ -230,10 +231,10 @@ let
   # install image, its updates and the prefix setup in one layer. DXVK and
   # vkd3d-proton are not installed into it (separate layers).
   #
-  # One layer, not the image and the update as two: nix-overlayfs drops
-  # windows/Installer (the MSI cache an MSP update patches against) from a
-  # captured layer, and its direct mode cannot record files a build deletes
-  # from a layer below - the update's removed files (moved to
+  # It is one layer, not two (image and update): nix-overlayfs drops
+  # windows/Installer (the MSI cache that an MSP update patches against) from a
+  # captured layer, and its direct mode cannot record files that a build
+  # deletes from a layer below. The files that the update removed (moved to
   # .inventor-on-linux/removed-by-update/) would come back from the image's
   # layer. So a new update reinstalls the image.
   installed = overlayfsLib.mkWindowsPackage {
@@ -279,8 +280,8 @@ let
   };
 in
 # The launcher: the installation with the config, DXVK and vkd3d-proton layers
-# (nix-overlayfs mounts those below the installation; they do not overlap,
-# nix/LAYERS.md), run on launchRuntime.
+# (nix-overlayfs mounts those below the installation, and they do not
+# overlap; see nix/LAYERS.md), run on launchRuntime.
 withInventorMeta (overlayfsLib.composeWindowsLayers {
   inherit (modules) runtime;
   inherit launchRuntime;

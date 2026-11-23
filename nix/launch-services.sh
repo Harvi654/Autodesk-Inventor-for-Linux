@@ -17,8 +17,9 @@ fi
 # Registry values that name the installed Shared Components version
 # (nix/post-install.sh writes them into the installation layer). The writable
 # state's registry is merged after the layers, so after an update that moves
-# the version an existing user would keep the old values, pointing at files
-# the update removed; they follow the installation at every start instead.
+# the version, an existing user would keep the old values, which point at
+# files that the update removed. Writing them again at every start makes them
+# follow the installation instead.
 inventor_asc_base="$WINEPREFIX/drive_c/Program Files/Common Files/Autodesk Shared/Components/$inventor_year"
 inventor_asc_version=$(find "$inventor_asc_base" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null |
     grep -E '^[0-9]+(\.[0-9]+)+$' | sort -V | tail -1)
@@ -27,9 +28,10 @@ if [ -n "$inventor_asc_version" ]; then
     inventor_asc_dir="C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$inventor_year"
     wine reg add "$inventor_asc_key" /v InstallPath /t REG_EXPAND_SZ /d "$inventor_asc_dir" /f || exit 1
     wine reg add "$inventor_asc_key" /v Version /t REG_EXPAND_SZ /d "$inventor_asc_version" /f || exit 1
-    # The system Path: only its Shared Components segment is replaced; other
-    # segments (the user's, other programs') stay. Read through a file, not a
-    # pipe: a wine call can leave a service holding stdout open.
+    # The system Path: only its Shared Components segment is replaced, and
+    # other segments (the user's, other programs') stay. The output is read
+    # through a file, not a pipe, because a wine call can leave a service that
+    # holds stdout open.
     inventor_env_key='HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
     inventor_path_out=$(mktemp) || exit 1
     # A failed query, or output without a Path value, leaves Path as it is.
@@ -52,8 +54,8 @@ if status != "0" or not current:
     print("")
     sys.exit(0)
 inventor_bin = "C:\\Program Files\\Autodesk\\Inventor %s\\Bin" % year
-# only the release's Shared Components version directory is managed; other
-# segments, custom subdirectories of that folder included, stay
+# only the version directory in the release's Shared Components folder is
+# managed; other segments stay, including custom subdirectories of that folder
 version_dir = re.compile(r"(?i)^c:\\program files\\common files\\autodesk shared\\components\\%s\\\d+(\.\d+)+\\?$"
                          % re.escape(year))
 kept, placed = [], False
@@ -88,7 +90,8 @@ if [ -z "$licensing_version" ]; then
     exit 1
 fi
 # bbolt memory-maps this database. Keep its live inode on the native filesystem,
-# outside the composed overlay, and rely on nix-overlayfs's session lock for one user of it at a time.
+# outside the composed overlay, and rely on nix-overlayfs's session lock to
+# allow only one user of it at a time.
 licensing_state="$WINEPREFIX/drive_c/ProgramData/Autodesk/AdskLicensingService"
 licensing_native_state="$inventor_state_dir/licensing-data"
 mkdir -p "$licensing_native_state" || exit 1

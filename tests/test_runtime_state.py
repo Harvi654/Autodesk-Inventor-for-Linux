@@ -1,6 +1,6 @@
 """Exercise the launch scripts (release state, native licensing-state migration,
-fonts, registry refresh) without Wine. One session per release is nix-overlayfs's
-session lock, tested there."""
+fonts, registry refresh) without Wine. nix-overlayfs's session lock, which
+allows one session per release, is tested in nix-overlayfs."""
 from pathlib import Path
 import os
 import pwd

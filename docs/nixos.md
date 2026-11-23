@@ -22,8 +22,8 @@ The base environment has no Wine Mono (`managedRuntime = "external"`):
 .NET comes from the layer described below.
 
 Two Wines are involved. The winum release of the flake input `winum-install`
-builds the base environment and the WebView2, .NET and Inventor layers;
-Inventor runs on the release of the input `winum` plus the winum candidates
+builds the base environment and the WebView2, .NET and Inventor layers.
+Inventor runs on the release of the input `winum`, plus the winum candidates
 listed in `wineCandidates` in `flake.nix` (with the same release and no
 candidates, both are the same Wine). Trying a candidate that
 changes only code therefore rebuilds Wine and the launcher, not the
@@ -65,7 +65,7 @@ pinned downloads), used instead of Wine Mono for the .NET Framework parts
 such as 3D PDF and Import CAD's Property Mapping; the installer's own .NET
 step is skipped in the Nix build. WebView2 is nix-overlayfs's pinned
 `webview2` layer (154.0.4258.62, x64), built on the same base environment
-(`modules.webview2.override { managedRuntime = "external"; }`); its build
+(`modules.webview2.override { managedRuntime = "external"; }`). Its build
 checks that `msedgewebview2.exe` of that version and architecture is
 installed. Moving to it from this flake's own WebView2 derivation rebuilt
 the installation once. The Inventor base image, all 21 selected
@@ -244,19 +244,19 @@ handler for their release at every launch, as before; `lib.mkInventor` accepts
 `registerHostUrlHandlers = false`, and a package made with it has
 `passthru.withArgs` to change such arguments.
 
-A desktop entry in `$XDG_DATA_HOME/applications` (by default
-`~/.local/share/applications`) with the same name as one of the module's
-(`autodesk-inventor-2027.desktop`, ...) hides it: the menu
-item then starts whatever that file names, for example an older launcher, or
-one written by the script installer or `nix run`. At the start of each
-graphical session the module's user service
+If `$XDG_DATA_HOME/applications` (by default `~/.local/share/applications`)
+has a desktop entry with the same name as one of the module's
+(`autodesk-inventor-2027.desktop`, ...), that entry hides the module's one:
+the menu item then starts whatever that file names, for example an older
+launcher, or one written by the script installer or `nix run`. At the start
+of each graphical session, the module's user service
 `autodesk-inventor-desktop-check` reports such entries, the old
-`...-wayland.desktop` ones, and `adskidmgr` handlers outside the module,
-with the program each one starts (or the raw `Exec=` line when the program
-cannot be found): always in the journal
-(`journalctl --user -u autodesk-inventor-desktop-check`), and as a desktop
-notification when the session has a notification service (best effort). It
-changes nothing; remove or rename the files it names.
+`...-wayland.desktop` ones, and `adskidmgr` handlers outside the module.
+For each one it names the program that the entry starts, or the raw `Exec=`
+line when the program cannot be found. The report always goes to the journal
+(`journalctl --user -u autodesk-inventor-desktop-check`), and also to a
+desktop notification when the session has a notification service (best
+effort). The service changes nothing: remove or rename the files it names.
 `programs.autodesk-inventor.checkUserDesktopEntries = false;` turns it off.
 
 ## Install both releases side by side
@@ -321,18 +321,18 @@ longer rebuild the installed layers (since nix-overlayfs `543c070`; moving the
 input past it rebuilt them once).
 
 The prefix setup does not use the script installer's `finish-install.sh` and
-prefix migrations (`scripts/lib/migrations/`); a Nix layer is built in one go,
+prefix migrations (`scripts/lib/migrations/`). A Nix layer is built in one go,
 so there is no older prefix to migrate. The installation layer runs
-`install-from-image.py` and then `nix/post-install.sh` (what needs the
-installed files: `Current` links, Shared Components registry, licensing SSO
-plugin, default add-ins, crash sources, RealDWG settings). Settings that do
-not, fonts (`linux-fonts.sh`), WebView2 and the X11 values for `Inventor.exe`,
-are the separate `inventor-config` layer (`nix/config-layer.sh`): changing
-them rebuilds that layer and the launcher, not the installation.
-`nix/migrations.nix` says for every migration where the Nix package has it,
-and the `migration-parity` check warns about a migration without an entry
-there (a warning, so that the script installer's commits do not fail the Nix
-checks).
+`install-from-image.py` and then `nix/post-install.sh`, which does the steps
+that need the installed files: `Current` links, Shared Components registry,
+licensing SSO plugin, default add-ins, crash sources, RealDWG settings.
+Settings that do not need them (fonts from `linux-fonts.sh`, WebView2 and the
+X11 values for `Inventor.exe`) are in the separate `inventor-config` layer
+(`nix/config-layer.sh`). Changing them rebuilds that layer and the launcher,
+not the installation. For every migration, `nix/migrations.nix` says where
+the Nix package has it, and the `migration-parity` check warns about a
+migration without an entry there (only a warning, so that the script
+installer's commits do not fail the Nix checks).
 
 ### Installation layer
 
@@ -341,44 +341,45 @@ inputs, the order in which files and registry are combined, and a table of
 what each change rebuilds.
 
 The installation is one layer: the install image, its update and
-`nix/post-install.sh` in one build. It stays one on purpose: nix-overlayfs
-drops `windows/Installer` (the MSI cache an MSP update patches against) from a
-captured layer, and its builds (direct mode) record files they add or change
+`nix/post-install.sh` in one build. It is one layer on purpose: nix-overlayfs
+drops `windows/Installer` (the MSI cache that an MSP update patches against)
+from a captured layer, and its builds (direct mode) record files they add or change
 but not files they delete from a layer below. An update built as a separate
 layer would therefore fail to patch, or bring back the files it removes
 (2027.1 moves 176 to `.inventor-on-linux/removed-by-update/`). So a new
-Autodesk update reinstalls Inventor. For the same reason the rename of
-`bcp47langs.dll`, a file of the Wine base environment, has never taken effect
+Autodesk update reinstalls Inventor. For the same reason, the rename of
+`bcp47langs.dll` (a file of the Wine base environment) has never taken effect
 in the Nix package.
 
 The layer is built from the flake's inputs and, from this repository, only
-the files it runs (`install-from-image.py`, `odis.py`, `regf.py`,
-`bsdtar.env`, the libarchive license, `nix/post-install.sh`; the bsdtar
-archive's URL and hash are read from `bsdtar.env`). Changes to those files,
-to `nixpkgs`, `nix-overlayfs` or `winum-install` reinstall Inventor; other
-edits in `scripts/` do not. Those inputs change often, so update them on
-purpose and in batches rather than with every commit.
+the files that it runs: `install-from-image.py`, `odis.py`, `regf.py`,
+`bsdtar.env`, the libarchive license and `nix/post-install.sh`. The bsdtar
+archive's URL and hash are read from `bsdtar.env`. Changes to those files, or
+to `nixpkgs`, `nix-overlayfs` or `winum-install`, reinstall Inventor, but
+other edits in `scripts/` do not. Those inputs change often, so update them
+on purpose and in batches rather than with every commit.
 
-Wine has two inputs, both by winum's release tag (now `winum-11.20-2`):
-`winum-install` builds the layers, `winum` is the Wine Inventor runs. The Nix
-package does not read this repository's `wine/version.env` (the script
-installer's release); the `winum-pin` check verifies that each input's tag
-matches the release in winum's own `wine/version.env`. The launch Wine has to
-make the same prefix as the install Wine (`prefixCompatibility` in
-`nix/wine.nix`: the release plus a hash of the release and candidate patches
-that change prefix contents), which today means the same release; while both
-name it, they are one derivation.
+Wine has two inputs, both named by winum's release tag (now
+`winum-11.20-2`): `winum-install` builds the layers, and `winum` is the Wine
+that runs Inventor. The Nix package does not read this repository's
+`wine/version.env` (the script installer's release). Instead, the
+`winum-pin` check verifies that each input's tag matches the release in
+winum's own `wine/version.env`. The launch Wine has to make the same prefix
+as the install Wine, which today means the same release (`prefixCompatibility`
+in `nix/wine.nix`: the release plus a hash of the release and candidate
+patches that change prefix contents). While both name the same release, they
+are one derivation.
 
-The writable state's registry is merged after the layers', so a value an
-existing user already has wins over a changed packaged default; a changed
-setting in `inventor-config` reaches new users only (nix/LAYERS.md). The
-values that name the installed Shared Components version are the exception:
-the launcher writes them again at every start, so an update reaches existing
-users.
+The writable state's registry is merged after the layers' registry, so a
+value that an existing user already has wins over a changed packaged default.
+A changed setting in `inventor-config` therefore reaches only new users
+(nix/LAYERS.md). The values that name the installed Shared Components version
+are the exception: the launcher writes them again at every start, so an
+update reaches existing users.
 
 DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) are not part of the
 installation either: the launcher mounts them as separate layers (below the
-installation in nix-overlayfs's order; they share no files with it), so a new
+installation in nix-overlayfs's order, but they share no files with it), so a new
 version rebuilds only the launcher. The defaults are DXVK 2.7.1 and winum's
 vkd3d-proton 3.0.1-winum-1 (with the GPU ray tracing fixes), both pinned by
 SHA-256. Their `native` overrides live in the layers' registry rather than in

@@ -1,19 +1,19 @@
 # Layers and dependencies of the Nix package
 
-How `nix/inventor.nix` and `flake.nix` put Inventor together, and what each
-input rebuilds. Background: [AGENTS.md](AGENTS.md),
+This page shows how `nix/inventor.nix` and `flake.nix` put Inventor together,
+and what a change to each input rebuilds. Background: [AGENTS.md](AGENTS.md),
 [../docs/nixos.md](../docs/nixos.md) ("Installation layer").
 
 ## What the launcher mounts
 
-At launch nix-overlayfs stacks read-only layers from the Nix store under one
+At launch, nix-overlayfs stacks read-only layers from the Nix store under one
 writable layer per release (`~/.local/share/autodesk-inventor-<year>`). Files
 and registry are combined in different orders
 (nix-overlayfs `lib/mkOverlayfsPackage.nix`):
 
 ```mermaid
 flowchart TB
-    subgraph files["Files: the first that has a path wins"]
+    subgraph files["Files: the first layer that has a path wins"]
         direction TB
         f0["writable state"] --> f1["installation<br/>install image + update + post-install.sh"]
         f1 --> f2["vkd3d-proton"] --> f3["DXVK"] --> f4["inventor-config"]
@@ -37,24 +37,26 @@ flowchart TB
 Orange layers are expensive to rebuild (the installation takes hours); green
 ones are small and rebuild in minutes.
 
-Two consequences:
+This has two consequences:
 
-- The writable state's registry is merged last. A value it already has (any
-  value the user's earlier launches merged in) wins over a changed packaged
-  default: changing, say, a WebView2 argument in `inventor-config` reaches new
-  users only. Fixing that in general needs nix-overlayfs to refresh values
-  that still equal the previous packaged default. The values that name the
-  installed Shared Components version (`SharedComponents\<year>` Version and
-  InstallPath, the system `Path`) are written again by the launcher at every
-  start (`nix/launch-services.sh`), so an update reaches existing users.
+- The writable state's registry is merged last. A value that it already has
+  (any value merged in at the user's earlier launches) wins over a changed
+  packaged default. If you change, say, a WebView2 argument in
+  `inventor-config`, only new users get the change. A general fix would need
+  nix-overlayfs to refresh values that still equal the previous packaged
+  default. The launcher writes the values that name the installed Shared
+  Components version again at every start (`nix/launch-services.sh`):
+  `SharedComponents\<year>` Version and InstallPath, and the system `Path`.
+  So an update reaches existing users.
 - The installation's files and registry win over `inventor-config`, DXVK and
-  vkd3d-proton where both have something; they are kept disjoint.
+  vkd3d-proton where both have the same file or value. The layers are kept
+  disjoint.
 
 The installation is one layer on purpose: nix-overlayfs drops
-`windows/Installer` (the MSI cache an MSP update patches against) from a
+`windows/Installer` (the MSI cache that an MSP update patches against) from a
 captured layer, and its builds cannot record files deleted from a lower
-layer, so an update as a separate layer would fail or bring back the files it
-removes.
+layer. An update built as a separate layer would therefore fail, or bring
+back the files it removes.
 
 ## What is built from what
 
@@ -78,7 +80,7 @@ flowchart LR
     end
 
     wine["install Wine"]
-    launchWine["launch Wine<br/>= install Wine while both name<br/>the same release, no candidates"]
+    launchWine["launch Wine<br/>= install Wine while both name<br/>the same release, with no candidates"]
     envL["base environment"]
     wv2["WebView2"]
     net[".NET 4.8"]
@@ -114,11 +116,11 @@ flowchart LR
     wine -. "prefixCompatibility must match" .- launchWine
 ```
 
-The launch Wine must make the same prefix as the install Wine
-(`prefixCompatibility` in `nix/wine.nix`: the winum release plus a hash of
-the release and candidate patches that change prefix contents); evaluation
-stops otherwise. The same holds for a winum checkout given as `winum` to test
-candidates.
+The launch Wine must make the same prefix as the install Wine, or evaluation
+stops. The two are compared by `prefixCompatibility` in `nix/wine.nix`: the
+winum release plus a hash of the release and candidate patches that change
+prefix contents. The same rule applies to a winum checkout given as `winum`
+to test candidates.
 
 ## What a change rebuilds
 
@@ -133,5 +135,5 @@ candidates.
 | `install-from-image.py`, `odis.py`, `regf.py`, `bsdtar.env`, the libarchive license, `nix/post-install.sh` | **installation**, launcher |
 | `nixpkgs`, `nix-overlayfs`, `winum-install` | everything from Wine up, **installation** included |
 
-The rows in bold reinstall Inventor (hours). Those inputs change often, so
-update them on purpose and in batches.
+The changes in the bold rows reinstall Inventor, which takes hours. Those
+inputs change often, so update them on purpose and in batches.
