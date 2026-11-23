@@ -164,8 +164,17 @@ build. In steps, each time-boxed (three rounds):
    signs in, and About shows Release 2027.2, Build 334. Two update steps
    fail and are allowed by the manifest: the WebView2 runtime installer
    (known; `finish-install` installs WebView2) and ".NET Windows Desktop
-   Runtime 10.0.0", whose runtimes (10.0.9) are in the prefix all the
-   same; why it returns an error is open. The uninstall entries say
+   Runtime 10.0.0". The latter is explained: the product image already
+   installed 10.0.9, and the update's 10.0.0 bundle detects the newer
+   related bundle, skips its plan as a downgrade and exits with 0x666
+   (1638, ERROR_PRODUCT_VERSION; its own log in `%TEMP%`, "Plan skipped
+   due to related bundle of plan type Downgrade"). Windows does the same,
+   which is why the manifest allows the failure. The installer sees 102
+   because a process's exit status on Linux keeps only the low byte
+   (0x666 & 0xff = 0x66); reading the full code (through a `.cmd`
+   wrapper and `%ERRORLEVEL%`) would let the log say "already newer"
+   instead of FAILED. An older prefix has 10.0.0 because the earlier
+   Browser-download image carried 10.0.0. The uninstall entries say
    31.0.19200 in both this and an updated prefix: Autodesk does not change
    them with an update, so the release is read from About.
    Open: whether the
