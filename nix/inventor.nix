@@ -178,31 +178,12 @@ let
           sha256 = "7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7";
         };
       };
-  webview2 =
-    (overlayfsLib.mkWindowsPackage {
-      inherit (modules) runtime;
-      # Same base environment as the installation (no Wine Mono, see below).
-      managedRuntime = "external";
-      pname = "inventor-webview2";
-      version = "154.0.4258.62";
-      packageName = "inventor-webview2";
-      src = pkgs.fetchurl {
-        url = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/18c66e75-0385-4019-be3f-3f4a2bb867d5/MicrosoftEdgeWebView2RuntimeInstallerX64.exe";
-        hash = "sha256-rCLs3BnFuIuH8/p1LADalUFlOo9cDF/Eo7K26+ZZH2k=";
-        meta.license = lib.licenses.unfree;
-      };
-      unshareInstall = { session, ... }: ''
-        set -euo pipefail
-        ${session.commands.wine} "$src" /silent /install
-        ${pkgs.coreutils}/bin/timeout 60 ${session.commands.wineserver} --wait || ${session.commands.wineserver} -k
-        test -n "$(${pkgs.findutils}/bin/find "$WINEPREFIX/drive_c" -name msedgewebview2.exe -print -quit)"
-      '';
-    }).overrideAttrs
-      (old: {
-        meta = (old.meta or { }) // {
-          license = lib.licenses.unfree;
-        };
-      });
+  # WebView2 (Home page, sign-in and licensing windows): nix-overlayfs's
+  # pinned layer (154.0.4258.62, x64; it checks the installed
+  # msedgewebview2.exe), on the same base environment as the installation
+  # (no Wine Mono, see below). Its registry settings for Wine are in the
+  # config layer (webview2_reg).
+  webview2 = modules.webview2.override { managedRuntime = "external"; };
   # Microsoft's .NET Framework 4.8 (3D PDF, Import CAD's Property Mapping) as
   # nix-overlayfs's dotnet-framework-4-8 layer below the installation, in
   # place of Wine Mono; the installer's own .NET step is skipped here. It
