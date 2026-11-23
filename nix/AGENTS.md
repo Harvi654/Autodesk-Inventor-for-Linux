@@ -5,6 +5,11 @@ pinned inputs in `flake.lock`; prefer Nix-packaged dependencies. Builds run
 without network: pin downloads with hashes and prefetch/link anything the
 installation scripts need into `DOWNLOAD_DIR` in `inventor.nix`.
 
+The main development effort happens within the scripted part of the repo.
+To reduce maintenance burden, the Nix flake is updated on demand, adopting
+fixes in batches so as to reach feature parity with the rest of the project.
+Users in general move from tagged release to tagged release.
+
 ## Flake commands
 
 Run from the repository root:
