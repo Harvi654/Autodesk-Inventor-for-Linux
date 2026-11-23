@@ -182,3 +182,26 @@ within a list entry is percent-escaped. GAC names use `FILE path | - | -`.
 Optional `FUSION` rows identify an HTM name and field. Account names,
 profiles, SIDs and machine names are masked. Sensitive registry values appear
 as `<masked>`, and licensing and identity paths are skipped.
+
+### Check the Nastran registry count on Wine
+
+Use the same, flushed prefix for both commands and a fresh output path.
+The first count is explicit sections in Wine's save file. The second
+reports captured values and empty keys separately. The capture also
+reconstructs ancestor keys whose sections Wine omitted, so total unique
+keys can be higher than the raw count.
+
+~~~bash
+rg -ic '^\[Software\\\\Autodesk\\\\Autodesk Inventor Nastran 2027(?:\\\\|\])' "$prefix/system.reg"
+python3 tools/companion-capture.py capture "$prefix" installed --output "$out/wine-installed-recheck.txt"
+rg -i '^REG HKLM\\software\\autodesk\\autodesk inventor nastran 2027(?:\\| \| )' \
+    "$out/wine-installed-recheck.txt" |
+    awk -F ' \\| ' '$3 == "KEY" {empty++; next} {values++; keys[$1]=1}
+        END {for (key in keys) count++; printf "value_keys=%d values=%d empty_keys=%d\n", count, values, empty}'
+~~~
+
+On a disposable Wine 11.22 prefix populated with 35 synthetic keys of that
+shape, all 35 explicit sections appeared in the capture. A direct count
+also found one machine PATH key under `System\ControlSet001`. The capture
+now resolves Wine's `CurrentControlSet` alias and emits the active PATH
+under `System\CurrentControlSet`, as the Windows collector does.

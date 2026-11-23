@@ -54,8 +54,9 @@ REG_TYPES = {
     7: "REG_MULTI_SZ", 8: "REG_RESOURCE_LIST", 9: "REG_FULL_RESOURCE_DESCRIPTOR",
     10: "REG_RESOURCE_REQUIREMENTS_LIST", 11: "REG_QWORD",
 }
-ESCAPE = re.compile(r'\\(?:x([0-9a-fA-F]{1,4})|(.))')
-VALUE = re.compile(r'^(?:"((?:\\.|[^"\\])*)"|(@))=(.*)$')
+KEY = re.compile(r"^\[((?:\\.|[^\\\]])*)\](?:\s+\d+)?$")
+ESCAPE = re.compile(r'\\(?:x([0-9a-fA-F]{1,4})|([0-7]{1,3})|(.))')
+VALUE = re.compile(r'^(?:"((?:\\.|[^"\\])*)"|(@))\s*=\s*(.*)$')
 
 
 def field(text):
@@ -103,7 +104,14 @@ class Mask:
 def unescape(text):
     escapes = {"n": "\n", "r": "\r", "t": "\t", "a": "\a", "b": "\b",
                "f": "\f", "v": "\v"}
-    value = ESCAPE.sub(lambda m: chr(int(m[1], 16)) if m[1] else escapes.get(m[2], m[2]), text)
+    escapes["e"] = "\x1b"
+    def decode(match):
+        if match[1]:
+            return chr(int(match[1], 16))
+        if match[2]:
+            return chr(int(match[2], 8))
+        return escapes.get(match[3], match[3])
+    value = ESCAPE.sub(decode, text)
     # Wine can encode a supplementary character as two UTF-16 escapes.
     return value.encode("utf-16-le", errors="surrogatepass").decode("utf-16-le", errors="replace")
 
@@ -131,13 +139,20 @@ def relevant_scope(hive, path):
     )
 
 
+def registry_string(kind, value):
+    if kind == 7:
+        text = value.rstrip("\0")
+        value = text.split("\0") if text else []
+    return REG_TYPES.get(kind, f"REG_{kind}"), value
+
+
 def parse_value(raw):
     if raw.startswith('"') and raw.endswith('"'):
         return "REG_SZ", unescape(raw[1:-1])
     quoted = re.fullmatch(r'str\(([0-9a-fA-F]+)\):"(.*)"', raw)
     if quoted:
         kind = int(quoted[1], 16)
-        return REG_TYPES.get(kind, f"REG_{kind}"), unescape(quoted[2])
+        return registry_string(kind, unescape(quoted[2]))
     if raw.startswith("dword:"):
         return "REG_DWORD", int(raw[6:], 16)
     data_match = re.fullmatch(r"hex(?:\(([0-9a-fA-F]+)\))?:(.*)", raw)
@@ -147,7 +162,7 @@ def parse_value(raw):
     data = bytes.fromhex(data_match[2].replace(",", " "))
     if kind in {1, 2, 6, 7}:
         value = data.decode("utf-16-le").rstrip("\0")
-        return REG_TYPES[kind], value.split("\0") if kind == 7 and value else ([] if kind == 7 else value)
+        return registry_string(kind, value)
     if kind in (4, 5, 11):
         return REG_TYPES[kind], int.from_bytes(data, "big" if kind == 5 else "little")
     return REG_TYPES.get(kind, f"REG_{kind}"), data
@@ -170,13 +185,44 @@ def registry_lines(path):
             raise ValueError(f"{path.name}:{first}: incomplete registry value")
 
 
+def current_control_set(path):
+    """Find the physical target of Wine's HKLM System\\CurrentControlSet alias."""
+    scope = None
+    selected = None
+    for _, line in registry_lines(path):
+        if line.startswith("["):
+            match = KEY.fullmatch(line)
+            scope = unescape(match[1]).lower() if match else None
+        elif scope == r"system\currentcontrolset":
+            if re.fullmatch(r'"SymbolicLinkValue"\s*=\s*hex\(6\):.*', line, re.I):
+                try:
+                    _, target = parse_value(VALUE.fullmatch(line)[3])
+                except (ValueError, UnicodeError):
+                    continue
+                physical = re.fullmatch(r"\\registry\\machine\\(system\\controlset\d{3,})",
+                                        target, re.I)
+                if physical:
+                    return physical[1].lower()
+        elif scope == r"system\select":
+            match = re.fullmatch(r'"Current"\s*=\s*dword:([0-9a-f]+)', line, re.I)
+            if match and int(match[1], 16):
+                selected = f"system\\controlset{int(match[1], 16):03d}"
+    return selected
+
+
 def load_registry(path, hive):
     tree = {}
     values = None
+    control_set = current_control_set(path) if hive == "HKLM" else None
     for number, line in registry_lines(path):
-        if line.startswith("[") and "]" in line:
-            key = unescape(line[1:line.rfind("]")]).lower()
+        if line.startswith("["):
             values = None
+            match = KEY.fullmatch(line)
+            if not match:
+                continue
+            key = unescape(match[1]).lower()
+            if control_set and under(key, control_set):
+                key = r"system\currentcontrolset" + key[len(control_set):]
             if relevant_scope(hive, key):
                 values = tree.setdefault(key, {})
                 # Wine can omit a section for an implicit parent of a saved key.

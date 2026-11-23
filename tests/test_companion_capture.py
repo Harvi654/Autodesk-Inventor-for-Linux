@@ -170,6 +170,47 @@ class CompanionCaptureTests(unittest.TestCase):
         self.assertIn(r"%25SystemRoot%25\System32 ; <profile>\bin ; <masked>", text)
         self.assertIn(r"<profile>\bin ;  ; C:\tools", text)
 
+    def test_wine_saved_product_key_and_control_set(self):
+        # Section and metadata layout emitted by Wine 11.22 for a synthetic reg add.
+        reg = self.prefix / "system.reg"
+        reg.write_text(r"""WINE REGISTRY Version 2
+;; All keys relative to REGISTRY\\Machine
+
+#arch=win64
+
+[Software\\Autodesk\\Autodesk Inventor Nastran 2027\\2027.0.0\\AppInfo] 1795477316
+#time=1dd7ba43a0ef50e
+"DisplayName"="Nastran fixture"
+"Components"=str(7):"Engine\0UI\0"
+"Legacy spacing" = "read me"
+"Escaped"="one\001two\e"
+[Software\\Autodesk\\Autodesk Inventor Nastran 2027\\2027.0.0\\Panel \[fixture\]] 1795477316
+#time=1dd7ba43a0ef50e
+@="Panel"
+
+[System\\ControlSet001\\Control\\Session Manager\\Environment] 1795477316
+#time=1dd7ba439aac93a
+"Path"=str(2):"C:\\active"
+[System\\ControlSet002\\Control\\Session Manager\\Environment] 1795477316
+"Path"=str(2):"C:\\inactive"
+[System\\CurrentControlSet] 1795477316
+#link
+[System\\Select] 1795477316
+"Current"=dword:00000001
+""", encoding="utf-8")
+        rows = set(capture.capture(self.prefix))
+        appinfo = (r"REG HKLM\software\autodesk\autodesk inventor nastran 2027"
+                   r"\2027.0.0\appinfo")
+        self.assertIn(appinfo + " | displayname | REG_SZ | Nastran fixture", rows)
+        self.assertIn(appinfo + " | components | REG_MULTI_SZ | Engine ; UI", rows)
+        self.assertIn(appinfo + " | legacy spacing | REG_SZ | read me", rows)
+        self.assertIn(appinfo + " | escaped | REG_SZ | one%01two%1B", rows)
+        self.assertIn(appinfo.removesuffix("appinfo") +
+                      "panel [fixture] |  | REG_SZ | Panel", rows)
+        env_row = r"REG HKLM\system\currentcontrolset\control\session manager\environment"
+        self.assertIn(env_row + r" | path | REG_EXPAND_SZ | C:\active", rows)
+        self.assertFalse(any("inactive" in row or "controlset001" in row for row in rows))
+
     def test_size_hash_names_only_and_link_exclusion(self):
         shared = "ProgramData/Autodesk/Inventor 2027/AddIns"
         user = "Users/SampleUser/AppData/Roaming/Autodesk/Inventor 2027/Addins"
