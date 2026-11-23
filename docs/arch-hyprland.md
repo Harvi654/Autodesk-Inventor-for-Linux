@@ -905,6 +905,27 @@ grep -a -n -E 'move_window_bits|LockWindowUpdate' frame-redraw.log | tail -45
 sed -n '<line-25>,<line>p' frame-redraw.log    # the lines before a suspicious copy
 ```
 
+**2026-11-23, second round.** A MEASURE program (winum branch
+`topic/user32-stale-bits-measure`, commit `4b4603e`,
+`docs/wine-repro/user32-setwindowpos-stale-bits/`) tried 20 cases - a
+child shown at (0,0) and moved without painting, moved while hidden,
+`WM_SETREDRAW` off/on with `SWP_FRAMECHANGED`, a moved intermediate parent,
+cross-thread, and "G": a container partly or fully covered by a sibling
+"ribbon" window and then moved. Windows 10, vanilla Wine 11.22 and the
+winum 11.22-2 test build agree in pixels, update regions and message
+counts on x86_64 and i686 (only the absolute window position differs by 3
+pixels): Wine copies only the visible part and invalidates the covered
+part, like Windows. So the simple form of the hypothesis is wrong.
+Further facts from the trace: no child window covers the ribbon band
+`(0,0)-(1920,146)` - the frame `0x30094` most likely paints the ribbon
+itself, and it has no `WS_CLIPCHILDREN` (style `0x15cf0000`); Inventor
+creates its panes at (0,0) (230x230, 240x520, 350x868) and lays them out
+later; `0x101be` has one child (`0x101c2`) and gets no `WM_PAINT` between
+the frame-changed call and the move. Third round (case H): a frame without
+`WS_CLIPCHILDREN` painting the band across a container at (0,0), then the
+`0x1837` call and the move. If that matches Windows too, the rounds stop
+here and the issue waits for a trace that shows more.
+
 ### Still open (found by the fuzzer, not needed by Inventor)
 
 - `Commit` on a transacted substorage whose parent was reverted dereferences
