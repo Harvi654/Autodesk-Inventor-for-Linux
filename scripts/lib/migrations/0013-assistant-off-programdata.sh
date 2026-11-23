@@ -36,7 +36,7 @@ mig_apply() {
     local f rel
     for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
         while IFS= read -r rel; do
-            [ -n "$rel" ] && info "off: ProgramData\\...\\Addins\\$rel"
+            [ -n "$rel" ] && info "off: ProgramData\\...\\Addins\\${rel//\//\\}"
         done < <(pd_addin_disable "$f")
     done
 }

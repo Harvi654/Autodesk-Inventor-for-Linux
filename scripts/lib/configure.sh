@@ -59,7 +59,7 @@ cfg_disable_addins() {
         # runs after every install and update, so a new version folder is
         # caught too
         while IFS= read -r rel; do
-            info "off: ProgramData\\...\\Addins\\$rel"; found=1
+            info "off: ProgramData\\...\\Addins\\${rel//\//\\}"; found=1
         done < <(pd_addin_disable "$f")
         [ -n "$found" ] || [ -n "$(pd_addins_matching "$P_PD_ADDINS_OFF" "$f")" ] \
             || [ -f "$P_ADDINS_OFF/$f" ] || info "(not present: $f)"
