@@ -75,6 +75,10 @@
     nix = [ "not-applicable" ];
     note = "A new installation never had these add-ins off; post-install turns off only the Assistant.";
   };
+  "0012-tutorial-off-without-dotnet48" = {
+    nix = [ "not-applicable" ];
+    note = "Turns the Interactive Tutorial off only without .NET Framework 4.8; the Nix package always has the dotnet-framework-4-8 layer, so it stays on (post-install.sh turns off only the Assistant).";
+  };
   "0011-winemenubuilder-off" = {
     nix = [
       "config-layer"
