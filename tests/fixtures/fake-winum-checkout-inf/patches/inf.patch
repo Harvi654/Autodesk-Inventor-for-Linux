@@ -1,0 +1,6 @@
+Test fixture: a candidate that changes wine.inf.
+--- a/loader/wine.inf.in
++++ b/loader/wine.inf.in
+@@ -1 +1 @@
+-old
++new

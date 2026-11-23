@@ -87,11 +87,26 @@ class PinnedValues(unittest.TestCase):
         for k in ("BSDTAR_SHA256", "BSDTAR_EXE_SHA256"):
             self.assertRegex(cfg[k], r"^[0-9a-f]{64}$")
         self.assertTrue((fx.ROOT / ("scripts/lib/licenses/libarchive-%s-COPYING" % cfg["BSDTAR_VER"])).is_file())
-        # the Nix build fetches the same file with the same hash
+        # the Nix build reads the values from bsdtar.env rather than repeating
+        # them (the flake check "installation" compares the evaluated fetch)
         nix = (fx.ROOT / "nix/inventor.nix").read_text()
-        self.assertIn(cfg["BSDTAR_URL"], nix)
-        self.assertIn(cfg["BSDTAR_SHA256"], nix)
-        self.assertIn('"$DOWNLOAD_DIR/%s"' % cfg["BSDTAR_ZIP"], nix)
+        self.assertIn("import ./env-file.nix { inherit lib; } ../scripts/lib/bsdtar.env", nix)
+        self.assertNotIn(cfg["BSDTAR_SHA256"], nix)
+
+    # The same expectations are in flake.nix (check "installation") for
+    # nix/env-file.nix, so that both readers agree on the format.
+    ENV_FILE_EXPECTED = {
+        "PLAIN": "value",
+        "INDENTED": "spaced value",
+        "QUOTED": "quoted value",
+        "EMPTY": "",
+        "WITH_EQUALS": "a=b",
+        "DUP": "last",
+    }
+
+    def test_env_file_format(self):
+        got = fx.load_installer().read_env_file(fx.ROOT / "tests/fixtures/env-file.env")
+        self.assertEqual(got, self.ENV_FILE_EXPECTED)
 
 
 if __name__ == "__main__":

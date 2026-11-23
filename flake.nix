@@ -4,21 +4,23 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/182757dbf0057db8f067d9675f1cda3f0faf4176";
+      url = "github:krokosik/nix-overlayfs/006dd3b3f1f973a60e394747e500c5cfb5721599";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    # winum-11.20-2 (signed tag), the Wine release wine/version.env names.
-    # Only its patches/series and the patches it lists are used.
-    winum = {
-      url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
+    # winum releases, named by their signed tags. Only patches/series and the
+    # patches it lists are used. There are two inputs so that the launcher can
+    # move to a newer release while the installation layers stay as they are
+    # (a new install Wine reinstalls Inventor):
+    # - winum-install: the Wine that builds the installation layers;
+    # - winum: the Wine that runs Inventor, and the source of wineCandidates.
+    #   To test candidates from a winum checkout, use `--override-input winum
+    #   path:/path/to/winum` (this rebuilds only the launch Wine and the launcher).
+    winum-install = {
+      url = "github:Harvi654/winum/winum-11.20-2";
       flake = false;
     };
-    # Where wineCandidates come from; the same commit unless overridden, for
-    # example `--override-input winum-candidates path:/path/to/winum`. The
-    # release patches always come from `winum`, so taking candidates from a
-    # checkout does not rebuild the installations.
-    winum-candidates = {
-      url = "github:Harvi654/winum/98a6feda5d55b739c9fdfd363b060631a2004447";
+    winum = {
+      url = "github:Harvi654/winum/winum-11.20-2";
       flake = false;
     };
   };
@@ -68,25 +70,25 @@
           wineCandidates ? [ ],
           installWineCandidates ? [ ],
           winum ? inputs.winum,
-          candidatesSource ? inputs.winum-candidates,
+          installWinum ? inputs.winum-install,
+          candidatesSource ? winum,
         }:
         let
           inherit (pkgs) lib;
           launchCandidates = lib.unique (installWineCandidates ++ wineCandidates);
           # Builds the base environment, WebView2, .NET Framework and Inventor.
           installWine = pkgs.callPackage ./nix/wine.nix {
-            inherit winum candidatesSource;
+            inherit candidatesSource;
+            winum = installWinum;
             candidates = lib.unique installWineCandidates;
           };
-          # Runs Inventor: the same winum release plus the candidates under test.
-          wine =
-            if launchCandidates == lib.unique installWineCandidates then
-              installWine
-            else
-              pkgs.callPackage ./nix/wine.nix {
-                inherit winum candidatesSource;
-                candidates = launchCandidates;
-              };
+          # Runs Inventor: the `winum` release plus the candidates under test.
+          # With the same release and candidates as installWine it is the same
+          # derivation, built once.
+          wine = pkgs.callPackage ./nix/wine.nix {
+            inherit winum candidatesSource;
+            candidates = launchCandidates;
+          };
           modules = scope.moduleScopes.makeNativeModules {
             wine = installWine;
             windowsArch = "wow64";
@@ -118,7 +120,7 @@
             year = "2027";
             inherit (mediaSources2027) media;
             updates = [ mediaSources2027.update ];
-            version = "2027.1";
+            version = "2027.2";
           };
           inventor2026 = mkInventor {
             year = "2026";
@@ -149,7 +151,7 @@
         inventor-2027 = {
           type = "app";
           program = "${inventor2027}/bin/inventor-2027";
-          meta.description = "Autodesk Inventor Professional 2027.1";
+          meta.description = "Autodesk Inventor Professional 2027.2";
         };
         inventor-2026 = {
           type = "app";
@@ -158,26 +160,17 @@
         };
       };
       checks.${system} = {
-        # wine/version.env (get-wine.sh) and the flake input (nix/wine.nix)
-        # must name the same winum release.
+        # Each winum input names its release by tag, and the source it points to
+        # must be that release (winum's own wine/version.env, read by
+        # nix/wine.nix). This checks the committed flake.lock, not an
+        # --override-input.
         winum-pin =
           let
-            env = builtins.readFile ./wine/version.env;
-            value =
-              key:
-              let
-                m = builtins.match ".*\n${key}=([^\n]*)\n.*" ("\n" + env + "\n");
-              in
-              if m == null then throw "wine/version.env has no ${key}" else builtins.head m;
-          in
-          let
-            # The committed pins (not any --override-input): candidates are
-            # taken from the same winum commit as the release.
             locked = (builtins.fromJSON (builtins.readFile ./flake.lock)).nodes;
+            release = package: "winum-${package.wineVersion}-${package.winumBuild}";
           in
-          assert value "WINUM_VERSION" == wine.wineVersion;
-          assert value "WINUM_BUILD" == wine.winumBuild;
-          assert locked.winum.locked.rev == locked.winum-candidates.locked.rev;
+          assert locked.winum.original.ref == release wine;
+          assert locked.winum-install.original.ref == release releases.installWine;
           pkgs.runCommand "inventor-winum-pin" { } ''
             touch "$out"
           '';
@@ -235,6 +228,23 @@
                   "inf-change"
                   "code-only"
                 ];
+              # A winum checkout given as `winum` (the documented way to test
+              # candidates) that has the install release's name. A changed
+              # code patch in its series is accepted, and a changed wine.inf
+              # patch is refused.
+              "a checkout whose series changes only code is accepted" =
+                evaluates
+                  (mkReleases {
+                    winum = ./tests/fixtures/fake-winum-checkout-code;
+                    installWinum = fixture;
+                  }).inventor2027;
+              "a checkout whose series changes the prefix is refused" =
+                !(evaluates
+                  (mkReleases {
+                    winum = ./tests/fixtures/fake-winum-checkout-inf;
+                    installWinum = fixture;
+                  }).inventor2027
+                );
               "the same candidates reuse the install Wine" =
                 drv
                   (mkReleases {
@@ -313,7 +323,7 @@
             ''
               mkdir -p tests nix
               cp ${./tests/test_runtime_state.py} tests/test_runtime_state.py
-              cp ${./nix/launch-lock.sh} nix/launch-lock.sh
+              cp ${./nix/launch-state.sh} nix/launch-state.sh
               cp ${./nix/launch-services.sh} nix/launch-services.sh
               cp ${./nix/launch-fonts.sh} nix/launch-fonts.sh
               python3 tests/test_runtime_state.py
@@ -361,6 +371,13 @@
               pkgs.writeShellScript "stub-inventor-${name}" ''
                 printf '%s %s\n' ${name} "$*" >> "$LOG"
                 if [ "''${1:-}" = --nix-overlayfs-forward-url ]; then
+                  # SEQ_<name>="4 4 0": one status per call, in order
+                  if [ -n "''${SEQ_${name}:-}" ]; then
+                    n=$(( $(cat "$LOG.${name}.n" 2>/dev/null || echo 0) + 1 ))
+                    echo "$n" > "$LOG.${name}.n"
+                    set -- ''${SEQ_${name}}
+                    eval "exit \''${$n:-0}"
+                  fi
                   exit "''${STATUS_${name}:-3}"
                 fi
               '';
@@ -396,11 +413,39 @@
             test "$status" -eq 1
             test "$(cat failing.log)" = "2027 --nix-overlayfs-forward-url $lib_url"
 
+            # 2027 is starting (4), then ready: the dispatcher asks again until
+            # 2027 takes the callback. 2026 is never asked, and nothing starts.
+            run starting env SEQ_2027="4 4 0"
+            test "$(cat starting.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2027 --nix-overlayfs-forward-url $lib_url
+            2027 --nix-overlayfs-forward-url $lib_url"
+
+            # 2027 stays starting or closing: after the retries the dispatch
+            # stops with 4 instead of handing the callback to 2026.
+            status=0
+            run busy env SEQ_2027="4 4 4 4 4 4" STATUS_2026=0 2>/dev/null || status=$?
+            test "$status" -eq 4
+            test "$(grep -c '^2027 ' busy.log)" -eq 4
+            ! grep -q '^2026 ' busy.log
+
+            # 2027 was closing (4) and then gone (3): the callback was its
+            # own, so 2027 starts with it. 2026 is not asked.
+            run closed env SEQ_2027="4 3" STATUS_2026=0
+            test "$(cat closed.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2027 --nix-overlayfs-forward-url $lib_url
+            2027 $lib_url"
+
+            # 2027's session ended before taking the callback (5): 2027 starts
+            # with it.
+            run ended env SEQ_2027="5" STATUS_2026=0
+            test "$(cat ended.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2027 $lib_url"
+
             # No URL.
             ! LOG=/dev/null ${dispatcher} 2>/dev/null
             touch "$out"
           '';
-        # DXVK and vkd3d-proton are layers above the installation, not in it.
+        # DXVK and vkd3d-proton are separate layers, not in the installation.
         # Builds only the two layers; the installation is compared by evaluation.
         graphics-layers =
           let
@@ -411,14 +456,14 @@
               year = "2027";
               inherit (mediaSources2027) media;
               updates = [ mediaSources2027.update ];
-              version = "2027.1";
+              version = "2027.2";
               dxvkLayer = otherDxvk;
             };
             withUpstreamVkd3d = releases.mkInventor {
               year = "2027";
               inherit (mediaSources2027) media;
               updates = [ mediaSources2027.update ];
-              version = "2027.1";
+              version = "2027.2";
               vkd3dLayer = modules.vkd3d-proton;
             };
             # The layers the launcher mounts (passthru of nix-overlayfs).
@@ -451,6 +496,75 @@
           in
           assert lib.assertMsg (failed == [ ]) "graphics-layers: ${lib.concatStringsSep "; " failed}";
           pkgs.runCommand "inventor-graphics-layers" { } "touch $out";
+        # The installation layer and what it is built from. Evaluation only.
+        installation =
+          let
+            inherit (pkgs) lib;
+            drv = package: package.drvPath;
+            built = inventor2027.installation;
+            # scripts/lib/bsdtar.env as install-from-image.py reads it.
+            env = import ./nix/env-file.nix { inherit lib; } ./scripts/lib/bsdtar.env;
+            checks = {
+              "the launcher starts from the installation layer" =
+                drv inventor2027.basePackage == drv built.layer.basePackage;
+              # The same expectations as in tests/test_bsdtar.py for Python's
+              # read_env_file, so that both readers agree on the format.
+              "nix/env-file.nix reads like install-from-image.py" =
+                import ./nix/env-file.nix { inherit lib; } ./tests/fixtures/env-file.env == {
+                  PLAIN = "value";
+                  INDENTED = "spaced value";
+                  QUOTED = "quoted value";
+                  EMPTY = "";
+                  WITH_EQUALS = "a=b";
+                  DUP = "last";
+                };
+              "the bsdtar archive is fetched as bsdtar.env names it" =
+                lib.elem env.BSDTAR_URL built.bsdtarArchive.urls
+                && built.bsdtarArchive.outputHash == env.BSDTAR_SHA256
+                && built.bsdtarArchive.name == env.BSDTAR_ZIP;
+            };
+            failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
+          in
+          assert lib.assertMsg (failed == [ ]) "installation: ${lib.concatStringsSep "; " failed}";
+          pkgs.runCommand "inventor-installation" { } "touch $out";
+        # Every script migration has an entry in nix/migrations.nix that says
+        # where the Nix package has it. The Nix build does not run migrations.
+        migration-parity =
+          let
+            inherit (pkgs) lib;
+            table = import ./nix/migrations.nix;
+            files = builtins.attrNames (builtins.readDir ./scripts/lib/migrations);
+            ids = map (lib.removeSuffix ".sh") (
+              builtins.filter (name: builtins.match "[0-9]{4}-.*[.]sh" name != null) files
+            );
+            kinds = [
+              "post-install"
+              "config-layer"
+              "installer"
+              "launcher"
+              "layers"
+              "not-applicable"
+            ];
+            missing = lib.subtractLists (builtins.attrNames table) ids;
+            stale = lib.subtractLists ids (builtins.attrNames table);
+            badKinds = lib.filter (
+              id: table.${id}.nix == [ ] || !(lib.all (k: lib.elem k kinds) table.${id}.nix)
+            ) (builtins.attrNames table);
+          in
+          # A new or removed migration gives a warning, not a failure: migrations
+          # come from the script installer's side, and its commits should not
+          # turn the Nix checks red. A malformed entry is a mistake in
+          # nix/migrations.nix itself, so it fails.
+          assert lib.assertMsg (
+            badKinds == [ ]
+          ) "migration-parity: unknown or empty kinds for ${lib.concatStringsSep ", " badKinds}";
+          lib.warnIf (missing != [ ])
+            "migration-parity: the Nix package does not have ${lib.concatStringsSep ", " missing} yet - port it (nix/post-install.sh, nix/config-layer.sh) or say why it is not needed, in nix/migrations.nix"
+            (
+              lib.warnIf (stale != [ ])
+                "migration-parity: nix/migrations.nix names migrations that do not exist: ${lib.concatStringsSep ", " stale}"
+                (pkgs.runCommand "inventor-migration-parity" { } "touch $out")
+            );
         # Evaluates the module with both releases; builds nothing from Autodesk.
         nixos-module =
           let
@@ -501,6 +615,18 @@
                   (moduleLauncher "2027")
                   (moduleLauncher "2026")
                 ];
+              "the desktop-entry check runs in the user's graphical session" =
+                let
+                  service = config.systemd.user.services.autodesk-inventor-desktop-check;
+                in
+                lib.elem "graphical-session.target" service.wantedBy
+                && lib.hasInfix "autodesk-inventor-desktop-check" (plain service.serviceConfig.ExecStart);
+              # WantedBy orders the target after the unit, so an After= on the
+              # target as well would make an ordering cycle.
+              "the desktop-entry check is not ordered after its own target" =
+                !(lib.elem "graphical-session.target" (
+                  config.systemd.user.services.autodesk-inventor-desktop-check.after or [ ]
+                ));
               "the module's launchers do not register handlers at runtime" =
                 moduleLauncher "2026" != launcher "2026";
             };

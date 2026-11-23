@@ -56,6 +56,11 @@ let
           } (inventorArgs // extra);
         # The wrapper the launcher runs Wine through (checked by the flake).
         inherit launchWine;
+        # The installation layer and the installer files it is built from.
+        installation = {
+          layer = installed;
+          inherit installerSource bsdtarArchive;
+        };
       };
     });
   # Licensing and SSO stay alive after Inventor exits. End this prefix's Wine
@@ -97,6 +102,32 @@ let
     pkgs.xz
     pkgs.zstd
   ];
+  # Only the files that the installation build runs: install-from-image.py and
+  # what it imports and reads. The prefix setup after it is nix/post-install.sh,
+  # not finish-install.sh and the script migrations (nix/migrations.nix), so
+  # edits to the rest of scripts/ do not reinstall Inventor. When
+  # install-from-image.py starts using a new file, add that file here.
+  installerSource = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../scripts/install-from-image.py
+      ../scripts/lib/odis.py
+      ../scripts/lib/regf.py
+      ../scripts/lib/bsdtar.env
+      ../scripts/lib/licenses
+    ];
+  };
+  # The files that nix/config-layer.sh runs: common.sh with what it sources
+  # and reads, and linux-fonts.sh.
+  configSource = lib.fileset.toSource {
+    root = ../.;
+    fileset = lib.fileset.unions [
+      ../scripts/linux-fonts.sh
+      ../scripts/lib/common.sh
+      ../scripts/lib/requirements.env
+      ../scripts/lib/requirements.py
+    ];
+  };
   fonts = pkgs.symlinkJoin {
     name = "inventor-fonts";
     paths = [
@@ -107,14 +138,19 @@ let
       pkgs.caladea
     ];
   };
-  # tar.exe for the prefix (scripts/lib/bsdtar.env): libarchive's signed
-  # Windows build of bsdtar, which the Electrical Catalog Browser's installer
-  # needs; install-from-image.py takes it from DOWNLOAD_DIR.
+  # tar.exe for the prefix: libarchive's signed Windows build of bsdtar,
+  # which the Electrical Catalog Browser's installer needs. The URL and SHA-256
+  # come from scripts/lib/bsdtar.env, which install-from-image.py also uses to
+  # check the archive. install-from-image.py takes the archive from
+  # DOWNLOAD_DIR.
+  bsdtarEnv = import ./env-file.nix { inherit lib; } ../scripts/lib/bsdtar.env;
   bsdtarArchive = pkgs.fetchurl {
-    url = "https://github.com/libarchive/libarchive/releases/download/v3.5.3/libarchive-v3.5.3-win64.zip";
-    sha256 = "81c45c31a31a7b49809b3625594c28a1afbcc18faa6ee1d2ab4e4328ba8ef736";
+    name = bsdtarEnv.BSDTAR_ZIP;
+    url = bsdtarEnv.BSDTAR_URL;
+    sha256 = bsdtarEnv.BSDTAR_SHA256;
   };
-  # Direct3D 8-11 and 12 on Vulkan, as runtime layers above the installation:
+  # Direct3D 8-11 and 12 on Vulkan, as separate layers that the launcher adds
+  # (mounted below the installation, which has none of their files):
   # a new version rebuilds only the launcher. Their DLL overrides are in the
   # layers' registry, so the per-program exception the prefix setup writes
   # for msedgewebview2.exe (wined3d, Wine's d3d12) still applies.
@@ -143,24 +179,47 @@ let
           sha256 = "7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7";
         };
       };
-  webview2 =
+  # WebView2 (Home page, sign-in and licensing windows) is nix-overlayfs's
+  # pinned layer (154.0.4258.62, x64), built on the same base environment as
+  # the installation (no Wine Mono, see below). The layer's build checks the
+  # installed msedgewebview2.exe. Its registry settings for Wine are in the
+  # config layer (webview2_reg).
+  webview2 = modules.webview2.override { managedRuntime = "external"; };
+  # Microsoft's .NET Framework 4.8 (3D PDF, Import CAD's Property Mapping) as
+  # nix-overlayfs's dotnet-framework-4-8 layer below the installation, in
+  # place of Wine Mono; the installer's own .NET step is skipped here. It
+  # exports mscoree=native (dllOverrides) to the launcher.
+  dotnet48 = modules.dotnet-framework-4-8;
+  # Fonts, WebView2 and X11 settings (nix/config-layer.sh): a separate layer
+  # that the launcher adds, independent of the installation. A change rebuilds
+  # only this layer and the launcher. Every release uses the same layer.
+  configLayer =
     (overlayfsLib.mkWindowsPackage {
       inherit (modules) runtime;
-      # Same base environment as the installation (no Wine Mono, see below).
       managedRuntime = "external";
-      pname = "inventor-webview2";
-      version = "154.0.4258.62";
-      packageName = "inventor-webview2";
-      src = pkgs.fetchurl {
-        url = "https://msedge.sf.dl.delivery.mp.microsoft.com/filestreamingservice/files/18c66e75-0385-4019-be3f-3f4a2bb867d5/MicrosoftEdgeWebView2RuntimeInstallerX64.exe";
-        hash = "sha256-rCLs3BnFuIuH8/p1LADalUFlOo9cDF/Eo7K26+ZZH2k=";
-        meta.license = lib.licenses.unfree;
-      };
+      pname = "inventor-config";
+      version = "1";
+      packageName = "inventor-config";
+      src = configSource;
       unshareInstall = { session, ... }: ''
         set -euo pipefail
-        ${session.commands.wine} "$src" /silent /install
-        ${pkgs.coreutils}/bin/timeout 60 ${session.commands.wineserver} --wait || ${session.commands.wineserver} -k
-        test -n "$(${pkgs.findutils}/bin/find "$WINEPREFIX/drive_c" -name msedgewebview2.exe -print -quit)"
+        export PATH=${
+          lib.makeBinPath (tools ++ [ pkgs.glibc.bin ])
+        }:${modules.runtime.toolsPackage}/bin:$PATH
+        export PROJECT="$TMPDIR/inventor-config-project"
+        mkdir -p "$PROJECT"
+        cp -R "$src"/. "$PROJECT"/
+        chmod -R u+w "$PROJECT"
+        mkdir -p "$PROJECT/registry" "$PROJECT/wine"
+        # common.sh reads the script installer's winum release from these;
+        # the layer runs the Nix Wine (INV_WINE=system), so they stay empty.
+        touch "$PROJECT/wine/version.env" "$PROJECT/wine/SHA256SUMS"
+        cat > "$PROJECT/config.env" <<'EOF'
+        INV_FONT_DIRS=(${fonts}/share/fonts ${modules.runtime.toolsPackage}/share/wine)
+        EOF
+        export INV_LOGDIR="$TMPDIR/inventor-config-logs" XDG_CACHE_HOME="$TMPDIR/inventor-config-cache"
+        bash ${./config-layer.sh}
+        ${session.commands.wineserver} --wait
       '';
     }).overrideAttrs
       (old: {
@@ -168,13 +227,16 @@ let
           license = lib.licenses.unfree;
         };
       });
-  # Microsoft's .NET Framework 4.8 (3D PDF, Import CAD's Property Mapping) as
-  # nix-overlayfs's dotnet-framework-4-8 layer below the installation, in
-  # place of Wine Mono; the installer's own .NET step is skipped here. It
-  # exports mscoree=native (dllOverrides) to the launcher.
-  dotnet48 = modules.dotnet-framework-4-8;
-  # The installation, built with the release Wine in the Nix sandbox. DXVK and
-  # vkd3d-proton are not installed into it (INV_DXVK/INV_VKD3D=none).
+  # The installation, built with the release Wine in the Nix sandbox: the
+  # install image, its updates and the prefix setup in one layer. DXVK and
+  # vkd3d-proton are not installed into it (separate layers).
+  #
+  # It is one layer, not two (image and update): nix-overlayfs drops
+  # windows/Installer (the MSI cache that an MSP update patches against) from a
+  # captured layer, and its direct mode cannot record files that a build
+  # deletes from a layer below. The files that the update removed (moved to
+  # .inventor-on-linux/removed-by-update/) would come back from the image's
+  # layer. So a new update reinstalls the image.
   installed = overlayfsLib.mkWindowsPackage {
     inherit (modules) runtime;
     inherit version;
@@ -192,21 +254,14 @@ let
       set -euo pipefail
       export PATH=${lib.makeBinPath tools}:${modules.runtime.toolsPackage}/bin:$PATH
       export INV_YEAR=${lib.escapeShellArg year}
-      export INV_WINE=system INV_SANDBOX=0 INV_DATA_DIR="" INV_FONTS=linux
-      export INV_DXVK=none INV_VKD3D=none
       export INV_NORMALIZE_REPARSE=${session.commands.normalizeReparsePoints}
       export INV_PREFIX="$WINEPREFIX" INV_LOGDIR="$TMPDIR/inventor-logs"
       export XDG_CACHE_HOME="$TMPDIR/inventor-cache"
       mkdir -p "$INV_LOGDIR" "$TMPDIR/inventor-project" "$TMPDIR/inventor-downloads"
-      cp -R ${../scripts} "$TMPDIR/inventor-project/scripts"
-      cp -R ${../wine} "$TMPDIR/inventor-project/wine"
-      mkdir -p "$TMPDIR/inventor-project/registry"
+      cp -R ${installerSource}/scripts "$TMPDIR/inventor-project/scripts"
       chmod -R u+w "$TMPDIR/inventor-project"
-      cat > "$TMPDIR/inventor-project/config.env" <<'EOF'
-      INV_FONT_DIRS=(${fonts}/share/fonts ${modules.runtime.toolsPackage}/share/wine)
-      EOF
       export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
-      ln -s ${bsdtarArchive} "$DOWNLOAD_DIR/libarchive-v3.5.3-win64.zip"
+      ln -s ${bsdtarArchive} "$DOWNLOAD_DIR/${bsdtarEnv.BSDTAR_ZIP}"
       python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
         --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 --no-dotnet48 ${
           lib.optionalString (!contentCenter) "--no-content"
@@ -216,11 +271,7 @@ let
           --prefix "$WINEPREFIX"
       '') updates}
       ${session.commands.normalizeReparsePoints} "$WINEPREFIX"
-      bash "$TMPDIR/inventor-project/scripts/finish-install.sh" --no-sandbox
-      ${session.commands.wineserver} --wait
-      test -s "$WINEPREFIX/drive_c/windows/Fonts/NotoSans.ttf"
-      test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"
-      test -s "$WINEPREFIX/drive_c/windows/Fonts/DejaVuSans.ttf"
+      bash ${./post-install.sh}
       test -f "$WINEPREFIX/drive_c/Program Files/Autodesk/Inventor ${year}/Bin/Inventor.exe"
       # .NET Framework 4.8 from the dotnet48 layer (3D PDF, Import CAD property mapping)
       test -f "$WINEPREFIX/drive_c/windows/Microsoft.NET/Framework64/v4.0.30319/clr.dll"
@@ -228,8 +279,9 @@ let
     '';
   };
 in
-# The launcher: the installation with DXVK and vkd3d-proton above it, run on
-# launchRuntime.
+# The launcher: the installation with the config, DXVK and vkd3d-proton layers
+# (nix-overlayfs mounts those below the installation, and they do not
+# overlap; see nix/LAYERS.md), run on launchRuntime.
 withInventorMeta (overlayfsLib.composeWindowsLayers {
   inherit (modules) runtime;
   inherit launchRuntime;
@@ -245,6 +297,7 @@ withInventorMeta (overlayfsLib.composeWindowsLayers {
     requiredManagedRuntime = "external";
   };
   overlayDependencies = [
+    configLayer
     dxvk
     vkd3dProton
   ];
@@ -282,7 +335,7 @@ withInventorMeta (overlayfsLib.composeWindowsLayers {
         ]
       )
     }:$PATH
-    ${builtins.readFile ./launch-lock.sh}
+    ${builtins.readFile ./launch-state.sh}
     ${(overlayfsLib.mkGraphicsBootstrap {
       inherit (launchModules) runtime;
       defaultMode = "system";

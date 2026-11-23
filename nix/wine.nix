@@ -2,22 +2,27 @@
   lib,
   wineWow64Packages,
   fetchurl,
-  # The winum source at the release tag (flake input "winum", see flake.nix).
+  # The winum source at a release tag (flake input "winum" or "winum-install",
+  # see flake.nix).
   winum,
   # Topics under winum's patches/candidates/ to test on top of the series
   # (each applied in the order of its own series file). Empty for a normal
   # build: candidates are never part of a release.
   candidates ? [ ],
-  # Where the candidates come from (flake input "winum-candidates", for example
-  # a winum checkout). Separate from `winum`, so that taking candidates from
-  # elsewhere leaves the release patches - and the Wine built from them - as
-  # they are.
+  # Where the candidates come from (the launch Wine's `winum`, possibly a
+  # winum checkout; the flake checks use a fixture). Not read when there are
+  # no candidates.
   candidatesSource ? winum,
 }:
 let
-  # Release this project uses; wine/version.env names the same one and the
-  # flake check "winum-pin" fails when the two disagree.
-  winumEnv = builtins.readFile "${winum}/wine/version.env";
+  # A file of a winum source. A local path (a checkout given with
+  # --override-input, or a test fixture) stays a path: string interpolation
+  # would need a store copy, which `nix flake check --no-build` (CI) does not
+  # make. A flake input is already a store path.
+  under = source: file: if builtins.isPath source then source + "/${file}" else "${source}/${file}";
+  # The release, from winum's own wine/version.env; the flake check
+  # "winum-pin" fails when it differs from the input's tag.
+  winumEnv = builtins.readFile (under winum "wine/version.env");
   envValue =
     key:
     let
@@ -29,8 +34,9 @@ let
   # patches/series of winum: the patches of a normal winum build, in order.
   # Nothing else in winum's patches/ (candidates, debug) is applied.
   series = lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
-    map lib.trim (lib.splitString "\n" (builtins.readFile "${winum}/patches/series"))
+    map lib.trim (lib.splitString "\n" (builtins.readFile (under winum "patches/series")))
   );
+  seriesPatches = map (name: under winum "patches/${name}") series;
   readSeries =
     file:
     lib.filter (line: line != "" && !lib.hasPrefix "#" line) (
@@ -39,18 +45,19 @@ let
   candidatePatches = lib.concatMap (
     topic:
     let
-      # Keep local fixture paths as paths: string interpolation would require
-      # copying them to the store, which --no-build evaluation does not do.
-      directory = candidatesSource + "/patches/candidates/${topic}";
+      directory = under candidatesSource "patches/candidates/${topic}";
     in
-    map (name: directory + "/${name}") (readSeries (directory + "/series"))
+    map (name: under directory name) (readSeries (under directory "series"))
   ) candidates;
   # Which prefixes this Wine runs as built (nix-overlayfs compares it between
   # the Wine that built the layers and the one that runs them): the winum
-  # release, plus a hash of the candidate patches that change prefix contents.
+  # release, plus a hash of the release series and candidate patches that
+  # change prefix contents. The release series' patches are included so that a
+  # winum checkout given as `winum` (to test candidates) that has the same
+  # release name but changed prefix patches is refused rather than run.
   prefixChangingPatches = lib.filter (
     patch: (import ./wine-prefix.nix { inherit lib; }).changesPrefix (builtins.readFile patch)
-  ) candidatePatches;
+  ) (seriesPatches ++ candidatePatches);
   prefixCompatibility =
     "winum-${wineVersion}-${winumBuild}"
     +
@@ -71,7 +78,7 @@ in
       url = "https://dl.winehq.org/wine/source/11.x/wine-${wineVersion}.tar.xz";
       hash = "sha256-6sjKRI+cAIf5YwJrTcJ20eK3+7ZAVu3Ak+Wbu35W/ig=";
     };
-    patches = (old.patches or [ ]) ++ map (name: "${winum}/patches/${name}") series ++ candidatePatches;
+    patches = (old.patches or [ ]) ++ seriesPatches ++ candidatePatches;
     passthru = (old.passthru or { }) // {
       inherit
         wineVersion
