@@ -624,6 +624,69 @@ class Migrations(unittest.TestCase):
         wine_pdf.write_text("<mime-info/>")
         return mine, [other, unrelated, wine_pdf], wine_ipt
 
+    # --- 0013: the Assistant off in ProgramData (2027.2, #36) ------------------
+    ASSISTANT = "Autodesk.AssistantAddin.Inventor.addin"
+
+    def prefix_2027_2(self):
+        """A 2027.2 prefix: the Assistant in ProgramData, on, next to its DLLs."""
+        p = self.prefix(runtime="winum")
+        d = p / "drive_c/ProgramData/Autodesk/Inventor 2027/Addins/Assistant/31.20.33400"
+        d.mkdir(parents=True)
+        (d / self.ASSISTANT).write_text("<Addin><LoadOnStartUp>1</LoadOnStartUp></Addin>")
+        (d / "InvMcp.dll").write_bytes(b"MZ mcp")
+        return p, d
+
+    def test_assistant_off_in_programdata(self):
+        p, d = self.prefix_2027_2()
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0013-assistant-off-programdata"])
+        inv = p / "drive_c/Program Files/Autodesk/Inventor 2027"
+        moved = inv / "Addins.disabled/programdata/Assistant/31.20.33400" / self.ASSISTANT
+        self.assertFalse((d / self.ASSISTANT).exists())
+        self.assertIn("LoadOnStartUp", moved.read_text())
+        self.assertEqual((d / "InvMcp.dll").read_bytes(), b"MZ mcp")   # only the .addin moves
+        # --restore puts it back and removes the moved copy
+        out = self.migrate(p, "--restore", "0013-assistant-off-programdata")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertTrue((d / self.ASSISTANT).exists())
+        self.assertFalse(moved.exists())
+
+    def test_assistant_without_programdata_copy_has_nothing_to_do(self):
+        p = self.prefix(runtime="winum")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0013-assistant-off-programdata"])
+
+    def test_assistant_already_off_is_left_alone(self):
+        p, d = self.prefix_2027_2()
+        inv = p / "drive_c/Program Files/Autodesk/Inventor 2027"
+        off = inv / "Addins.disabled/programdata/Assistant/31.20.33400"
+        off.mkdir(parents=True)
+        (off / self.ASSISTANT).write_text("<Addin old/>")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0013-assistant-off-programdata"])
+        self.assertTrue((d / self.ASSISTANT).exists())
+        self.assertEqual((off / self.ASSISTANT).read_text(), "<Addin old/>")
+
+    def test_addins_sh_handles_programdata(self):
+        p, d = self.prefix_2027_2()
+        out = self.addins(p, "list")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("(ProgramData: Assistant/31.20.33400/%s)" % self.ASSISTANT,
+                      out.stdout.split("disabled:")[0])
+        out = self.addins(p, "disable", "assistant")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertFalse((d / self.ASSISTANT).exists())
+        self.assertIn("ProgramData", self.addins(p, "list").stdout.split("disabled:")[1])
+        out = self.addins(p, "enable", "assistant")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertTrue((d / self.ASSISTANT).exists())
+        out = self.addins(p, "reset")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertFalse((d / self.ASSISTANT).exists())
+        self.assertNotEqual(self.addins(p, "enable", "nosuchaddin").returncode, 0)
+
     def test_menu_builder_off_in_the_prefix_and_its_entries_removed(self):
         p = self.prefix(runtime="winum")
         mine, keep, wine_ipt = self.menu_entries(p)

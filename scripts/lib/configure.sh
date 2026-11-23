@@ -53,7 +53,16 @@ cfg_disable_addins() {
     info "wine: $(command -v wine) ($(wine --version 2>/dev/null)), prefix: $WINEPREFIX"
     info "off by default here: ${off[*]}"
     for f in "${off[@]}"; do
-        if [ -f "$P_ADDINS/$f" ]; then mv "$P_ADDINS/$f" "$P_ADDINS_OFF/"; else info "(not present: $f)"; fi
+        local found="" rel
+        if [ -f "$P_ADDINS/$f" ]; then mv "$P_ADDINS/$f" "$P_ADDINS_OFF/"; found=1; fi
+        # 2027.2 and later: also in ProgramData (the Assistant, #36); this
+        # runs after every install and update, so a new version folder is
+        # caught too
+        while IFS= read -r rel; do
+            info "off: ProgramData\\...\\Addins\\$rel"; found=1
+        done < <(pd_addin_disable "$f")
+        [ -n "$found" ] || [ -n "$(pd_addins_matching "$P_PD_ADDINS_OFF" "$f")" ] \
+            || [ -f "$P_ADDINS_OFF/$f" ] || info "(not present: $f)"
     done
     if [ -z "$why" ]; then
         info ".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher), SharedViews and InteractiveTutorial on"
