@@ -457,9 +457,26 @@
             inherit (pkgs) lib;
             drv = package: package.drvPath;
             built = inventor2027.installation;
+            # scripts/lib/bsdtar.env as install-from-image.py reads it.
+            env = import ./nix/env-file.nix { inherit lib; } ./scripts/lib/bsdtar.env;
             checks = {
               "the launcher starts from the installation layer" =
                 drv inventor2027.basePackage == drv built.layer.basePackage;
+              # The same expectations as tests/test_bsdtar.py for Python's
+              # read_env_file: both readers agree on the format.
+              "nix/env-file.nix reads like install-from-image.py" =
+                import ./nix/env-file.nix { inherit lib; } ./tests/fixtures/env-file.env == {
+                  PLAIN = "value";
+                  INDENTED = "spaced value";
+                  QUOTED = "quoted value";
+                  EMPTY = "";
+                  WITH_EQUALS = "a=b";
+                  DUP = "last";
+                };
+              "the bsdtar archive is fetched as bsdtar.env names it" =
+                lib.elem env.BSDTAR_URL built.bsdtarArchive.urls
+                && built.bsdtarArchive.outputHash == env.BSDTAR_SHA256
+                && built.bsdtarArchive.name == env.BSDTAR_ZIP;
             };
             failed = lib.attrNames (lib.filterAttrs (_: passed: !passed) checks);
           in

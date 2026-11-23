@@ -138,12 +138,15 @@ let
       pkgs.caladea
     ];
   };
-  # tar.exe for the prefix (scripts/lib/bsdtar.env): libarchive's signed
-  # Windows build of bsdtar, which the Electrical Catalog Browser's installer
-  # needs; install-from-image.py takes it from DOWNLOAD_DIR.
+  # tar.exe for the prefix: libarchive's signed Windows build of bsdtar,
+  # which the Electrical Catalog Browser's installer needs. URL and SHA-256
+  # come from scripts/lib/bsdtar.env, the file install-from-image.py checks
+  # the archive against; it takes the archive from DOWNLOAD_DIR.
+  bsdtarEnv = import ./env-file.nix { inherit lib; } ../scripts/lib/bsdtar.env;
   bsdtarArchive = pkgs.fetchurl {
-    url = "https://github.com/libarchive/libarchive/releases/download/v3.5.3/libarchive-v3.5.3-win64.zip";
-    sha256 = "81c45c31a31a7b49809b3625594c28a1afbcc18faa6ee1d2ab4e4328ba8ef736";
+    name = bsdtarEnv.BSDTAR_ZIP;
+    url = bsdtarEnv.BSDTAR_URL;
+    sha256 = bsdtarEnv.BSDTAR_SHA256;
   };
   # Direct3D 8-11 and 12 on Vulkan, as separate layers the launcher adds
   # (mounted below the installation, which has none of their files):
@@ -276,7 +279,7 @@ let
       cp -R ${installerSource}/scripts "$TMPDIR/inventor-project/scripts"
       chmod -R u+w "$TMPDIR/inventor-project"
       export DOWNLOAD_DIR="$TMPDIR/inventor-downloads"
-      ln -s ${bsdtarArchive} "$DOWNLOAD_DIR/libarchive-v3.5.3-win64.zip"
+      ln -s ${bsdtarArchive} "$DOWNLOAD_DIR/${bsdtarEnv.BSDTAR_ZIP}"
       python3 "$TMPDIR/inventor-project/scripts/install-from-image.py" "$src" \
         --prefix "$WINEPREFIX" --prepared-prefix --preinstalled-webview2 --no-dotnet48 ${
           lib.optionalString (!contentCenter) "--no-content"
