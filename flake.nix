@@ -370,6 +370,13 @@
               pkgs.writeShellScript "stub-inventor-${name}" ''
                 printf '%s %s\n' ${name} "$*" >> "$LOG"
                 if [ "''${1:-}" = --nix-overlayfs-forward-url ]; then
+                  # SEQ_<name>="4 4 0": one status per call, in order
+                  if [ -n "''${SEQ_${name}:-}" ]; then
+                    n=$(( $(cat "$LOG.${name}.n" 2>/dev/null || echo 0) + 1 ))
+                    echo "$n" > "$LOG.${name}.n"
+                    set -- ''${SEQ_${name}}
+                    eval "exit \''${$n:-0}"
+                  fi
                   exit "''${STATUS_${name}:-3}"
                 fi
               '';
@@ -404,6 +411,33 @@
             run failing env STATUS_2027=1 || status=$?
             test "$status" -eq 1
             test "$(cat failing.log)" = "2027 --nix-overlayfs-forward-url $lib_url"
+
+            # 2027 is starting (4), then ready: retried until it takes the
+            # callback; 2026 is never asked and nothing starts.
+            run starting env SEQ_2027="4 4 0"
+            test "$(cat starting.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2027 --nix-overlayfs-forward-url $lib_url
+            2027 --nix-overlayfs-forward-url $lib_url"
+
+            # 2027 stays starting or closing: after the retries the dispatch
+            # stops with 4 instead of handing the callback to 2026.
+            status=0
+            run busy env SEQ_2027="4 4 4 4 4 4" STATUS_2026=0 2>/dev/null || status=$?
+            test "$status" -eq 4
+            test "$(grep -c '^2027 ' busy.log)" -eq 4
+            ! grep -q '^2026 ' busy.log
+
+            # 2027 was closing (4) and then gone (3): the callback was its
+            # own, so 2027 starts with it; 2026 is not asked.
+            run closed env SEQ_2027="4 3" STATUS_2026=0
+            test "$(cat closed.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2027 --nix-overlayfs-forward-url $lib_url
+            2027 $lib_url"
+
+            # 2027's session ended before taking it (5): 2027 starts with it.
+            run ended env SEQ_2027="5" STATUS_2026=0
+            test "$(cat ended.log)" = "2027 --nix-overlayfs-forward-url $lib_url
+            2027 $lib_url"
 
             # No URL.
             ! LOG=/dev/null ${dispatcher} 2>/dev/null
