@@ -862,6 +862,49 @@ the same day, then no longer - switching to Frame Analysis, Stress Analysis
 and Dynamic Simulation all went fine. No reliable steps yet; when it shows
 again, note the exact steps and take a `+win,+msg` trace.
 
+**2026-11-23, first trace.** Seen again on a fresh Inventor 2027.2 prefix
+(installed from the Create Installer image), with winum-11.20-2 and with
+the 11.22-2 test build: after switching an assembly to Frame Analysis the
+left pane and the right (Assistant) pane show copies of the ribbon and the
+browser - the top-left corner of the Inventor window, shifted down and to
+the right. Minimise and restore clears it. Trace (test build,
+`WINEDEBUG=+win,+msg`, 784 000 lines; the maintainer kept it locally):
+
+- `move_window_bits copying (0,0)-(350,868) -> (1570,146)-(1920,1014)`:
+  Wine copied the pixels of the window's old place (the top-left corner,
+  i.e. the ribbon and browser) to the right pane's place. The window is
+  `0x101be` (child of `0x30094`, 350 x 868, the right pane's container;
+  `invalidate_dce 0x101be parent 0x30094, old_rect (0,0)-(350,868)` just
+  before, then `apply_window_pos win 0x101be surface (nil) -> (nil)`).
+- The `SetWindowPos` calls on `0x101be` in that stretch have flags
+  `0x1837` (no move, no size, `SWP_FRAMECHANGED`): the window itself is
+  not moved in that call, yet its "old" rectangle is still at `(0,0)`.
+- During the switch Inventor sends `WM_SETREDRAW` 0 and then 1 to the
+  panes, which belong to other threads (`0abc`, `0768`) than the main
+  window (`0314`).
+
+**Hypothesis (not measured yet):** the pane container was laid out at
+`(0,0)` while it was not shown or not painted, then placed at its real
+spot; at the next frame-changed `SetWindowPos` Wine treats the old
+`(0,0)` area as the window's valid bits and copies them
+(`win32u/window.c` `apply_window_pos` -> `get_valid_rects` /
+`move_window_bits` in `dce.c`). Windows should have no valid bits for a
+window that was not visible or never painted at the old place, so it
+would copy nothing and send `WM_PAINT`. Next: find where `0x101be` and
+`0x30094` got their positions and visibility between creation and this
+point; then a MEASURE program for the offline Windows VM (a child in a
+container, laid out at 0,0 while hidden or with redraw off, moved, then
+`SetWindowPos(SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE)`: does Windows copy
+bits, does it send `WM_PAINT`), and from that a `user32` test. Commands
+used:
+
+```bash
+export WINEDEBUG=+win,+msg
+bash scripts/launch-inventor.sh > frame-redraw.log 2>&1
+grep -a -n -E 'move_window_bits|LockWindowUpdate' frame-redraw.log | tail -45
+sed -n '<line-25>,<line>p' frame-redraw.log    # the lines before a suspicious copy
+```
+
 ### Still open (found by the fuzzer, not needed by Inventor)
 
 - `Commit` on a transacted substorage whose parent was reverted dereferences
@@ -1717,6 +1760,8 @@ a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
 ## Result log
+
+**2026-11-23 - Frame Analysis repaint, first trace:** the stale panes after switching to Frame Analysis (section "Inventor 2027" under Frame Analysis) traced with `+win,+msg`: Wine copies the old (0,0) area - ribbon and browser - into the right pane's container on a frame-changed `SetWindowPos`. Hypothesis and next steps there; not fixed.
 
 **2026-11-16 - Wine's menu builder off in the prefix itself:** a plain
 `wine reg query` by hand in the fresh 2026 prefix let `wineboot` run
