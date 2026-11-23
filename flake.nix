@@ -578,6 +578,18 @@
                   (moduleLauncher "2027")
                   (moduleLauncher "2026")
                 ];
+              "the desktop-entry check runs in the user's graphical session" =
+                let
+                  service = config.systemd.user.services.autodesk-inventor-desktop-check;
+                in
+                lib.elem "graphical-session.target" service.wantedBy
+                && lib.hasInfix "autodesk-inventor-desktop-check" (plain service.serviceConfig.ExecStart);
+              # WantedBy orders the target after the unit; After= the target
+              # as well would be an ordering cycle.
+              "the desktop-entry check is not ordered after its own target" =
+                !(lib.elem "graphical-session.target" (
+                  config.systemd.user.services.autodesk-inventor-desktop-check.after or [ ]
+                ));
               "the module's launchers do not register handlers at runtime" =
                 moduleLauncher "2026" != launcher "2026";
             };
