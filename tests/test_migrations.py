@@ -687,6 +687,19 @@ class Migrations(unittest.TestCase):
         self.assertFalse((d / self.ASSISTANT).exists())
         self.assertNotEqual(self.addins(p, "enable", "nosuchaddin").returncode, 0)
 
+    def test_addins_sh_sees_programdata_addin_at_top_level(self):
+        # Inventor Nastran 2027 puts its .addin straight into ProgramData\...\Addins
+        p, _ = self.prefix_2027_2()
+        top = p / "drive_c/ProgramData/Autodesk/Inventor 2027/Addins"
+        (top / "autodesk.inventor.nastran.addin").write_text("<Addin/>")
+        out = self.addins(p, "list")
+        self.assertIn("autodesk.inventor.nastran.addin  (ProgramData: autodesk.inventor.nastran.addin)",
+                      out.stdout.split("disabled:")[0])
+        self.assertEqual(self.addins(p, "disable", "nastran").returncode, 0)
+        self.assertFalse((top / "autodesk.inventor.nastran.addin").exists())
+        self.assertEqual(self.addins(p, "enable", "nastran").returncode, 0)
+        self.assertTrue((top / "autodesk.inventor.nastran.addin").exists())
+
     def test_menu_builder_off_in_the_prefix_and_its_entries_removed(self):
         p = self.prefix(runtime="winum")
         mine, keep, wine_ipt = self.menu_entries(p)
