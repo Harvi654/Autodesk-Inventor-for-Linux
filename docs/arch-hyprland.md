@@ -1798,6 +1798,8 @@ with a test callback). Not a Wine bug.
 
 ## Result log
 
+**2026-11-23 - Assistant on again in 2027.2 (migration 0013, #36):** Inventor 2027.2 has the Autodesk Assistant add-in in `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\31.20.33400\` (LoadOnStartUp 1) instead of `Bin\Addins`, where `cfg_disable_addins` looked; found by @krokosik in the Nix package, seen in a fresh 2027.2 prefix from the script installer (its panel on the right in Frame Analysis). `cfg_disable_addins` (after every install and update) and migration 0013 move that `.addin` to `Addins.disabled\programdata\` with its relative path; `addins.sh` lists, enables and disables add-ins in both places. Tests: `tests/test_migrations.py` (0013 applied, nothing to do, already off, --restore, addins.sh). Checked by the maintainer on the fresh 2027.2 prefix (winum 11.22-2 test build): 0013 applied, `addins.sh list` shows the Assistant off, Inventor starts without its panel and the ribbon button no longer opens it.
+
 **2026-11-23 - Frame Analysis repaint, first trace:** the stale panes after switching to Frame Analysis (section "Inventor 2027" under Frame Analysis) traced with `+win,+msg`: Wine copies the old (0,0) area - ribbon and browser - into the right pane's container on a frame-changed `SetWindowPos`. Hypothesis and next steps there; not fixed.
 
 **2026-11-16 - Wine's menu builder off in the prefix itself:** a plain

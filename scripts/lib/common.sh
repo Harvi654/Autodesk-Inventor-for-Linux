@@ -348,6 +348,12 @@ P_ADDINS="$P_INV/Bin/Addins"
 # Disabled add-ins live OUTSIDE Bin\Addins: Inventor 2026 also scans its
 # subfolders, so the old Bin\Addins\disabled\ did not disable anything.
 P_ADDINS_OFF="$P_INV/Addins.disabled"
+# Inventor also loads add-ins from ProgramData\Autodesk\Inventor <year>\Addins,
+# in subfolders; 2027.2 moved the Assistant there (Assistant\<version>\, #36).
+# One turned off there moves to Addins.disabled\programdata\ with the same
+# relative path, so that it can go back to exactly where it was.
+P_PD_ADDINS="$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/Addins"
+P_PD_ADDINS_OFF="$P_ADDINS_OFF/programdata"
 
 # --- output helpers ----------------------------------------------------------
 if [ -t 1 ]; then
@@ -603,6 +609,42 @@ dotnet48_present() { dotnet48_why >/dev/null; }
 inv_default_disabled_addins() {
     printf '%s\n' "${INV_DEFAULT_DISABLED_ADDINS[@]}"
     dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
+}
+
+# ProgramData add-ins (P_PD_ADDINS): paths below <dir> of the files named
+# exactly NAME (any case), in subfolders up to four levels deep.
+pd_addins_matching() {  # <dir> <name>
+    [ -d "$1" ] || return 0
+    find "$1" -mindepth 1 -maxdepth 4 -type f -iname "$2" -printf '%P\n' 2>/dev/null | sort
+}
+# Turn off the ProgramData add-in NAME: each copy moves to P_PD_ADDINS_OFF
+# with its relative path, which is printed. A copy already off is left alone.
+pd_addin_disable() {  # <name>
+    local rel
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        if [ -e "$P_PD_ADDINS_OFF/$rel" ]; then
+            warn "$rel is on in ProgramData and also in Addins.disabled/programdata - left as it is"
+            continue
+        fi
+        mkdir -p "$P_PD_ADDINS_OFF/$(dirname "$rel")"
+        mv -n -- "$P_PD_ADDINS/$rel" "$P_PD_ADDINS_OFF/$rel"
+        printf '%s\n' "$rel"
+    done < <(pd_addins_matching "$P_PD_ADDINS" "$1")
+}
+# Turn on the ProgramData add-in NAME again: back to its folder (printed).
+pd_addin_enable() {  # <name>
+    local rel
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        if [ -e "$P_PD_ADDINS/$rel" ]; then
+            warn "$rel is in ProgramData already - its disabled copy is left as it is"
+            continue
+        fi
+        mkdir -p "$P_PD_ADDINS/$(dirname "$rel")"
+        mv -n -- "$P_PD_ADDINS_OFF/$rel" "$P_PD_ADDINS/$rel"
+        printf '%s\n' "$rel"
+    done < <(pd_addins_matching "$P_PD_ADDINS_OFF" "$1")
 }
 
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)
