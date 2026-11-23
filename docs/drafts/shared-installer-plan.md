@@ -187,7 +187,11 @@ build. In steps, each time-boxed (three rounds):
    or files the user downloaded), installs it with the project's
    installer, checks it (golden plan, a start of the program), goes back
    to the copy if anything fails, and then rests until the next window.
-   Updates come in batches, never in the middle of work.
+   Updates come in batches, never in the middle of work. Part of the
+   check can be a small .NET smoke test built on Linux (a WinForms and a
+   WPF window, a COM call, an exception crossing native and .NET code),
+   run before the program itself: it does not find more than the program
+   would, but it fails earlier and names the area (2026-11-23).
 3. **The three Wine gaps as proper winum fixes** (tests, L1); they also
    help licensing and WebView2 (sign-in, Assistant).
 4. **Only then: ODIS as an optional full path**, run on a copy of the
