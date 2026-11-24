@@ -32,7 +32,7 @@ pick() {
     local bindir pddir m
     if [ "$1" = on ]; then bindir="$ADDINS"; pddir="$P_PD_ADDINS"; else bindir="$OFF"; pddir="$P_PD_ADDINS_OFF"; fi
     mapfile -t m < <( { find "$bindir" -maxdepth 1 -iname "*$2*.addin" -printf 'bin %f\n'
-                        [ -d "$pddir" ] && find "$pddir" -mindepth 2 -maxdepth 4 -type f -iname "*$2*.addin" -printf 'pd %f\n'
+                        [ -d "$pddir" ] && find "$pddir" -mindepth 1 -maxdepth 4 -type f -iname "*$2*.addin" -printf 'pd %f\n'
                       } 2>/dev/null | sort -u)
     [ ${#m[@]} -gt 0 ] || die "no add-in matching '$2' ($1)"
     [ ${#m[@]} -eq 1 ] || die "'$2' matches several: ${m[*]}"
@@ -51,9 +51,9 @@ restore_tutorial_libs() {
 case "${1:-list}" in
     list)
         echo "enabled:";  find "$ADDINS" -maxdepth 1 -iname '*.addin' -printf '    %f\n' | sort
-        [ -d "$P_PD_ADDINS" ] && find "$P_PD_ADDINS" -mindepth 2 -maxdepth 4 -type f -iname '*.addin' -printf '    %f  (ProgramData: %P)\n' | sort
+        [ -d "$P_PD_ADDINS" ] && find "$P_PD_ADDINS" -mindepth 1 -maxdepth 4 -type f -iname '*.addin' -printf '    %f  (ProgramData: %P)\n' | sort
         echo "disabled:"; find "$OFF" -maxdepth 1 -iname '*.addin' -printf '    %f\n' | sort
-        [ -d "$P_PD_ADDINS_OFF" ] && find "$P_PD_ADDINS_OFF" -mindepth 2 -maxdepth 4 -type f -iname '*.addin' -printf '    %f  (ProgramData: %P)\n' | sort
+        [ -d "$P_PD_ADDINS_OFF" ] && find "$P_PD_ADDINS_OFF" -mindepth 1 -maxdepth 4 -type f -iname '*.addin' -printf '    %f  (ProgramData: %P)\n' | sort
         if [ -d "$LIBS" ]; then find "$LIBS" -maxdepth 1 -type f -printf '    (moved library) %f\n'; fi
         ;;
     enable)
@@ -79,7 +79,7 @@ case "${1:-list}" in
         done < <(find "$OFF" -maxdepth 1 -iname '*.addin' -printf '%f\n' | sort)
         while IFS= read -r f; do
             [ -n "$(pd_addin_enable "$f")" ] && ok "enabled $f (ProgramData)"
-        done < <([ -d "$P_PD_ADDINS_OFF" ] && find "$P_PD_ADDINS_OFF" -mindepth 2 -maxdepth 4 -type f -iname '*.addin' -printf '%f\n' | sort -u)
+        done < <([ -d "$P_PD_ADDINS_OFF" ] && find "$P_PD_ADDINS_OFF" -mindepth 1 -maxdepth 4 -type f -iname '*.addin' -printf '%f\n' | sort -u)
         restore_tutorial_libs
         ;;
     reset)

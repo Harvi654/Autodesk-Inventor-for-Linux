@@ -1796,7 +1796,106 @@ smoke test in Inventor 2026 and 2027 on 2026-11-13 (result log). Still open:
 a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
 with a test callback). Not a Wine bug.
 
+## Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run (open, winum candidates)
+
+**Symptom.** Inventor Nastran 2027, installed as a companion product into
+the Inventor 2027.2 prefix, shows "Could not start the user interface
+components ... 0x80040154" at Generate Mesh and Run (mesh, solve and
+results work after OK). Not on Windows 10.
+
+**Causes, in the order they were found** (each a winum candidate,
+measured on offline Windows 10 first; details in the result log):
+
+| Gap | winum candidate (branch) | State |
+| --- | --- | --- |
+| VBScript calls a WMI method (`StdRegProv`), Wine bug 39463 | `wbemdisp-method-invoke` (`topic/wbemdisp-method-invoke-measure`) | L1, cross reviewed |
+| `ADODB.Stream` UTF-8 text | `msado15-stream-charset` (`topic/msado15-stream-charset-measure`) | L1, review pending |
+| COM looks in `HKCU\Software\Classes` first (part of bug 17019) | `combase-per-user-classes` (`topic/combase-per-user-classes-measure`) | cross reviewed |
+| `HKEY_CLASSES_ROOT` read opens of a per-user CLSID (part of bug 17019) | `kernelbase-hkcr-class-reads` (`topic/kernelbase-hkcr-read-measure`) | L1, cross reviewed 2026-11-24 |
+| Every token reports High integrity | `server-limited-token-medium-integrity` (`topic/token-integrity-level`) | L1 (normal and elevated console), L2 local, L3, L4 for Nastran (2026-11-24); Inventor smoke test, ODIS, AutoCAD pending |
+
+**The last cause (found 2026-11-24).** Nastran registers its .NET classes
+`NEWPFUI.NEWPFUIImpl` `{29DEEFDB-1653-39CB-A663-9103D3F3DED7}` and
+`NEWPFUI.NEProgressImpl` `{AB1C9E36-DFCC-3C54-B03A-C67772EF2ACB}` per user
+only (`HKCU\Software\Classes\CLSID`, `InprocServer32` = `mscoree.dll`,
+subkey `2027.2.0.0`, `CodeBase` to `NEWPFUI.dll`) - the same as Windows.
+The .NET Framework 4.8 COM shim (`mscoreei.dll`, native) asks for the
+process token's integrity level before it uses the registration; at High
+it ignores the HKCU registration and only looks in HKLM, so
+`DllGetClassObject` returns `0x80070002`. Windows does the same in an
+elevated console. Wine reported High for every process: the token's
+integrity level was a constant in ntdll
+(`NtQueryInformationToken(TokenIntegrityLevel)`, `dlls/ntdll/unix/security.c`),
+and wineserver has no level per token. On Windows a normal process runs
+with the limited half of the administrator's token at Medium.
+
+**Fix (winum candidate, not released).** wineserver keeps an integrity
+level per token: Medium for the limited token every process started from
+Linux gets, High for a full or default admin token (elevated programs,
+explorer.exe); duplicates keep it; ntdll reports it. Not a workaround
+here: the launcher and the prefix do not change.
+
+**How it was found** (the repro needs no Autodesk files, synthetic
+variant in winum `docs/wine-repro/server-token-integrity-vbs/`):
+
+```bash
+printf 'On Error Resume Next\r\nSet o = CreateObject(WScript.Arguments(0))\r\nWScript.Echo WScript.Arguments(0) & " err=0x" & Hex(Err.Number) & " " & Err.Description\r\n' > "$INV_PREFIX/drive_c/newpfui.vbs"
+WINEDEBUG=err+ole wine cscript //nologo 'C:\newpfui.vbs' NEWPFUI.NEProgressImpl
+WINEDEBUG=+relay wine cscript //nologo 'C:\newpfui.vbs' NEWPFUI.NEProgressImpl 2>&1 | grep -E 'OpenThreadToken|GetTokenInformation|GetSidSubAuthority|RegOpenKeyEx' | tail -20
+```
+
+Wine: `err=0x1AD`, `err:ole ... DllGetClassObject returned 0x80070002`
+for `mscoree.dll`. Windows 10, same script: normal console (Medium,
+S-1-16-8192) works, elevated console (High, S-1-16-12288) `err=0x1AD`.
+The trace shows `RegOpenKeyExW(HKCR, CLSID\{AB1C...}\InprocServer32)`
+succeeding (kernelbase candidate), then `OpenThreadToken`
+(`STATUS_NO_TOKEN`), `GetTokenInformation(..., TokenIntegrityLevel)` on the
+process token and `GetSidSubAuthority`, then only HKLM. `+relay` on a
+native Microsoft DLL (.NET Framework 4.8 with `mscoree` native), observed
+from outside only. Note: the prefix's `HKCU\Software\Wine\Debug` holds a
+default `RelayFromExclude`, so `RelayFromInclude` is ignored there.
+
+**Virtual desktop: the dialog stays.** Wine gives the desktop process
+(explorer.exe) an administrator token, and what it starts inherits it.
+With `INV_VDESKTOP` the launcher starts Inventor through
+`wine explorer /desktop=... Inventor.exe`, so Inventor runs at High and
+Nastran's dialog comes back. Without a virtual desktop (the default)
+Inventor is started from Linux and runs at Medium. On Windows explorer
+runs at Medium; a fix belongs in Wine (separate candidate).
+
+**Still open.** The Inventor smoke test with the candidate (assembly,
+drawing, save/reopen, restart), the ODIS installer and Vault (a lower
+integrity level could change what an Autodesk component that checks it
+does), AutoCAD (wineserver and ntdll are shared). In the same run,
+not yet attributed and without visible effect: `DllGetClassObject`
+0x80070002 on `C:\windows\system32\MSCOREE.DLL` for four CLSIDs that
+are registered nowhere (`{1060954f-c50a-4cdd-8edd-3d1c69915120}`,
+`{3bdd8d79-2179-4b11-8a5a-257b1c0263ac}`,
+`{4e2d52fb-8288-4427-b912-20ef97f073c9}`,
+`{b99db61b-f61e-4a56-ae2c-3fb608a2547d}`), probably registration-free
+`clrClass` entries of a manifest; next a `+actctx` trace and a Windows
+ProcMon check, and the same lines on a runtime without the candidate.
+A black bar above the result legend in the Nastran view is a separate
+question (Windows screenshot pending). The token object's own label,
+lowering a token with `SetTokenInformation` and the label entry in
+`TokenGroups` are not changed by the candidate.
+
+**For a Wine bug report.** `TokenIntegrityLevel` is High in every
+process; Windows reports Medium for a non-elevated one. The .NET
+Framework COM shim then skips per-user registrations of .NET classes and
+`CreateObject` fails with 0x1AD. Steps: `per-user-dotnet-class.vbs` with
+cscript in a prefix with .NET 4.8. Related: bug 17019.
+
+Validation level: L0, L1, local paired L2, L3 and L4 (Nastran) for the token candidate (2026-11-24); the four earlier
+candidates as in the table.
+
 ## Result log
+
+**2026-11-24 - Nastran works without the 0x80040154 dialog (token candidate, L3/L4):** runtime = winum "Build Wine" run 45317855190 of `test-run/token-integrity-level-1` (series + `server-limited-token-medium-integrity`) with the four Nastran overlays (wbemdisp, msado15, combase, kernelbase), on a copy of the Inventor 2027.2 + Nastran prefix (native .NET 4.8). MEASURE: Inventor-like process (limited token) S-1-16-8192, linked token 12288. `CreateObject` of `NEWPFUI.NEProgressImpl` and `NEWPFUI.NEWPFUIImpl`: `err=0x0` (0x1AD without the candidate). Nastran: part, Nastran environment, Generate Mesh (parabolic, 0.167 mm, 1,254,416 nodes, 806,387 elements), Run (linear static), von Mises contour, Deformed + Animate - all work, no dialog. The first attempt used the Build Wine artifact of `topic/token-integrity-level` (run 45307586910), which does not contain the candidate (still High, 0x1AD) - only the test-run build does. With a Wine virtual desktop (`INV_VDESKTOP`) Inventor is a child of explorer.exe, which Wine runs with an administrator token, so the dialog would stay there. Open: Inventor smoke test, ODIS, AutoCAD; `MSCOREE.DLL` `DllGetClassObject` 0x80070002 for four unregistered CLSIDs (no visible effect, not yet attributed); a black bar above the Nastran result legend (separate). Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
+
+**2026-11-24 - Nastran: the last 0x80040154 is the token integrity level:** after the kernelbase candidate (`kernelbase-hkcr-class-reads`, HKCR read opens of per-user CLSIDs) the `NEWPFUI` key opens through HKEY_CLASSES_ROOT, but `mscoree`'s `DllGetClassObject` still returns `0x80070002`. Three-line VBScript `CreateObject` repro without Inventor: Wine `err=0x1AD`; Windows 10 normal console (Medium) works, elevated console (High) gives `err=0x1AD` - the same as Wine. `+relay` of the native `mscoreei.dll`: it reads the process token's `TokenIntegrityLevel` and at High uses HKLM only. Wine reports High for every token (constant in ntdll; wineserver has no level per token). winum candidate `server-limited-token-medium-integrity` (branch `topic/token-integrity-level`, two patches: wineserver keeps a level per token, Medium for the limited token, High for full/default; ntdll reports it), MEASURE program for the VM (normal and elevated console), Wine test (fails 10 checks per architecture on winum-11.22-2, as expected), synthetic VBScript repro. Pending: L1, L2, L3, L4 (Nastran and the Inventor smoke test), cross review by Codex. Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
+
+**2026-11-24 - Windows reference for Nastran (companion capture, `tools/companion-capture.*`):** on Windows 10 (offline snapshot for before/installed, online snapshot for the first start) Nastran shows **no** 0x80040154 and no "Requested functionality" dialog; mesh, run and results work. Windows registers `NEWPFUI.NEWPFUIImpl` and `NEWPFUI.NEProgressImpl` at the first start exactly as Wine does (HKCU only, `mscoree.dll`, v4.0.30319, the same `CodeBase`, `NEWPFUI\RegisteredClsids`, the type library). Windows' Fusion log has the usual failed name bind of `NEWPFUI` (then loaded from `CodeBase`) and the same `System.Runtime 10.0.0.0` failures from `SharedViews`/`InteractiveTutorial` - those are normal Inventor behaviour, not a Wine problem. Under Wine no `NEWPFUI` bind is attempted: just before `mscoree`'s `DllGetClassObject` returns `0x80070002` the caller opens `CLSID\{29DEEFDB-...}\InprocServer32` through HKEY_CLASSES_ROOT and then `HKLM\SOFTWARE\Classes`, both failing, and never HKCU - 0x80070002 is `ERROR_FILE_NOT_FOUND` from that open. Next: a winum candidate for kernelbase so that opening and reading through HKEY_CLASSES_ROOT sees `HKCU\Software\Classes` as Windows does (part of Wine bug 17019), measured first. The Linux capture tool still missed the `HKLM\Software\Autodesk\Autodesk Inventor Nastran 2027` keys of the Wine prefix (fix pending), so that group of differences is not a Wine finding.
 
 **2026-11-23 - Inventor Nastran 2027, three Wine gaps closed, one open:** with three winum candidates on a fresh copy of a 2027.2 prefix (winum branches `topic/wbemdisp-method-invoke-measure`, `topic/msado15-stream-charset-measure`, `topic/combase-per-user-classes-measure`; each measured on offline Windows 10 first) Nastran's `Register_Addin` script now completes: `wbemdisp` answers WMI method calls through `IDispatch` (Wine bug 39463), `msado15`'s `ADODB.Stream` reads and writes UTF-8 text, so the `.addin` gets its full path and `NEiInventor.dll` loads; `combase` finds COM classes registered per user (`HKCU\Software\Classes`, part of Wine bug 17019), which Nastran writes at its first start for its .NET Framework class `NEWPFUI.NEWPFUIImpl` (`InprocServer32` = `mscoree.dll`, `RuntimeVersion` v4.0.30319, `CodeBase` `In-CAD\System\NEWPFUI.dll`, file present). **Still open:** the dialog "Could not start the user interface components ... 0x80040154" stays (mesh, solve and results work after OK). What is known: combase now passes the class to `mscoree.dll`; the shim opens the HKCU registration successfully (`+reg`: `<- 0x11a0`), .NET Framework 4's `clr.dll` runs in the Inventor process next to CoreCLR 10, and `DllGetClassObject` of `mscoree.dll` returns `0x80070002` (file not found) without `NEWPFUI.dll` showing up in a failed bind. .NET Framework's own bind-failure log (Fusion, `LogFailures` in the copy only) shows something separate but worth a look for the whole of Inventor: `clr.dll` v4 is loaded at every start (right after `CCAddIn.dll`), and the .NET 10 add-ins `SharedViews` and, with that one off, `InteractiveTutorial` are bound in it and fail on `System.Runtime 10.0.0.0`. Turning `SharedViews` off does not remove Nastran's dialog. Three rounds done on the Wine side; **next is a Windows reference** (online VM snapshot, Inventor 2027.2 with Nastran 2027): whether the dialog appears there, the values under `HKCU\Software\Classes\CLSID\{29DEEFDB-1653-39CB-A663-9103D3F3DED7}`, and the same Fusion failure log - do `SharedViews`/`InteractiveTutorial` fail to bind in .NET 4 on Windows too. Commands: `WINEDEBUG=+reg,err+ole` around the dialog filtered on the CLSID; Fusion: `HKLM\Software\Microsoft\Fusion` `LogFailures`=1, `LogPath`=`C:\fusionlog\` (native .NET Framework 4.8 observed from outside).
 
