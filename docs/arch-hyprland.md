@@ -1812,7 +1812,7 @@ measured on offline Windows 10 first; details in the result log):
 | `ADODB.Stream` UTF-8 text | `msado15-stream-charset` (`topic/msado15-stream-charset-measure`) | L1, review pending |
 | COM looks in `HKCU\Software\Classes` first (part of bug 17019) | `combase-per-user-classes` (`topic/combase-per-user-classes-measure`) | cross reviewed |
 | `HKEY_CLASSES_ROOT` read opens of a per-user CLSID (part of bug 17019) | `kernelbase-hkcr-class-reads` (`topic/kernelbase-hkcr-read-measure`) | L1, cross reviewed 2026-11-24 |
-| Every token reports High integrity | `server-limited-token-medium-integrity` (`topic/token-integrity-level`) | candidate, L1 pending |
+| Every token reports High integrity | `server-limited-token-medium-integrity` (`topic/token-integrity-level`) | L1 (normal and elevated console), L2 local; L3, L4 pending |
 
 **The last cause (found 2026-11-24).** Nastran registers its .NET classes
 `NEWPFUI.NEWPFUIImpl` `{29DEEFDB-1653-39CB-A663-9103D3F3DED7}` and
@@ -1869,7 +1869,7 @@ Framework COM shim then skips per-user registrations of .NET classes and
 `CreateObject` fails with 0x1AD. Steps: `per-user-dotnet-class.vbs` with
 cscript in a prefix with .NET 4.8. Related: bug 17019.
 
-Validation level: L0 local for the token candidate; the four earlier
+Validation level: L0, L1 and local paired L2 for the token candidate (2026-11-24); the four earlier
 candidates as in the table.
 
 ## Result log
