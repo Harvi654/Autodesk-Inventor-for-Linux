@@ -1812,7 +1812,7 @@ measured on offline Windows 10 first; details in the result log):
 | `ADODB.Stream` UTF-8 text | `msado15-stream-charset` (`topic/msado15-stream-charset-measure`) | L1, review pending |
 | COM looks in `HKCU\Software\Classes` first (part of bug 17019) | `combase-per-user-classes` (`topic/combase-per-user-classes-measure`) | cross reviewed |
 | `HKEY_CLASSES_ROOT` read opens of a per-user CLSID (part of bug 17019) | `kernelbase-hkcr-class-reads` (`topic/kernelbase-hkcr-read-measure`) | L1, cross reviewed 2026-11-24 |
-| Every token reports High integrity | `server-limited-token-medium-integrity` (`topic/token-integrity-level`) | L1 (normal and elevated console), L2 local; L3, L4 pending |
+| Every token reports High integrity | `server-limited-token-medium-integrity` (`topic/token-integrity-level`) | L1 (normal and elevated console), L2 local, L3, L4 for Nastran (2026-11-24); Inventor smoke test, ODIS, AutoCAD pending |
 
 **The last cause (found 2026-11-24).** Nastran registers its .NET classes
 `NEWPFUI.NEWPFUIImpl` `{29DEEFDB-1653-39CB-A663-9103D3F3DED7}` and
@@ -1855,11 +1855,28 @@ native Microsoft DLL (.NET Framework 4.8 with `mscoree` native), observed
 from outside only. Note: the prefix's `HKCU\Software\Wine\Debug` holds a
 default `RelayFromExclude`, so `RelayFromInclude` is ignored there.
 
-**Still open.** L1 of the candidate's test and the MEASURE program
-(normal and elevated console), L2, L3 (the VBScript in the prefix), L4
-(Nastran Generate Mesh / Run, and the Inventor smoke test: a lower
+**Virtual desktop: the dialog stays.** Wine gives the desktop process
+(explorer.exe) an administrator token, and what it starts inherits it.
+With `INV_VDESKTOP` the launcher starts Inventor through
+`wine explorer /desktop=... Inventor.exe`, so Inventor runs at High and
+Nastran's dialog comes back. Without a virtual desktop (the default)
+Inventor is started from Linux and runs at Medium. On Windows explorer
+runs at Medium; a fix belongs in Wine (separate candidate).
+
+**Still open.** The Inventor smoke test with the candidate (assembly,
+drawing, save/reopen, restart), the ODIS installer and Vault (a lower
 integrity level could change what an Autodesk component that checks it
-does - ODIS installer, Vault, add-ins). The token object's own label,
+does), AutoCAD (wineserver and ntdll are shared). In the same run,
+not yet attributed and without visible effect: `DllGetClassObject`
+0x80070002 on `C:\windows\system32\MSCOREE.DLL` for four CLSIDs that
+are registered nowhere (`{1060954f-c50a-4cdd-8edd-3d1c69915120}`,
+`{3bdd8d79-2179-4b11-8a5a-257b1c0263ac}`,
+`{4e2d52fb-8288-4427-b912-20ef97f073c9}`,
+`{b99db61b-f61e-4a56-ae2c-3fb608a2547d}`), probably registration-free
+`clrClass` entries of a manifest; next a `+actctx` trace and a Windows
+ProcMon check, and the same lines on a runtime without the candidate.
+A black bar above the result legend in the Nastran view is a separate
+question (Windows screenshot pending). The token object's own label,
 lowering a token with `SetTokenInformation` and the label entry in
 `TokenGroups` are not changed by the candidate.
 
@@ -1869,10 +1886,12 @@ Framework COM shim then skips per-user registrations of .NET classes and
 `CreateObject` fails with 0x1AD. Steps: `per-user-dotnet-class.vbs` with
 cscript in a prefix with .NET 4.8. Related: bug 17019.
 
-Validation level: L0, L1 and local paired L2 for the token candidate (2026-11-24); the four earlier
+Validation level: L0, L1, local paired L2, L3 and L4 (Nastran) for the token candidate (2026-11-24); the four earlier
 candidates as in the table.
 
 ## Result log
+
+**2026-11-24 - Nastran works without the 0x80040154 dialog (token candidate, L3/L4):** runtime = winum "Build Wine" run 45317855190 of `test-run/token-integrity-level-1` (series + `server-limited-token-medium-integrity`) with the four Nastran overlays (wbemdisp, msado15, combase, kernelbase), on a copy of the Inventor 2027.2 + Nastran prefix (native .NET 4.8). MEASURE: Inventor-like process (limited token) S-1-16-8192, linked token 12288. `CreateObject` of `NEWPFUI.NEProgressImpl` and `NEWPFUI.NEWPFUIImpl`: `err=0x0` (0x1AD without the candidate). Nastran: part, Nastran environment, Generate Mesh (parabolic, 0.167 mm, 1,254,416 nodes, 806,387 elements), Run (linear static), von Mises contour, Deformed + Animate - all work, no dialog. The first attempt used the Build Wine artifact of `topic/token-integrity-level` (run 45307586910), which does not contain the candidate (still High, 0x1AD) - only the test-run build does. With a Wine virtual desktop (`INV_VDESKTOP`) Inventor is a child of explorer.exe, which Wine runs with an administrator token, so the dialog would stay there. Open: Inventor smoke test, ODIS, AutoCAD; `MSCOREE.DLL` `DllGetClassObject` 0x80070002 for four unregistered CLSIDs (no visible effect, not yet attributed); a black bar above the Nastran result legend (separate). Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
 
 **2026-11-24 - Nastran: the last 0x80040154 is the token integrity level:** after the kernelbase candidate (`kernelbase-hkcr-class-reads`, HKCR read opens of per-user CLSIDs) the `NEWPFUI` key opens through HKEY_CLASSES_ROOT, but `mscoree`'s `DllGetClassObject` still returns `0x80070002`. Three-line VBScript `CreateObject` repro without Inventor: Wine `err=0x1AD`; Windows 10 normal console (Medium) works, elevated console (High) gives `err=0x1AD` - the same as Wine. `+relay` of the native `mscoreei.dll`: it reads the process token's `TokenIntegrityLevel` and at High uses HKLM only. Wine reports High for every token (constant in ntdll; wineserver has no level per token). winum candidate `server-limited-token-medium-integrity` (branch `topic/token-integrity-level`, two patches: wineserver keeps a level per token, Medium for the limited token, High for full/default; ntdll reports it), MEASURE program for the VM (normal and elevated console), Wine test (fails 10 checks per architecture on winum-11.22-2, as expected), synthetic VBScript repro. Pending: L1, L2, L3, L4 (Nastran and the Inventor smoke test), cross review by Codex. Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
 
