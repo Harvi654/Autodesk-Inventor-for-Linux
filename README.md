@@ -138,6 +138,17 @@ issue · ❌ does not work yet. Nothing here is guaranteed; see
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
 
+## Add-ons for Inventor
+
+Autodesk products that work inside Inventor. Each goes into the Inventor
+prefix of the same year, next to Inventor.
+
+| Add-on | Status | Notes |
+|---|---|---|
+| Inventor Nastran | 🧪 | in testing: mesh, solve and results work with Inventor 2027.2 and Nastran 2027 in the development setup, with Wine fixes coming in the next winum release. After that release it can be installed into an existing Inventor prefix with the new installer (GUI); until then it is not part of the installer |
+| Vault Basic client | planned | contribution in review ([#8](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/pull/8)); moves onto the new installer |
+| Tolerance Analysis | planned | |
+
 ## Requirements
 
 - **Arch Linux** (or a derivative with `pacman`), **Ubuntu 26.04 / Debian**
