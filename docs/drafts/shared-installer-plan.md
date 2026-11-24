@@ -77,17 +77,66 @@ their profiles.
 becomes the recommended way to get the files; Browser download stays as
 the fallback (maintainer, 2026-11-23).
 
-**Order:**
-1. `install.sh` takes `Create_Installer_*.exe` directly: get the image,
-   check it, install.
-2. The update unpacked next to the image, not into `~/.cache`; the full
-   exit code of Autodesk's installers (`.cmd` wrapper and `%ERRORLEVEL%`),
-   so .NET's "newer version already installed" is not logged as FAILED.
-3. JSON events in the installer, the GUI on them.
-4. Vault as a companion product (PR #8 on the new path).
-5. The update service with the snapshot (step 2 of "Downloads and
-   updates" below).
-6. The core in its own repository, once AutoCAD needs it.
+**Order (decided 2026-11-24, replaces the six-step list of 2026-11-23 in
+c9d6712).** Bottom up: harden the core, then add components, then the
+GUI. The GUI only shows what the command line can already do; built
+first, it would sit on parts that are still changing.
+
+- **Phase 0 - close what is running.** L4 of the combined winum test-run
+  (`test-run/next-release-1`: token integrity, combase, kernelbase,
+  wbemdisp, msado15, win32u), release winum-11.22-3, then one commit here
+  switching `wine/version.env` and `wine/SHA256SUMS`; README: Nastran
+  works. No new Wine investigations until phase 1 is done.
+- **Phase 1 - harden the installer core, no new features.** The items of
+  "Work items, in order", step 1, below: ODIS under other manifest names
+  (#32); atomic state, stamped unpack cache, the licensing service's
+  address (#34); the full exit code of Autodesk's installers (`.cmd`
+  wrapper and `%ERRORLEVEL%`), so .NET's "newer version already
+  installed" is not logged as FAILED; the sign-in callback with the
+  running session's Wine; DXVK and vkd3d-proton as a common step;
+  Autodesk's terms before installing. With them the safety net (section
+  below): golden plans for Inventor, an upgrade of a copy of the previous
+  release's prefix, the release checklist. Every later phase relies on it.
+- **Phase 2 - Create Installer as the input.** `install.sh` takes
+  `Create_Installer_*.exe` directly: gets the image into a folder the user
+  chooses, checks it against its manifest (`tools/image-manifest.py`),
+  installs; the update is unpacked next to the image, not into
+  `~/.cache`.
+- **Phase 3 - components, also added to an existing prefix.** First on
+  the command line:
+  - The prefix records what it holds (product, year, components,
+    versions) in `<prefix>/.inventor-on-linux/`.
+  - A component is either part of the product's image (Nastran,
+    Electrical Catalog Browser, Content Center) or a companion product
+    with its own image (Vault; later others, under the AGENTS.md
+    exception). Both go through the same layers: image, plan, install,
+    migrations.
+  - Adding one later, e.g.
+    `install.sh --prefix ~/.wine-inventor2027 --add vault --source Create_Installer_<Vault>.exe`,
+    takes a reflink snapshot of the prefix first and returns to it if the
+    step fails.
+  - **Vault PR #8 moves onto this path** as the first companion
+    component (its install and its Inventor add-in); its migrations are
+    renumbered (0014 Vault, 0015 TrueView #28). It is not merged before,
+    so the work is not done twice.
+- **Phase 4 - JSON events and the GUI.** The installer emits events
+  (step, state, progress, error); the GUI only shows them. Screens: the
+  product (Inventor, AutoCAD, Revit, ... through their profiles) and the
+  source (Create Installer, image, Browser download); the plan with
+  components to tick and the terms checkbox; after installing, **Manage
+  prefix**: what is installed, *Add component*, Repair, Update, Roll
+  back, Start.
+- **Phase 5 - more products.** AutoCAD as a profile (comparison with
+  Windows, gaps closed, an AutoCAD release); Revit after that (Wine work
+  on DataIntegrity first); the core in its own repository once AutoCAD
+  uses it. The update service with the snapshot (step 2 of "Downloads and
+  updates" below) builds on phases 2 and 3.
+
+Split of the work: Codex takes isolated, well-testable items of phase 1
+(#32, #34, exit codes, golden plans); a Claude session takes the parts
+that need the whole picture (phase 3: prefix state, the component model,
+Vault on the new path; then the JSON events). Each reviews the other's
+changes, as with the winum candidates.
 
 **Fonts and text rendering** are a separate workstream (section "Fonts"
 below), as they concern every product.
