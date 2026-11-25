@@ -59,21 +59,30 @@ if pgrep -if '(^|[\\/])inventor\.exe( |$)' >/dev/null; then
     exit 0
 fi
 
-# This project's Wine fixes are replaced when Arch updates Wine. Without them
-# parts of Inventor hang or crash (Stress Analysis, Home page, ...), so say so.
+# Inventor needs the fixes in winum (Stress Analysis, Design Accelerator,
+# dialogs, ...). winum is either installed by get-wine.sh (INV_WINE=auto or
+# bundled) or put in PATH by the user (INV_WINE=system); any other Wine has
+# none of them.
 if [ "$INV_WINE" = bundled ] && [ "$INV_WINE_ACTIVE" != bundled ]; then
-    err "INV_WINE=bundled but this project's Wine is not installed: bash $SCRIPTS_DIR/get-wine.sh"
-    notify "This project's Wine is not installed - run get-wine.sh"; exit 1
+    err "INV_WINE=bundled but winum is not installed: bash $SCRIPTS_DIR/get-wine.sh"
+    notify "winum is not installed - run get-wine.sh"; exit 1
 fi
 if [ "$INV_WINE_OUTDATED" = 1 ]; then
-    warn "using $INV_WINE_DIR - a newer build ($INV_WINE_NAME) is available: bash $SCRIPTS_DIR/get-wine.sh"
-    notify "A newer Wine build for Inventor is available - run get-wine.sh"
+    warn "using $INV_WINE_DIR - $INV_WINE_NAME is the current one: bash $SCRIPTS_DIR/get-wine.sh"
+    notify "A newer winum for Inventor is available - run get-wine.sh"
 fi
-MISSING_FIXES="$(wine_fixes_missing | tr '\n' ' ')"
-if [ -n "$MISSING_FIXES" ]; then
-    warn "Wine fixes not installed for Wine $(wine_version): $MISSING_FIXES"
-    warn "Wine was probably updated. Close Inventor and run: bash $SCRIPTS_DIR/rebuild-wine-fixes.sh"
-    notify "Wine was updated - this project's Wine fixes are missing. Run rebuild-wine-fixes.sh (see README, Keeping it working)."
+INV_WINUM="$(wine_winum_name)"
+if [ "$INV_WINE_ACTIVE" = system ] && [ -z "$INV_WINUM" ]; then
+    info "Wine $(wine_version) is not winum - Inventor's fixes are only in winum (bash $SCRIPTS_DIR/get-wine.sh)"
+elif [ -n "$INV_WINUM" ] && [ "$INV_WINUM" != "$INV_WINE_NAME" ]; then
+    info "Wine in use is $INV_WINUM; this project is tested with $INV_WINE_NAME"
+fi
+# .NET Framework 4.8 from the install image (install-from-image.py): if a
+# Wine update or anything else put wine-mono back, 3D PDF and Import CAD's
+# property mapping run on it again - say so.
+if grep -qs '"prerequisite:dotnet48"' "$WINEPREFIX/.odis-install-state.json" && ! dotnet48_present; then
+    warn ".NET Framework 4.8 is no longer complete in this prefix (wine-mono back?) - 3D PDF needs it"
+    warn "run the product image again: python3 $SCRIPTS_DIR/install-from-image.py <image> --prefix $WINEPREFIX"
 fi
 
 # The adskidmgr:// login callback (adskidmgr-callback.sh, started by the
@@ -85,7 +94,7 @@ cleanup() { info "shutting down Wine prefix"; wineserver -k 2>/dev/null; rm -f "
 trap cleanup EXIT
 trap 'exit 130' INT TERM
 
-echo "=== Inventor $INV_YEAR | prefix $WINEPREFIX | $(wine --version 2>/dev/null) ($INV_WINE_ACTIVE${INV_WINE_DIR:+: $INV_WINE_DIR}) | logs $LOGDIR/*-$TS.log ==="
+echo "=== Inventor $INV_YEAR | prefix $WINEPREFIX | $(wine --version 2>/dev/null) ($INV_WINE_ACTIVE${INV_WINE_DIR:+: $INV_WINE_DIR}${INV_WINUM:+, $INV_WINUM}) | logs $LOGDIR/*-$TS.log ==="
 
 # 0. Stale Boost.Interprocess state deadlocks Identity Manager. Wipe ALL
 #    session dirs, not only 01000000 (README, Open Problem #4).
@@ -101,18 +110,39 @@ info "[1/4] starting wineserver"
 # cannot handle. So the font drives must exist before ANY wine process runs.
 sandbox_fs
 fix_font_registry
+# Prefix migrations (scripts/lib/migrations/): the steps this prefix has not
+# had yet, each with a backup that is put back if it fails. Seconds when
+# there is nothing to do; optional steps are never run from here. After the
+# font drives (above), as they may start Wine.
+source "$COMMON_DIR/configure.sh"
+source "$COMMON_DIR/migrations.sh"
+# Inventor is not running (checked above); services left from an earlier
+# session would count as a busy prefix
+wine_stop
+if ! run_migrations; then
+    err "updating the prefix stopped - it is as it was before the failed step; see above and $LOGDIR/setup-wine.log"
+    notify "Updating the Inventor prefix failed - see the terminal or logs/setup-wine.log"
+    exit 1
+fi
+dotnet48_notice_once
 # Update the prefix only when the Wine version changed (auto-update is disabled
 # by the isolation setup), then re-apply isolation in case the update re-created
 # Z: or the $HOME links.
 WINE_NOW="$(wine --version 2>/dev/null)"
-if [ "$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)" != "$WINE_NOW" ]; then
-    info "    Wine changed ($WINE_NOW) - updating the prefix (once, up to a minute;
+# also a new build of the same Wine version (another winum release)
+UPDATE_REASON="$(prefix_update_reason)"
+if [ -n "$UPDATE_REASON" ]; then
+    info "    Wine changed: $UPDATE_REASON"
+    info "    updating the prefix (once, up to a minute;
           a Wine window about updating the configuration shows meanwhile - that is normal)"
-    wineboot -u >>"$LOGDIR/inventor-$TS.log" 2>&1
+    wine_update_prefix "$LOGDIR/inventor-$TS.log"
     wineserver -w
     sandbox_reg
     echo "$WINE_NOW" > "$WINEPREFIX/.inventor-wine-version"
+    mig_state_set runtime "$(wine_runtime_id)"
 fi
+# a prefix made by this Wine, without a record yet: record it
+[ -n "$(mig_state_get runtime)" ] || mig_state_set runtime "$(wine_runtime_id)"
 wineboot >>"$LOGDIR/inventor-$TS.log" 2>&1
 sandbox_fs   # again after wineboot, so nothing it does can bring Z: or the $HOME links back
 
@@ -194,7 +224,7 @@ INV_PID=$!
     while [ "$(date +%s)" -lt "$END" ] && kill -0 "$INV_PID" 2>/dev/null; do
         while IFS=$'\t' read -r SUBKEY VALUE; do
             K="HKLM\\Software\\Classes\\$SUBKEY"
-            CUR="$(wine reg query "$K" /ve </dev/null 2>/dev/null | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
+            CUR="$(wine_capture reg query "$K" /ve | sed -n 's/.*REG_[A-Z_]*[[:space:]]*//p' | tr -d '\r')"
             [ "$CUR" = "$VALUE" ] || wine reg add "$K" /ve /d "$VALUE" /f </dev/null >/dev/null 2>&1
         done < "$LOGDIR/.class-icons-$TS"
         sleep 3

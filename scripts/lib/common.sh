@@ -37,7 +37,11 @@ done
 unset _cfg _env_inv _env_save
 
 # Inventor release: given (environment, config.env), else the one installed in
-# INV_PREFIX (newest if several), else 2026. INV_YEAR_GIVEN=1 when it was given.
+# INV_PREFIX (newest if several), else 2026. Only when INV_PREFIX comes from
+# config.env and that prefix holds no Inventor at all is the release this
+# installer finds installed taken instead (inventor_installs, the newest if
+# several). INV_YEAR_GIVEN=1 when it was given; INV_PREFIX_SOURCE says where
+# INV_PREFIX came from (environment, config.env, found, default).
 INV_YEAR_GIVEN=0; [ -z "${INV_YEAR:-}" ] || INV_YEAR_GIVEN=1
 inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
     local d y=""
@@ -48,18 +52,9 @@ inventor_year_in_prefix() {   # PREFIX -> 2027 / "" (newest Inventor in it)
 }
 # the prefix from config.env, before it is adjusted below (inventor_installs)
 INV_CONFIG_PREFIX="${INV_PREFIX:-}"
-if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
-    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
-fi
-INV_YEAR="${INV_YEAR:-2026}"
-# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
-# another release: that release's prefix is not this one's - use the default
-# ~/.wine-inventor<year> (one release per prefix).
-if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
-    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
-    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"
-    unset _y
-fi
+if [ "$INV_PREFIX_FROM_ENV" -eq 1 ]; then INV_PREFIX_SOURCE=environment
+elif [ -n "${INV_PREFIX:-}" ]; then INV_PREFIX_SOURCE=config.env
+else INV_PREFIX_SOURCE=default; fi
 # Installed Inventor releases: "YEAR<TAB>PREFIX" lines, oldest release first.
 # Looks at the prefix from config.env and ~/.wine-inventor<year>, plus prefixes
 # this installer made (~/.wine-*/.odis-install-state.json); backups and copies
@@ -77,6 +72,43 @@ inventor_installs() {
         [ -z "$y" ] || printf '%s\t%s\n' "$y" "$p"
     done | sort -n -k1,1 -s
 }
+if [ -z "${INV_YEAR:-}" ] && [ -n "${INV_PREFIX:-}" ]; then
+    INV_YEAR="$(inventor_year_in_prefix "$INV_PREFIX")"
+fi
+# No INV_YEAR, and the prefix that would be used holds no Inventor - the one
+# config.env names (an emptied test prefix), or, with no prefix given at
+# all, the default ~/.wine-inventor2026 (a machine with only 2027): take
+# what is installed (the newest if several) rather than 2026 in a prefix
+# without Inventor. A config.env prefix with Inventor is always kept (2026
+# in it stays 2026), so is ~/.wine-inventor2026 with Inventor and a prefix
+# from the environment (it may be a new installation's target). The
+# installer and uninstaller choose their target themselves
+# (_INV_FOR_INSTALL=1 before sourcing this file).
+_inv_fallback=0
+if [ -z "${INV_YEAR:-}" ] && [ -z "${_INV_FOR_INSTALL:-}" ]; then
+    case "$INV_PREFIX_SOURCE" in
+        config.env) _inv_fallback=1 ;;
+        default) [ -n "$(inventor_year_in_prefix "$HOME/.wine-inventor2026")" ] || _inv_fallback=1 ;;
+    esac
+fi
+if [ "$_inv_fallback" = 1 ]; then
+    _inst="$(inventor_installs | tail -1)"
+    if [ -n "$_inst" ]; then
+        INV_YEAR="${_inst%%$'\t'*}" INV_PREFIX="${_inst#*$'\t'}" INV_PREFIX_SOURCE=found
+    fi
+    unset _inst
+fi
+unset _inv_fallback
+INV_YEAR="${INV_YEAR:-2026}"
+# INV_YEAR=2027 given, INV_PREFIX only from config.env and that prefix holds
+# another release: that release's prefix is not this one's - use the default
+# ~/.wine-inventor<year> (one release per prefix).
+if [ "$INV_YEAR_GIVEN" -eq 1 ] && [ "$INV_PREFIX_FROM_ENV" -eq 0 ] && [ -n "${INV_PREFIX:-}" ]; then
+    _y="$(inventor_year_in_prefix "$INV_PREFIX")"
+    [ -z "$_y" ] || [ "$_y" = "$INV_YEAR" ] || { INV_PREFIX="$HOME/.wine-inventor$INV_YEAR"; INV_PREFIX_SOURCE=default; }
+    unset _y
+fi
+[ -n "${INV_PREFIX:-}" ] || INV_PREFIX_SOURCE=default
 # Inventor's registry major version: 2026 -> 30, 2025 -> 29, ...
 INV_REGMAJOR="${INV_REGMAJOR:-$((INV_YEAR - 1996))}"
 WIN_ROOT="${WIN_ROOT:-/mnt/windows}"
@@ -84,6 +116,13 @@ INV_PREFIX="${INV_PREFIX:-$HOME/.wine-inventor$INV_YEAR}"
 LOGDIR="${INV_LOGDIR:-$PROJECT_DIR/logs}"
 REG_FILE="${REG_FILE:-$PROJECT_DIR/registry/autodesk-full.reg}"
 DOWNLOAD_DIR="${DOWNLOAD_DIR:-$PROJECT_DIR/downloads}"
+# Disk space and memory the interactive front ends check for (install.sh,
+# check-system.sh, the graphical installer): numbers in requirements.env,
+# the checks in requirements.py (per filesystem; MemTotal, INV_MEMINFO for
+# tests). Not used by install-from-image.py or finish-install.sh.
+# shellcheck source=requirements.env
+source "$COMMON_DIR/requirements.env"
+inv_requirements() { python3 -I "$COMMON_DIR/requirements.py" "$@"; }
 
 # --- distribution ------------------------------------------------------------
 # arch | debian (Debian, Ubuntu, Mint, Pop!_OS ...) | fedora | unknown
@@ -103,29 +142,36 @@ detect_distro() {
 INV_DISTRO="${INV_DISTRO:-$(detect_distro)}"
 
 # --- which Wine --------------------------------------------------------------
-# This project's own Wine (vanilla Wine + patches/, built in public by the
-# "Build Wine" workflow, downloaded by get-wine.sh) or the system's Wine with
-# the fixes copied into it (build-wine-dll.sh, the v0.1 way).
-#   INV_WINE=auto     own Wine when it is installed, else the system's (default)
-#   INV_WINE=bundled  own Wine only
-#   INV_WINE=system   the system's Wine
+# winum (https://github.com/Harvi654/winum): vanilla Wine with the fixes for
+# Inventor and other engineering software, built and published there. The
+# release named in wine/version.env is downloaded by get-wine.sh and checked
+# against wine/SHA256SUMS. Until winum-11.20-1 this project built its own
+# Wine; that build is in docs/archive/own-wine-build/.
+#   INV_WINE=auto     winum when it is installed, else the system's Wine (default)
+#   INV_WINE=bundled  winum only
+#   INV_WINE=system   the Wine in PATH (a winum in PATH is recognised by its
+#                     BUILDINFO; the system's own Wine has none of the fixes)
 INV_WINE="${INV_WINE:-auto}"
 INV_WINE_HOME="${INV_WINE_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/inventor-on-linux}"
-INV_WINE_VER="$(sed -n 's/^WINE_VERSION=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
-INV_WINE_BUILD="$(sed -n 's/^WINE_BUILD=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
-INV_WINE_NAME="wine-inventor-$INV_WINE_VER-$INV_WINE_BUILD-x86_64"
-# checksums of the published builds (added after the "Build Wine" workflow ran)
+INV_WINE_VER="$(sed -n 's/^WINUM_VERSION=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
+INV_WINE_BUILD="$(sed -n 's/^WINUM_BUILD=//p' "$PROJECT_DIR/wine/version.env" 2>/dev/null)"
+INV_WINE_TAG="winum-$INV_WINE_VER-$INV_WINE_BUILD"
+INV_WINE_NAME="$INV_WINE_TAG-x86_64"
+# checksums of the winum releases this project has pinned
 INV_WINE_SHA256="$(awk -v f="$INV_WINE_NAME.tar.xz" '$2 == f || $2 == "*" f {print $1}' "$PROJECT_DIR/wine/SHA256SUMS" 2>/dev/null)"
-# Puts this project's Wine first in PATH when it is installed (and wanted).
+# Puts winum first in PATH when it is installed (and wanted).
 # Sets INV_WINE_ACTIVE (bundled|system), INV_WINE_DIR, and INV_WINE_OUTDATED=1
-# when only an older build than wine/version.env names is installed.
+# when only an older build than wine/version.env names is installed (an older
+# winum, or this project's former wine-inventor-* build).
 select_wine() {
     INV_WINE_ACTIVE=system INV_WINE_OUTDATED=0 INV_WINE_DIR=""
     [ "$INV_WINE" = system ] && return 0
     local d="$INV_WINE_HOME/$INV_WINE_NAME" newest
     if [ ! -x "$d/bin/wine" ]; then
-        newest="$(ls -d "$INV_WINE_HOME"/wine-inventor-*-x86_64 2>/dev/null | sort -V | tail -1 || true)"
-        if [ -n "$newest" ] && [ -x "$newest/bin/wine" ]; then d="$newest"; INV_WINE_OUTDATED=1; else return 0; fi
+        newest="$( { ls -d "$INV_WINE_HOME"/winum-*-x86_64 2>/dev/null | sort -V
+                    ls -d "$INV_WINE_HOME"/wine-inventor-*-x86_64 2>/dev/null | sort -V; } \
+                  | while read -r c; do [ -x "$c/bin/wine" ] && echo "$c"; done | head -1 || true)"
+        if [ -n "$newest" ]; then d="$newest"; INV_WINE_OUTDATED=1; else return 0; fi
     fi
     INV_WINE_ACTIVE=bundled INV_WINE_DIR="$d"
     case ":$PATH:" in *":$d/bin:"*) ;; *) PATH="$d/bin:$PATH" ;; esac
@@ -159,32 +205,59 @@ INV_FONT_LETTERS=(t u v w x)
 # DXVK: pinned release from the official GitHub project, verified by SHA-256.
 # Same version and hash as winetricks' "dxvk2071" verb and the original setup.
 # INV_DXVK=system uses setup_dxvk from an installed package instead.
+# INV_DXVK=none installs nothing: DXVK and its overrides come from elsewhere
+# (the Nix package adds them as a layer at launch).
 INV_DXVK="${INV_DXVK:-pinned}"
 DXVK_VER="${DXVK_VER:-2.7.1}"
 DXVK_SHA256="${DXVK_SHA256:-d85ce7c79f57ecd765aaa1b9e7007cb875e6fde9f6d331df799bce73d513ce87}"
 DXVK_DLLS=(dxgi d3d8 d3d9 d3d10core d3d11)
 # vkd3d-proton: Direct3D 12 on Vulkan (works with DXVK's dxgi). Inventor 2027
 # tests for Direct3D 12 and warns when Wine's own d3d12 (vkd3d) is not enough.
-# Pinned release from github.com/HansKristian-Work/vkd3d-proton, SHA-256 of
-# the release file. INV_VKD3D=off keeps Wine's builtin d3d12.
+# winum's build of upstream 3.0.1 with its ray tracing payload fix
+# (github.com/Harvi654/winum, gpu/vkd3d-proton/README.md), the same archive
+# the NixOS package uses; SHA-256 of the release file, and of the four DLLs
+# in it (migration 0009 compares a prefix with them; VKD3D_DLL_SHA256_VER
+# names the release they belong to, so a VKD3D_VER set by the user without
+# its DLL hashes makes 0009 leave the prefix alone). Same layout as
+# upstream's (vkd3d-proton-<ver>/x64, x86). INV_VKD3D=off keeps Wine's
+# builtin d3d12. INV_VKD3D=none installs nothing and sets no override
+# (vkd3d-proton comes from elsewhere, as with INV_DXVK=none: the NixOS
+# package adds the same archive as a layer at launch).
 INV_VKD3D="${INV_VKD3D:-pinned}"
-VKD3D_VER="${VKD3D_VER:-3.0.1}"
-VKD3D_SHA256="${VKD3D_SHA256:-3cf2315522af5e43605ef6d3c41dad91387040bf97199934f3f7ab76caaa2f0c}"
+VKD3D_VER="${VKD3D_VER:-3.0.1-winum-1}"
+VKD3D_SHA256="${VKD3D_SHA256:-7d20a226388830a268943c6d0845e0e51f0569fd540df0e2f0153e31a838c8b7}"
+VKD3D_URL="${VKD3D_URL:-https://github.com/Harvi654/winum/releases/download/vkd3d-proton-$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst}"
+VKD3D_DLL_SHA256="${VKD3D_DLL_SHA256:-x64/d3d12.dll=ca19255e0985320498403876a58a84501b9cae6df486c9db51f3ea5ec85b56fd x64/d3d12core.dll=abd0ab2a1d92fd09205672c3e4105b722f160084141d6ee39eb04a1fe565f39e x86/d3d12.dll=0f513ff7961e85470ce0330e0a22b4c2bd87e89a768fad5da8e8234504f273f9 x86/d3d12core.dll=4ec01f6de1b098a1efe20068d30705b9a4a79fafef168c2f25dc84dba70209e5}"
+VKD3D_DLL_SHA256_VER="${VKD3D_DLL_SHA256_VER:-3.0.1-winum-1}"
 VKD3D_DLLS=(d3d12 d3d12core)
 # With several GPUs: part of the Vulkan device name DXVK should use
 # (see "deviceName" in check-system.sh), e.g. INV_GPU="RX 6500"
 INV_GPU="${INV_GPU:-}"
-# This project's Wine fixes (scripts/build-wine-dll.sh targets), in build order
-WINE_FIX_PARTS=(wbemprox shell32 oleaut32 kernelbase riched20 msi mspatcha comctl32 comctl32_v6 ntdll rpcrt4 combase ole32 server winex11)
-# Add-ins rebuild-prefix.sh disables (notes/disabled-addins.md). Some of them
-# are loaded through wine-mono instead of CoreCLR and abort Inventor
-# (SharedViews confirmed: mono assertion -> Environment.Exit).
-INV_DEFAULT_DISABLED_ADDINS=(
-    Anark.Core.addin Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
-    Autodesk.SharedViews.Inventor.addin Autodesk.InteractiveTutorial.Inventor.addin
-    Autodesk.Publisher.Inventor.addin
-    autodesk.translatorfusion.inventor.addin
-    Autodesk.AssistantAddin.Inventor.addin
+# Add-ins finish-install.sh / rebuild-prefix.sh turn off
+# (notes/disabled-addins.md): only the Assistant, whose panel (WebView2) is
+# drawn wrongly under Wine (maintainer's decision, 2026-11-16; revisit with
+# the WebView work). Feedback, PerfFeedback, InteractiveTutorial and
+# translatorfusion are on since 2026-11-16, as on Windows (tested with
+# addins.sh enable-safe, migration 0010).
+INV_DEFAULT_DISABLED_ADDINS=(Autodesk.AssistantAddin.Inventor.addin)
+# On with Microsoft's .NET Framework 4.8 in the prefix (install-from-image.py
+# installs the image's own), off without it: on wine-mono, 3D PDF's Publish
+# crashes Anark's corewrapper.exe, and SharedViews is loaded through
+# wine-mono, which cannot load its references and ends Inventor (mono
+# assertion -> Environment.Exit). SharedViews with .NET 4.8: share and
+# Autodesk Viewer work (2026-11-16). InteractiveTutorial: on wine-mono it
+# crashed Inventor right after the splash at every start (2026-11-18,
+# migration 0012); with .NET 4.8 the tutorial works.
+INV_DOTNET48_ADDINS=(Anark.Core.addin Autodesk.Publisher.Inventor.addin Autodesk.SharedViews.Inventor.addin
+                     Autodesk.InteractiveTutorial.Inventor.addin)
+# Off by default until 2026-11-16, on since then (migration 0010 turns them
+# on in older prefixes; addins.sh reset turns them on too). SharedViews and
+# InteractiveTutorial only with .NET Framework 4.8 (INV_DOTNET48_ADDINS;
+# 0012 turns the tutorial off again where 0010 turned it on without).
+INV_ADDINS_ON_SINCE_2026_11_16=(
+    Autodesk.Feedback.Inventor.addin Autodesk.PerfFeedbackAddin.Inventor.addin
+    Autodesk.InteractiveTutorial.Inventor.addin autodesk.translatorfusion.inventor.addin
+    Autodesk.SharedViews.Inventor.addin
 )
 # Run Inventor inside a Wine virtual desktop of this size (e.g. 1920x1080).
 # Empty = normal windows managed by Hyprland.
@@ -209,10 +282,52 @@ export WINEARCH
 # would copy them to ~/.local/share/applications as entries that start the
 # programs without this project's launcher. The launcher entry comes from
 # install-desktop-integration.sh instead.
+# Since migration 0011 the prefix itself has it off too (DllOverrides
+# "winemenubuilder.exe"="", menubuilder_off), so a plain `wine ...` in a
+# terminal does not run it either; this setting covers the time before.
 case ";${WINEDLLOVERRIDES:-};" in
     *";winemenubuilder.exe="*) ;;
     *) export WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}winemenubuilder.exe=d" ;;
 esac
+
+# 0 when the prefix's DllOverrides has "winemenubuilder.exe" = "" - what
+# Wine's loader reads as disabled (an empty load order; the name keeps its
+# .exe), the same as WINEDLLOVERRIDES=winemenubuilder.exe=d.
+menubuilder_off() {
+    local out
+    out="$(WINEDEBUG=-all wine_capture reg query 'HKCU\Software\Wine\DllOverrides' /v winemenubuilder.exe)" || return 1
+    printf '%s\n' "$out" | tr -d '\r' | awk '
+        tolower($1) == "winemenubuilder.exe" && $2 ~ /^REG_/ { found = 1; if (NF > 2) set = 1 }
+        END { exit !(found && !set) }'
+}
+
+# The entries Wine's menu builder made for this prefix in the user's menu
+# (Exec=env "WINEPREFIX=<prefix>" wine ...: Autodesk's Start-menu shortcuts,
+# file associations such as wine-extension-ipt.desktop, the adskidmgr://
+# protocol) - they start programs without the launcher - and Wine's own
+# MIME packages for Inventor's file types. Other prefixes' entries stay.
+# Prints how many files went; used by install-desktop-integration.sh and
+# migration 0011.
+remove_wine_menu_entries() {
+    local apps="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+    local mime="${XDG_DATA_HOME:-$HOME/.local/share}/mime" n=0 f e
+    while IFS= read -r -d '' f; do
+        rm -f "$f"; n=$((n + 1))
+    done < <(grep -rlZF -e "WINEPREFIX=$INV_PREFIX\"" -e "WINEPREFIX=\"$INV_PREFIX\"" "$apps" 2>/dev/null || true)
+    find "$apps/wine" -type d -empty -delete 2>/dev/null || true
+    for e in ipt iam idw ipn ipj; do
+        for f in "$mime/packages/x-wine-extension-$e.xml" \
+                 "${XDG_DATA_HOME:-$HOME/.local/share}"/icons/hicolor/*/apps/application-x-wine-extension-$e.png; do
+            [ -e "$f" ] && { rm -f "$f"; n=$((n + 1)); }
+        done
+    done
+    if [ "$n" -gt 0 ]; then
+        # (stdout too: the caller reads the count from it)
+        command -v update-desktop-database >/dev/null && { update-desktop-database "$apps" >/dev/null 2>&1 || true; }
+        command -v update-mime-database >/dev/null && { update-mime-database "$mime" >/dev/null 2>&1 || true; }
+    fi
+    echo "$n"
+}
 
 # Windows-side source paths
 WIN_INV="$WIN_ROOT/Program Files/Autodesk/Inventor $INV_YEAR"
@@ -234,6 +349,12 @@ P_ADDINS="$P_INV/Bin/Addins"
 # Disabled add-ins live OUTSIDE Bin\Addins: Inventor 2026 also scans its
 # subfolders, so the old Bin\Addins\disabled\ did not disable anything.
 P_ADDINS_OFF="$P_INV/Addins.disabled"
+# Inventor also loads add-ins from ProgramData\Autodesk\Inventor <year>\Addins,
+# in subfolders; 2027.2 moved the Assistant there (Assistant\<version>\, #36).
+# One turned off there moves to Addins.disabled\programdata\ with the same
+# relative path, so that it can go back to exactly where it was.
+P_PD_ADDINS="$P_C/ProgramData/Autodesk/Inventor $INV_YEAR/Addins"
+P_PD_ADDINS_OFF="$P_ADDINS_OFF/programdata"
 
 # --- output helpers ----------------------------------------------------------
 if [ -t 1 ]; then
@@ -260,6 +381,18 @@ try() { "$@" || warn "failed (continuing): $*"; }
 
 # Quiet wine wrappers. Wine's own chatter goes to the log, not the terminal.
 wine_q() { wine "$@" >>"$LOGDIR/setup-wine.log" 2>&1; }
+# Output (stdout and stderr) of a short wine command, for $(...): through a
+# temporary file, not the pipe of the command substitution. A wine call into
+# a stopped prefix starts the wineserver and the prefix's services (FlexNet
+# licensing in a 2026 prefix, Edge update), which inherit stdout and never
+# exit - $(...) would wait for them forever. Exit code of wine.
+wine_capture() {
+    local t rc=0
+    t="$(mktemp)"
+    wine "$@" </dev/null >"$t" 2>&1 || rc=$?
+    cat "$t"; rm -f "$t"
+    return "$rc"
+}
 wine_reg_add() { wine_q reg add "$@" /f; }
 
 # Stop this prefix's wineserver. Never fails (no server running is fine).
@@ -359,27 +492,160 @@ wine_pe_dir() {
     done
 }
 
-# System file that a WINE_FIX_PARTS part replaces (build-wine-dll.sh installs it)
-wine_fix_file() {
-    local pe; pe="$(wine_pe_dir)"; [ -n "$pe" ] || return 1
-    case "$1" in
-        server)  readlink -f "$(command -v wineserver)" ;;
-        winex11) echo "$(dirname "$pe")/x86_64-unix/winex11.so" ;;
-        *)       echo "$pe/$1.dll" ;;
-    esac
+# The winum build the Wine in PATH belongs to ("winum-11.20-1-x86_64"), from
+# the BUILDINFO next to its bin/; empty for any other Wine.
+wine_winum_name() {
+    local bin root
+    bin="$(command -v wine 2>/dev/null)" || return 0
+    root="$(dirname "$(dirname "$(readlink -f "$bin")")")"
+    [ -f "$root/BUILDINFO" ] || return 0
+    head -1 "$root/BUILDINFO" | grep -q '^winum' || return 0
+    sed -n 's/^name: *//p' "$root/BUILDINFO" | head -1
 }
 
-# Parts of this project's Wine fixes that are NOT active in the installed Wine:
-# no backup for this Wine version (Wine was updated), or the system file is the
-# original again (Wine was reinstalled). Prints the part names, one per line.
-wine_fixes_missing() {
-    # this project's own Wine has them built in
-    [ "$INV_WINE_ACTIVE" = bundled ] && return 0
-    local wv p f; wv="$(wine_version)"; [ -n "$wv" ] || return 0
-    for p in "${WINE_FIX_PARTS[@]}"; do
-        f="$(wine_fix_file "$p")" || { echo "$p"; continue; }
-        if [ ! -f "$f.orig-$wv" ] || cmp -s "$f" "$f.orig-$wv"; then echo "$p"; fi
+# The Wine runtime a prefix is updated for: `wine --version` plus the winum
+# build (from BUILDINFO), e.g. "wine-11.20 winum-11.20-1-x86_64" - the
+# version alone is "wine-11.20" for this project's former wine-inventor-11.20-6
+# and for winum-11.20-1 alike.
+wine_runtime_id() { local w; w="$(wine_winum_name)"; echo "$(wine --version 2>/dev/null)${w:+ $w}"; }
+
+# Was the prefix last updated for another Wine than the one in PATH? The
+# prefix's state (.inventor-on-linux/state, "runtime=", written by migration
+# 0002 and by launch-inventor.sh after `wineboot -u`) says so. A prefix
+# without that record is compared by the copies of Wine's builtin DLLs in
+# system32/syswow64 (ntdll.dll): `wineboot -i` writes them when it creates
+# a prefix, `wineboot -u` does not replace them, so equal copies mean the
+# prefix was made by this Wine. A Wine without that layout (Nix, some
+# distributions) is never reported as different.
+prefix_runtime_differs() {
+    local root rt pf rec
+    rec="$(sed -n 's/^runtime=//p' "$WINEPREFIX/.inventor-on-linux/state" 2>/dev/null | tail -1)"
+    if [ -n "$rec" ]; then [ "$rec" != "$(wine_runtime_id)" ]; return; fi
+    root="$(dirname "$(dirname "$(readlink -f "$(command -v wine)")")")"
+    for rt in x86_64-windows:system32 i386-windows:syswow64; do
+        pf="$WINEPREFIX/drive_c/windows/${rt#*:}/ntdll.dll"
+        rt="$root/lib/wine/${rt%%:*}/ntdll.dll"
+        [ -f "$rt" ] && [ -f "$pf" ] || continue
+        cmp -s "$rt" "$pf" || return 0
     done
+    return 1
+}
+
+# Why the prefix needs `wineboot -u` for the Wine in PATH, as one line for
+# the launcher's message; empty when it does not. The two checks the
+# launcher has always made, named: the Wine version the prefix was last set
+# up for (.inventor-wine-version) and the runtime recorded in its state
+# (prefix_runtime_differs). The version alone ("wine-11.20") is the same
+# for winum-11.20-1, winum-11.20-2 and a system Wine 11.20, so the message
+# used to show no difference at all (maintainer's everyday prefix,
+# 2026-11-16).
+prefix_update_reason() {
+    local now ver rec id
+    now="$(wine --version 2>/dev/null)"
+    ver="$(cat "$WINEPREFIX/.inventor-wine-version" 2>/dev/null)"
+    if [ "$ver" != "$now" ]; then
+        echo "the prefix was last set up for ${ver:-an unknown Wine} (.inventor-wine-version), now $now"
+        return 0
+    fi
+    rec="$(sed -n 's/^runtime=//p' "$WINEPREFIX/.inventor-on-linux/state" 2>/dev/null | tail -1)"
+    id="$(wine_runtime_id)"
+    if [ -n "$rec" ]; then
+        [ "$rec" = "$id" ] || echo "the prefix was last updated for \"$rec\", now \"$id\" (runtime= in .inventor-on-linux/state)"
+        return 0
+    fi
+    if prefix_runtime_differs; then
+        echo "Wine's DLLs in the prefix (ntdll.dll) are not the ones of $id"
+    fi
+    return 0
+}
+
+# `wineboot -u` [LOGFILE]. With Microsoft's mscoree.dll in the prefix (.NET
+# Framework installed in place of wine-mono), the update's 64-bit
+# `rundll32 setupapi,InstallHinfSection DefaultInstall ... wine.inf` loads
+# that mscoree.dll (and mscoreei.dll) and the .NET shim shows "This
+# application could not be started" until someone closes it (measured on a
+# copy of a 2027 prefix with .NET 4.8, 2026-11-11; NoGuiFromShim=1 did not
+# stop it). With mscoree disabled for the update alone, the window does not
+# come; the .NET installer has registered mscoree already, and an update
+# that cannot load it cannot bring wine-mono back either. A prefix on
+# wine-mono keeps its mscoree, so the update can still update wine-mono.
+wine_update_prefix() {
+    local log="${1:-$LOGDIR/setup-wine.log}" f="$P_C/windows/system32/mscoree.dll"
+    if [ -f "$f" ] && ! grep -qs WINE_MONO_OVERRIDES "$f"; then
+        WINEDLLOVERRIDES="${WINEDLLOVERRIDES:+$WINEDLLOVERRIDES;}mscoree=d" wineboot -u >>"$log" 2>&1
+    else
+        wineboot -u >>"$log" 2>&1
+    fi
+}
+
+# Microsoft's .NET Framework 4.8 in the prefix (not wine-mono): its CLR in
+# both Framework folders, Microsoft's mscoree.dll in system32 and syswow64
+# (there, and not Wine's mono-backed one, which carries WINE_MONO_OVERRIDES),
+# and mscoree loaded native. dotnet48_why prints the first condition that
+# fails (nothing when all hold); dotnet48_present is its exit status.
+dotnet48_why() {
+    local d fw out
+    for fw in Framework64 Framework; do
+        [ -f "$P_C/windows/Microsoft.NET/$fw/v4.0.30319/clr.dll" ] \
+            || { echo "no windows/Microsoft.NET/$fw/v4.0.30319/clr.dll in $WINEPREFIX"; return 1; }
+    done
+    for d in system32 syswow64; do
+        [ -f "$P_C/windows/$d/mscoree.dll" ] || { echo "no windows/$d/mscoree.dll in $WINEPREFIX"; return 1; }
+        if grep -qs WINE_MONO_OVERRIDES "$P_C/windows/$d/mscoree.dll"; then
+            echo "windows/$d/mscoree.dll is Wine's mono one"; return 1
+        fi
+    done
+    # the whole output first, then grep: no pipe that pipefail could fail
+    out="$(WINEDEBUG=-all wine_capture reg query 'HKCU\Software\Wine\DllOverrides' /v mscoree)" || true
+    if ! printf '%s\n' "$out" | grep -qiE '^[[:space:]]*mscoree[[:space:]]+REG_SZ[[:space:]]+native'; then
+        echo "DllOverrides mscoree is not native (wine: $(command -v wine || echo none), WINEPREFIX=$WINEPREFIX," \
+             "reg query: $(printf '%s' "$out" | tr -d '\r' | tr '\n' ' ' | cut -c1-200))"
+        return 1
+    fi
+}
+dotnet48_present() { dotnet48_why >/dev/null; }
+
+# The add-ins off by default in this prefix: INV_DEFAULT_DISABLED_ADDINS, plus
+# INV_DOTNET48_ADDINS when .NET Framework 4.8 is missing. One name per line.
+inv_default_disabled_addins() {
+    printf '%s\n' "${INV_DEFAULT_DISABLED_ADDINS[@]}"
+    dotnet48_present || printf '%s\n' "${INV_DOTNET48_ADDINS[@]}"
+}
+
+# ProgramData add-ins (P_PD_ADDINS): paths below <dir> of the files named
+# exactly NAME (any case), in subfolders up to four levels deep.
+pd_addins_matching() {  # <dir> <name>
+    [ -d "$1" ] || return 0
+    find "$1" -mindepth 1 -maxdepth 4 -type f -iname "$2" -printf '%P\n' 2>/dev/null | sort
+}
+# Turn off the ProgramData add-in NAME: each copy moves to P_PD_ADDINS_OFF
+# with its relative path, which is printed. A copy already off is left alone.
+pd_addin_disable() {  # <name>
+    local rel
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        if [ -e "$P_PD_ADDINS_OFF/$rel" ]; then
+            warn "$rel is on in ProgramData and also in Addins.disabled/programdata - left as it is"
+            continue
+        fi
+        mkdir -p "$P_PD_ADDINS_OFF/$(dirname "$rel")"
+        mv -n -- "$P_PD_ADDINS/$rel" "$P_PD_ADDINS_OFF/$rel"
+        printf '%s\n' "$rel"
+    done < <(pd_addins_matching "$P_PD_ADDINS" "$1")
+}
+# Turn on the ProgramData add-in NAME again: back to its folder (printed).
+pd_addin_enable() {  # <name>
+    local rel
+    while IFS= read -r rel; do
+        [ -n "$rel" ] || continue
+        if [ -e "$P_PD_ADDINS/$rel" ]; then
+            warn "$rel is in ProgramData already - its disabled copy is left as it is"
+            continue
+        fi
+        mkdir -p "$P_PD_ADDINS/$(dirname "$rel")"
+        mv -n -- "$P_PD_ADDINS_OFF/$rel" "$P_PD_ADDINS/$rel"
+        printf '%s\n' "$rel"
+    done < <(pd_addins_matching "$P_PD_ADDINS_OFF" "$1")
 }
 
 # Move add-ins from the old Bin\Addins\disabled\ (still scanned by Inventor)
@@ -401,8 +667,30 @@ migrate_disabled_addins() {
 
 # --- DXVK --------------------------------------------------------------------
 
+# What install_dxvk / install_vkd3d will do, for progress messages.
+dxvk_label() {
+    case "$INV_DXVK" in
+        system) echo "system setup_dxvk" ;;
+        none) echo "provided elsewhere" ;;
+        *) echo "$DXVK_VER, pinned" ;;
+    esac
+}
+vkd3d_label() {
+    case "$INV_VKD3D" in
+        off) echo off ;;
+        none) echo "provided elsewhere" ;;
+        *) echo "$VKD3D_VER, pinned" ;;
+    esac
+}
+
 # Download (once, cached in DOWNLOAD_DIR), verify, and copy DXVK into the prefix.
 install_dxvk() {
+    if [ "$INV_DXVK" = none ]; then
+        # Not DXVK's: Inventor's own d3dcompiler_47, as in the original setup.
+        wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v d3dcompiler_47 /t REG_SZ /d native
+        info "DXVK not installed in the prefix (INV_DXVK=none)"
+        return 0
+    fi
     if [ "$INV_DXVK" = system ]; then
         command -v setup_dxvk >/dev/null || die "INV_DXVK=system but setup_dxvk is not installed"
         setup_dxvk install >>"$LOGDIR/setup-wine.log" 2>&1
@@ -437,6 +725,10 @@ install_dxvk() {
 # Same for vkd3d-proton (Direct3D 12). INV_VKD3D=off: Wine's builtin d3d12 again.
 install_vkd3d() {
     local d
+    if [ "$INV_VKD3D" = none ]; then
+        info "vkd3d-proton not installed in the prefix (INV_VKD3D=none)"
+        return 0
+    fi
     if [ "$INV_VKD3D" = off ]; then
         for d in "${VKD3D_DLLS[@]}"; do
             # builtin explicitly: vkd3d-proton's DLLs may still be in system32
@@ -446,18 +738,7 @@ install_vkd3d() {
         return 0
     fi
     local tzst="$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" tmp
-    local url="https://github.com/HansKristian-Work/vkd3d-proton/releases/download/v$VKD3D_VER/vkd3d-proton-$VKD3D_VER.tar.zst"
-    mkdir -p "$DOWNLOAD_DIR"
-    if [ ! -f "$tzst" ]; then
-        info "downloading $url"
-        curl -fL --retry 3 -o "$tzst.part" "$url" || die "vkd3d-proton download failed"
-        mv "$tzst.part" "$tzst"
-    fi
-    if ! echo "$VKD3D_SHA256  $tzst" | sha256sum -c --quiet - >/dev/null 2>&1; then
-        rm -f "$tzst"
-        die "vkd3d-proton $VKD3D_VER checksum mismatch - file deleted. (Changed VKD3D_VER? Set VKD3D_SHA256 too.)"
-    fi
-    ok "vkd3d-proton $VKD3D_VER sha256 verified"
+    fetch_vkd3d || die "vkd3d-proton $VKD3D_VER: no verified download (offline? Changed VKD3D_VER? Set VKD3D_SHA256 and VKD3D_URL too.)"
     tmp="$(mktemp -d)"
     tar --zstd -xf "$tzst" -C "$tmp" || { rm -rf "$tmp"; die "unpacking vkd3d-proton failed (zstd missing?)"; }
     for d in "${VKD3D_DLLS[@]}"; do
@@ -468,6 +749,93 @@ install_vkd3d() {
     for d in "${VKD3D_DLLS[@]}"; do
         wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v "$d" /t REG_SZ /d native
     done
+}
+
+# The archive in DOWNLOAD_DIR, downloaded if needed and SHA-256 checked.
+# Returns MIG_DEFER (75) when it cannot be had: migration 0009 runs at a
+# launcher start, which must not need the network (install_vkd3d dies).
+fetch_vkd3d() {
+    local tzst="$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst"
+    mkdir -p "$DOWNLOAD_DIR"
+    if [ ! -f "$tzst" ]; then
+        info "downloading $VKD3D_URL"
+        if ! curl -fL --retry 3 --connect-timeout 15 --max-time 300 -o "$tzst.part" "$VKD3D_URL"; then
+            rm -f "$tzst.part"
+            warn "vkd3d-proton download failed (offline?)"
+            return 75
+        fi
+        mv "$tzst.part" "$tzst"
+    fi
+    if ! echo "$VKD3D_SHA256  $tzst" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$tzst"
+        warn "vkd3d-proton $VKD3D_VER checksum mismatch - file deleted"
+        return 75
+    fi
+    ok "vkd3d-proton $VKD3D_VER sha256 verified"
+}
+
+vkd3d_ok() {   # 0 when the prefix's d3d12/d3d12core are those of the pinned vkd3d-proton
+    local e n f
+    for e in $VKD3D_DLL_SHA256; do
+        n="${e%%=*}"
+        case "$n" in
+            x64/*) f="$P_C/windows/system32/${n#x64/}" ;;
+            x86/*) [ -d "$P_C/windows/syswow64" ] || continue; f="$P_C/windows/syswow64/${n#x86/}" ;;
+            *) continue ;;
+        esac
+        [ -f "$f" ] && echo "${e#*=}  $f" | sha256sum -c --quiet - >/dev/null 2>&1 || return 1
+    done
+}
+
+# --- tar.exe -------------------------------------------------------------------
+# libarchive's signed Windows build of bsdtar as tar.exe (Windows 10 ships
+# bsdtar as System32\tar.exe; Wine has none). Pinned values in bsdtar.env,
+# shared with install-from-image.py, which does the same before the packages.
+bsdtar_ok() {   # 0 when every tar.exe in the prefix is the pinned bsdtar.exe
+    local d f
+    # shellcheck source=bsdtar.env
+    source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
+    for d in system32 syswow64; do
+        [ "$d" = syswow64 ] && [ ! -d "$P_C/windows/syswow64" ] && continue
+        f="$P_C/windows/$d/tar.exe"
+        [ -f "$f" ] && echo "$BSDTAR_EXE_SHA256  $f" | sha256sum -c --quiet - >/dev/null 2>&1 || return 1
+    done
+}
+
+install_bsdtar() {
+    # shellcheck source=bsdtar.env
+    source "${INV_BSDTAR_ENV:-$COMMON_DIR/bsdtar.env}"   # INV_BSDTAR_ENV: tests only
+    local zip="$DOWNLOAD_DIR/$BSDTAR_ZIP" d doc
+    mkdir -p "$DOWNLOAD_DIR"
+    # Run by migration 0006 at a launcher start, which must not need the
+    # network: a download that fails or a file that does not match returns
+    # MIG_DEFER (75) - the runner puts the step off and Inventor starts.
+    # tar.exe is only needed to install the Electrical Catalog Browser, and
+    # install-from-image.py puts it in place itself before the packages.
+    if [ ! -f "$zip" ]; then
+        info "downloading $BSDTAR_URL"
+        if ! curl -fL --connect-timeout 15 --max-time 300 -o "$zip.part" "$BSDTAR_URL"; then
+            rm -f "$zip.part"
+            warn "bsdtar download failed (offline?) - tar.exe is needed only to install the Electrical Catalog Browser"
+            return 75
+        fi
+        mv "$zip.part" "$zip"
+    fi
+    if ! echo "$BSDTAR_SHA256  $zip" | sha256sum -c --quiet - >/dev/null 2>&1; then
+        rm -f "$zip"
+        warn "$BSDTAR_ZIP checksum mismatch - file deleted"
+        return 75
+    fi
+    ok "bsdtar $BSDTAR_VER sha256 verified"
+    for d in system32 syswow64; do
+        [ "$d" = syswow64 ] && [ ! -d "$P_C/windows/syswow64" ] && continue
+        python3 -I -c 'import sys, zipfile; open(sys.argv[3], "wb").write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[2]))' \
+            "$zip" "$BSDTAR_MEMBER" "$P_C/windows/$d/tar.exe"
+    done
+    doc="$WINEPREFIX/.inventor-on-linux/doc/libarchive-$BSDTAR_VER"
+    mkdir -p "$doc"
+    cp "$COMMON_DIR/licenses/libarchive-$BSDTAR_VER-COPYING" "$doc/COPYING"
+    bsdtar_ok || die "tar.exe in the prefix is not the expected bsdtar.exe"
 }
 
 # --- isolation ---------------------------------------------------------------

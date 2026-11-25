@@ -17,8 +17,11 @@ Anything that could harm the people who run this project, for example:
 - `get.sh` or the installer doing something other than what they say, or
   something an attacker could make them do
 - the scripts' use of `sudo` (they only install your distribution's packages)
-- this project's Wine builds: the build workflow, the releases, the checksums
-  in `wine/SHA256SUMS` or the provenance attestations not matching
+- the Wine this project installs: the winum release named in
+  `wine/version.env` not matching the checksum in `wine/SHA256SUMS` or its
+  provenance attestation (winum's own build is reported to
+  [winum](https://github.com/Harvi654/winum)); also this project's former
+  `wine-inventor-*` releases
 - downloads that are not checked (DXVK, Wine and the rest are pinned and
   checked by SHA-256)
 - files written outside the places the README names (the Wine prefix,

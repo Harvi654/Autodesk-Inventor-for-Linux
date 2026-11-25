@@ -1,19 +1,38 @@
-![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/bannerNew.png)
-
 # Autodesk Inventor 2026 and 2027 on Linux
+
+![Inventor for Linux - Autodesk Inventor on Linux with Wine, unofficial community project](docs/images/bannerNew.png)
 
 Install and run **Autodesk Inventor Professional 2026 and 2027** on Linux with
 Wine - from Autodesk's own download, without Windows or a virtual machine,
 with one command. Both releases can be installed side by side.
 
-> **Status: early release (v0.3), in active development.** Works for everyday
-> part, assembly, drawing and Content Center work, iLogic and Stress Analysis
-> on **Arch Linux** with **Hyprland** or **KDE Plasma** (tested on two
-> machines: AMD RX 580, and an Intel UHD 630 + NVIDIA GTX 1050 laptop - the
-> laptop with a slightly older version). **Ubuntu 26.04** and **Fedora 44**
-> install and run too (first tests, in a virtual machine). Inventor 2027 is
-> newer here and less tested than 2026. NixOS: a declarative flake (see
-> [NixOS](#nixos)). Reports are welcome.
+> **Status: v0.4, in active development.** Works for everyday part,
+> assembly, drawing and Content Center work, iLogic, Stress Analysis, 3D PDF,
+> Import CAD and GPU ray tracing (Inventor 2027) on **Arch Linux** with
+> **Hyprland** or **KDE Plasma** (tested on AMD RX 580, RX 6400 and
+> RX 9060 XT, and an Intel UHD 630 + NVIDIA GTX 1050 laptop; testers report
+> on other machines, e.g. an NVIDIA RTX 5080). **Ubuntu 26.04** installs and
+> runs too (two clean installations in a virtual machine, the second with 3D
+> PDF and Stress Analysis), **Fedora 44** in a first test. NixOS: a
+> declarative flake (see [NixOS](#nixos)).
+>
+> **Use Inventor 2027 for new installations.** It is the release this
+> project develops and tests against: its installation was compared file by
+> file with Autodesk's installer on Windows, base and update. Inventor 2026
+> keeps working and is maintained, but no longer actively tested - see
+> [Supported releases](#supported-releases).
+>
+> **New in [v0.4.0](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/releases/tag/v0.4.0):**
+> the same installation as Autodesk's installer gives on Windows, GPU ray
+> tracing in Inventor 2027, and prefix migrations - existing installations
+> are brought up to date by the launcher. Coming from v0.3.x? See
+> [Upgrading](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/releases/tag/v0.4.0).
+>
+> New features are added and tested all the time - see
+> [What works](#what-works) and the [Roadmap](#roadmap). Items marked 🧪
+> work in our tests but are not verified in depth or arrive with the next
+> release. Reports, and testers who know those parts of Inventor, are very
+> welcome.
 >
 > This is an unofficial community project. It is not made, supported or
 > endorsed by Autodesk. You need your own Inventor license (an education
@@ -68,7 +87,12 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 
 ## What works
 
-| | Status | Notes |
+✅ works · 🧪 works in testing - not verified in depth, or in the
+development setup and coming with the next release · ⚠️ works with a known
+issue · ❌ does not work yet. Nothing here is guaranteed; see
+[Disclaimer](#disclaimer).
+
+| Feature | Status | Notes |
 |---|---|---|
 | Installation from Autodesk's download | ✅ | Autodesk's own installers run under Wine; no Windows needed |
 | Updates (e.g. 2026.4) | ✅ | |
@@ -77,13 +101,16 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Sketch, dimensions, constraints | ✅ | |
 | Part modelling (extrude, hole, ...) | ✅ | |
 | Assemblies | ✅ | |
-| Content Center (screws, nuts, profiles, ...) | ✅ | ~12.7 GB, installed by default |
+| Content Center (screws, nuts, profiles, ...) | ✅ | about 7.5 GB (2027), installed by default |
+| DWG TrueView | 🧪 | installed by default since 2026-11-16, as on Windows (installer completeness review); not tested in use yet |
+| Electrical Catalog Browser | ⚠️ | as on Windows: needs Microsoft 365 Access Runtime (64-bit, not in Autodesk's image - Windows asks for it too, the user installs it there). It works on AutoCAD Electrical's catalog database; without AutoCAD Electrical it is empty on Windows too. Installed by default like on Windows (`--no-electrical` leaves it out). Tested: with Microsoft Access Database Engine 2016 (its `aceredist.msi`, installed by hand) the Browser opens and reads a catalog database; an optional installer step for it is planned |
 | Design Accelerator (shafts, ...) | ✅ | |
 | Materials and appearances | ✅ | |
 | 3D view (Direct3D 11 via DXVK) | ✅ | |
 | Inventor 2027 (2027.2) | ✅ | install, sign-in, parts, assemblies, drawings, Stress Analysis; the installer picks the version from the download names or, for an unpacked image, from its manifests; the 2027.2 Update installs (tested on Arch and in an Ubuntu 26.04 VM) |
 | 3D view in 2027: Direct3D 12 via vkd3d-proton | ✅ | Inventor 2027 picks DirectX 12 when it works (Application Options > Hardware); without vkd3d-proton it falls back to DirectX 11 and warns once |
 | CPU ray tracing (View > Ray Tracing) | ✅ | runs on the processor - fans spin up, that is expected |
+| GPU ray tracing (Inventor 2027) | 🧪 | renders on the graphics card (Low/Draft/High) on an AMD RX 6400 and RX 9060 XT and an NVIDIA RTX 5080. Needs Inventor 2027 with **Application Options > Hardware > Graphics Driver = DirectX 12** (then the viewport and ray tracing run on Direct3D 12, i.e. vkd3d-proton), a card with hardware ray tracing and a Vulkan driver that supports it; a Wine fix and a vkd3d-proton fix (both in winum's builds the installer uses; vkd3d-proton since 2026-11-16, migration 0009) and three settings, partly by hand for now. Expect: without the status bar workaround the status text overlaps; after ray tracing, Restore Down and maximising can leave the window drawn shifted until you minimise and restore it. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
 | Drawings (views, sections) | ✅ | |
 | Dimension text editor in drawings | ✅ | symbols, GD&T and the symbol palette as on Windows |
 | Export STEP, STL, PDF | ✅ | samples in [docs/examples](docs/examples) |
@@ -93,22 +120,84 @@ https://github.com/user-attachments/assets/880c5111-3ad3-4582-8795-02d9e7b6050f
 | Dynamic Simulation | ✅ | joints, gravity, run and replay; the Simulation Player panel can end up behind the main window (Alt+Tab) |
 | Frame Generator | ✅ | Insert Frame with Content Center profiles (since Wine build `wine-11.20-3`) |
 | Frame Analysis | ✅ | study, constraints, loads, Simulate and results, Inventor 2026 and 2027 (since Wine build `wine-11.20-6`); in 2027 the iLogic pane sometimes stays on the left showing an old picture - View → User Interface → toggle iLogic clears it |
-| 3D PDF (Anark) | ❌ | Publish crashes Anark's `corewrapper.exe` under wine-mono; off by default |
+| 3D PDF (Anark) | ✅ | the installer puts .NET Framework 4.0 (Microsoft's, pinned) and the install image's 4.8 into the prefix and turns 3D PDF on; with winum's typelib cache fix a part exports in about 15 s, an assembly in about 20 s. Publish confirmed on a clean Inventor 2027.2 installation (2026-11-11). An installation from before 2026-11-11 has no .NET 4.8: [reinstall](#3d-pdf-and-property-mapping-in-an-older-installation). Off without .NET 4.8 (Publish crashes on wine-mono). Needs testing by others. [Details](docs/arch-hyprland.md#net-framework-48-in-the-prefix-installer-step) |
+| Weldments | 🧪 | a weld is created; not verified in depth |
+| Tube & Pipe | 🧪 | a tube route is created; not verified in depth - testers who use Tube & Pipe are welcome |
+| Cable & Harness | 🧪 | wires connect; not verified in depth - testers who use Cable & Harness are welcome |
+| Inventor Studio | 🧪 | starts, its ribbon and commands open; animations and renderings not verified |
+| Shared Views (share, Autodesk Viewer) | 🧪 | works with .NET Framework 4.8 (installed by default), on since 2026-11-16; off without it ([add-ins](notes/disabled-addins.md)) |
+| Interactive Tutorial | 🧪 | the tutorial downloads and runs; its window opens at the far right and has to be moved by hand (WebView placement, open) |
+| Autodesk Assistant panel | ⚠️ | its panel is drawn wrongly (WebView2): the only add-in off by default; `bash scripts/addins.sh enable assistant` turns it on |
 | Open dialog: clicking quickly through folders | ✅ | crashed Inventor 2026 and 2027 (.NET "Fatal error" while previews load) - fixed in Wine build `wine-11.20-4` (ntdll, XSAVE). 2027: no previews yet, folder names missing in the path bar |
-| GPU ray tracing | ❌ | not yet: tested on an RX 6400 (RDNA 2) with Inventor 2027 - vkd3d-proton reports DXR 1.1, but Inventor still says the card is not supported and never loads its ray tracer; CPU ray tracing works |
-| Native Wayland | ❌ | Does not work yet |
+| GPU ray tracing in Inventor 2026 | ❌ | not supported: 2026 has no DirectX 12 graphics driver, and its Direct3D 11 viewport would need Direct3D 12 → 11 shared textures, which DXVK and Wine don't have (krokosik's PR #3 got 2026.4 working with patches we don't carry). Clicking it hung Inventor 2026 once; untick GPU ray tracing - CPU ray tracing works. [Details](docs/arch-hyprland.md#gpu-ray-tracing-inventor-2027-works-in-testing) |
+| Status bar text after GPU ray tracing | ⚠️ | in a maximised window old text stays under new text; workaround: `ClientSideWithRender=N` for Inventor ([how](docs/arch-hyprland.md#status-bar-old-text-stays-after-gpu-ray-tracing-workaround)) |
+| Home page after closing Application Options | ⚠️ | can show an old picture until clicked |
+| First start of Inventor 2027: "projects could not be found" | ⚠️ | a message about `...\guided-tutorial-plugin\INVNTOR\2027\TutorialData.ipj`: the Interactive Tutorial add-in points at its project before any tutorial is downloaded. OK dismisses it. Not compared with Windows yet - likely the same there |
+| Small "Default" window at the top left (2027) | ⚠️ | cosmetic, no effect on work |
+| Native Wayland | ❌ | Does not work yet: Inventor runs through XWayland (retested 2026-11-07: WebView2 pages, dialogs and typing values still broken) |
 
 Found something that does not work? See [Reporting problems](#reporting-problems).
+
+## Add-ons for Inventor
+
+Autodesk products that work inside Inventor. Each goes into the Inventor
+prefix of the same year, next to Inventor.
+
+| Add-on | Status | Notes |
+|---|---|---|
+| Inventor Nastran | 🧪 | in testing: mesh, solve and results work with Inventor 2027.2 and Nastran 2027 in the development setup, with Wine fixes coming in the next winum release. After that release it can be installed into an existing Inventor prefix with the new installer (GUI); until then it is not part of the installer |
+| Vault Basic client | planned | contribution in review ([#8](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/pull/8)); moves onto the new installer |
+| Tolerance Analysis | planned | |
 
 ## Requirements
 
 - **Arch Linux** (or a derivative with `pacman`), **Ubuntu 26.04 / Debian**
-  (`apt`) or **Fedora 44** (`dnf`) - Ubuntu and Fedora in first tests; Wayland or X11
+  (`apt`) or **Fedora 44** (`dnf`) - Ubuntu tested in two clean VM
+  installations, Fedora in a first test; Wayland or X11
 - tested desktops: **Hyprland**, **KDE Plasma** and **GNOME** (Wayland); others will likely work too
-- a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the proprietary driver)
-- **~60 GB** free disk space (Inventor + Content Center + the unpacked download)
-- an Autodesk account with an Inventor 2026 license
+- an Autodesk account with an Inventor 2027 (or 2026) license, and internet
+  access: for signing in (Autodesk's licensing checks the account) and, while
+  installing, for Wine, DXVK and vkd3d-proton (pinned downloads)
 - about an hour, most of it waiting
+
+Hardware - Autodesk's own requirements for Inventor on Windows are the
+starting point; under Wine they are the same or a little higher:
+
+- **Processor:** 64-bit x86 (x86_64). Autodesk asks for at least 2.5 GHz and
+  recommends 3.0 GHz or more with 4 or more cores.
+- **Memory: 16 GB minimum, 32 GB recommended.** 16 GB is Autodesk's own
+  minimum (for assemblies under 500 parts). Inventor itself, its background
+  services (licensing, sign-in, WebView2), Wine and the Linux desktop share
+  it. On a laptop with 8 GB Inventor starts and opens a part, but only about
+  0.5-1 GB stays free with a browser open, so it swaps and is not usable for
+  work. The installer warns below 16 GB but does not stop.
+- **Graphics:** a GPU with **Vulkan** drivers (AMD/Intel: Mesa; NVIDIA: the
+  proprietary driver). Autodesk asks for at least 2 GB of video memory and
+  recommends 8 GB. GPU ray tracing (Inventor 2027) needs a card with
+  hardware ray tracing and a Vulkan driver that supports it.
+- **Disk:** about **32 GB** free while installing Inventor 2027 with its
+  update and Content Center (about 25 GB without Content Center): the
+  installation itself is about 20 GB (Content Center about 7.5 GB of it),
+  the unpacked download about 11 GB, Wine about 1 GB. The unpacked download
+  in `~/.cache/inventor-on-linux/media` can be deleted afterwards (it is
+  needed again only for a repair), leaving about 21 GB. Plan for **40 GB**,
+  so that updates and your own files fit; an SSD makes opening and saving
+  much faster. Measured 2026-11-16 on a full installation of Inventor 2027.2;
+  a full 2026 installation is about the same size.
+- **Mouse** with a wheel: Inventor pans the view with the middle button.
+
+### Supported releases
+
+- **Inventor 2027 - fully supported:** compared with Autodesk's installer on
+  Windows, updates tested, new features and fixes go here first.
+- **Inventor 2026 - maintained:** it stays in the installer and the NixOS
+  package, and fixes in the shared code reach it too, but it is no longer
+  compared with Windows or tested after each change. Since 2026-11-16
+  we recommend 2027 for new installations: keeping two releases costs time
+  and disk space (each prefix is about 20 GB).
+- When Inventor 2028 comes out, it becomes the fully supported release,
+  2027 is maintained, and 2026 is no longer supported (its notes move to
+  `docs/archive/`).
 
 ## Installation
 
@@ -142,14 +231,15 @@ The folder then looks like this (its name does not matter):
   small `.exe` is the Windows unpacker (not used here, but keep it with the
   `.7z`). With another language, `English` in the names is different.
 - Keep the downloaded names; don't unpack anything yourself - the installer
-  does it (into `~/.cache/inventor-on-linux/media`, ~15 GB).
+  does it (into `~/.cache/inventor-on-linux/media`, about 11 GB for 2027
+  with its update; you can delete it after the installation).
 - An already unpacked install image (a folder with `setup.xml` /
   `manifest/`) works too.
 - The installer reads the version from the file names, or for an unpacked
   image from its manifests: 2026 goes to `~/.wine-inventor2026`, 2027 to
   `~/.wine-inventor2027`. Both can be installed side by side; one download
-  folder per version. If the version cannot be told, set it:
-  `INV_YEAR=2027 bash scripts/install.sh ~/Downloads/Inventor`.
+  folder per version. If the version cannot be told, set it first:
+  `export INV_YEAR=2027`, then `bash scripts/install.sh ~/Downloads/Inventor`.
 - You do **not** need the "Install" web installer or the
   `Create_Installer_*.exe` tools - they are for Windows. If they are in the
   folder, they are skipped.
@@ -195,8 +285,10 @@ launcher.
 If it stops, fix what it reports and run the same command again - finished
 steps are skipped. The log is in `logs/install-*.log`.
 
-Options: `--no-content` (leave out Content Center), `--prefix DIR`,
-`--help` for the rest.
+Options: `--no-content` (leave out Content Center), `--no-trueview` (leave
+out DWG TrueView, which Autodesk's own installer adds with Inventor on
+Windows), `--no-electrical` (likewise for the Electrical Catalog Browser),
+`--prefix DIR`, `--help` for the rest.
 
 **Or with a window (new, being tested):**
 
@@ -237,7 +329,11 @@ With several versions installed, choose one by its prefix - the version is
 read from it:
 
 ```bash
-INV_PREFIX=~/.wine-inventor2027 bash ~/inventor-on-linux/scripts/launch-inventor.sh
+export INV_PREFIX=~/.wine-inventor2027
+```
+
+```bash
+bash ~/inventor-on-linux/scripts/launch-inventor.sh
 ```
 
 The first start opens your browser for the Autodesk sign-in.
@@ -254,14 +350,58 @@ If it is the integrated one, add part of the name of the GPU you want to
 ### Keeping it working
 
 - Update this project: `cd ~/inventor-on-linux && git pull`
-- Inventor runs on this project's own Wine in `~/.local/share/inventor-on-linux`,
-  so Arch's Wine updates don't affect it, and other Wine programs don't use it.
-  When a `git pull` brings a newer build, the launcher tells you; then run
+- Your Wine prefix follows by itself: the launcher (and the installer's
+  Update button) applies the prefix changes made since it was installed -
+  numbered steps, each saved first and put back if it fails. By hand, with
+  Inventor closed: `bash scripts/migrate-prefix.sh --status`, then
+  `bash scripts/migrate-prefix.sh` (for a prefix other than the default,
+  `export INV_PREFIX=...` and `export INV_YEAR=...` first). Tested on copies of a 2026 prefix from
+  before winum and a 2027 prefix with .NET 4.8 (2026-11-11).
+- Inventor runs on [winum](https://github.com/Harvi654/winum), a Wine with the
+  fixes for Inventor and other engineering programs, installed in
+  `~/.local/share/inventor-on-linux`, so Arch's Wine updates don't affect it,
+  and other Wine programs don't use it. When a `git pull` names a newer winum
+  release, the launcher tells you; then run
   `bash ~/inventor-on-linux/scripts/get-wine.sh`.
-- Installed with v0.1 (fixes copied into the system's Wine)? Run
-  `bash scripts/get-wine.sh` once to switch; `sudo pacman -S wine` puts Arch's
-  original Wine back. `INV_WINE=system` in `config.env` keeps the old way
-  (then `scripts/rebuild-wine-fixes.sh` after every Wine update).
+- Coming from this project's own Wine (`wine-inventor-11.20-6` and older)?
+  `bash scripts/get-wine.sh` installs winum; the old build is used only until
+  then and can be removed (`get-wine.sh` prints the folder).
+- Your own Wine instead (`INV_WINE=system` in `config.env`): the Wine in
+  `PATH` is used as it is. A winum in `PATH` is recognised (its `BUILDINFO`);
+  any other Wine has none of the fixes, and the launcher says so. Fixes
+  copied into Arch's Wine by v0.1 are no longer built or checked;
+  `sudo pacman -S wine` puts Arch's original files back.
+
+### 3D PDF and Property Mapping in an older installation
+
+An installation made before 2026-11-11 has no .NET Framework 4.8 in its
+prefix (the installer got that step then), so 3D PDF (Anark) and Import
+CAD's Property Mapping do not work in it; the launcher says so once. The
+prefix updates (above) do not add it - replacing wine-mono with .NET is
+done by a new installation. Your files in `~/Inventor` (drive `D:`) are not
+in the prefix and stay; you sign in to Autodesk again.
+
+With Inventor closed - the prefix is the one `bash
+~/inventor-on-linux/scripts/migrate-prefix.sh --status` names on its first
+line (`~/.wine-inventor2026` here; for 2027 use 2027 throughout):
+
+```bash
+mv ~/.wine-inventor2026 ~/.wine-inventor2026.old
+```
+
+```bash
+export INV_YEAR=2026
+```
+
+```bash
+bash ~/inventor-on-linux/scripts/install.sh ~/Downloads/Inventor
+```
+
+(`~/Downloads/Inventor` is the folder with Autodesk's download, as for the
+first installation.) The old prefix is kept as `.old` - the scripts ignore
+it - until the new one works; then `rm -rf ~/.wine-inventor2026.old`. If
+`config.env` names the prefix (`INV_PREFIX=...`), move that one and give
+the installer the same path with `--prefix`.
 
 ### Uninstall
 
@@ -269,8 +409,9 @@ If it is the integrated one, add part of the name of the GPU you want to
 bash ~/inventor-on-linux/scripts/uninstall.sh
 ```
 
-Removes the launcher entry, this project's Wine (and fixes copied into the
-system's Wine by v0.1, by reinstalling Arch's `wine` package) and, after
+Removes the launcher entry, winum and older builds of this project's Wine
+(and fixes copied into the system's Wine by v0.1, by reinstalling Arch's
+`wine` package) and, after
 asking, the Wine prefix. Your Inventor files in
 `~/Inventor` are kept.
 
@@ -283,7 +424,7 @@ system graphics drivers and keeps sign-in and settings in persistent user state.
 
 ## FAQ
 
-**Which license do I need?** Your own Inventor 2026 license - a paid
+**Which license do I need?** Your own Inventor 2026 or 2027 license - a paid
 subscription or a free education license. Sign-in and licensing are Autodesk's
 own, in your browser; nothing is bypassed.
 
@@ -301,16 +442,27 @@ Python, no compiled programs are in this repository. What they do:
 
 - `sudo` is used only for `pacman` (packages from the official Arch
   repositories). Nothing outside your home folder is changed otherwise.
-- Downloads: this project's Wine from its GitHub releases - built in public
-  by the [Build Wine](.github/workflows/build-wine.yml) workflow from Wine's
-  source and `patches/`, checked against the SHA-256 in `wine/SHA256SUMS`
-  (you can build it yourself instead: `scripts/get-wine.sh --build`), DXVK
-  2.7.1 and vkd3d-proton 3.0.1 from their GitHub releases (SHA-256 checked)
+- Downloads: winum from [its GitHub releases](https://github.com/Harvi654/winum/releases) -
+  built in public by winum's "Build Wine" workflow from Wine's source and
+  winum's `patches/series`, published from a signed tag, checked against the
+  SHA-256 in `wine/SHA256SUMS` (`scripts/get-wine.sh --build` says how to
+  build it yourself), DXVK
+  2.7.1 from its GitHub release (SHA-256 checked), vkd3d-proton
+  3.0.1-winum-1 from [winum's releases](https://github.com/Harvi654/winum/releases/tag/vkd3d-proton-3.0.1-winum-1)
+  (SHA-256 checked; see below),
+  libarchive's signed Windows build of bsdtar 3.5.3 (`libarchive-v3.5.3-win64.zip`,
+  SHA-256 checked) as `tar.exe` in the prefix - Windows 10 ships the same
+  program as `System32\tar.exe`, and the Electrical Catalog Browser's
+  installer unpacks with it; its license text goes to
+  `<prefix>/.inventor-on-linux/doc/`,
+  Microsoft's .NET Framework 4.0 installer (SHA-256 checked; installed
+  before the .NET Framework 4.8 of Autodesk's image, as winetricks does)
   and Microsoft's WebView2
   runtime. Inventor itself comes only from your own Autodesk download.
 - Everything else stays in your home folder: the Wine prefix
-  (`~/.wine-inventor2026`), this project's Wine, the launcher entry.
-  Telemetry add-ins are switched off.
+  (`~/.wine-inventor2026`), winum, the launcher entry.
+  Add-ins are on as on Windows, except the Autodesk Assistant (its panel
+  is drawn wrongly under Wine) - [notes/disabled-addins.md](notes/disabled-addins.md).
 - `scripts/uninstall.sh` undoes it.
 
 **Will Autodesk support it?** No - see [Disclaimer](#disclaimer). Report
@@ -320,43 +472,102 @@ problems here.
 
 Inventor itself is not modified. The work is in three places:
 
-- **Wine fixes** (`patches/`): small patches for Wine bugs Inventor runs into -
-  a missing WMI class, the file dialog's folder view, type libraries, MSI
-  transforms and delta patches, COM details Stress Analysis needs, a sketch
-  that only redrew on mouse movement, a home page that lagged behind the mouse,
-  black boxes behind sketch inputs under Xwayland, a crash with some mouse
-  devices. They are applied to vanilla Wine (version in `wine/version.env`)
-  and built into this project's Wine by a public GitHub workflow
-  (`scripts/build-wine.sh`); the result is installed in your home folder, next
-  to - not over - the system's Wine.
+- **Wine fixes** ([winum](https://github.com/Harvi654/winum)): small patches
+  for Wine bugs Inventor runs into - a missing WMI class, the file dialog's
+  folder view, type libraries, MSI transforms and delta patches, COM details
+  Stress Analysis needs, a sketch that only redrew on mouse movement, a home
+  page that lagged behind the mouse, black boxes behind sketch inputs under
+  Xwayland, a crash with some mouse devices, the symbol palette's layout.
+  Since winum-11.20-1 they live in winum, shared with other engineering
+  programs; every one has a Wine test that passed on real Windows 10 or a
+  recorded reason why it cannot. `wine/version.env` names the release; it is
+  installed in your home folder, next to - not over - the system's Wine.
   They were written with AI help, so they are not sent to Wine itself (Wine
   does not accept AI-generated code); Wine gets bug reports with test cases
-  instead. New patches come with a test that is checked on real Windows.
+  instead. This project's former Wine build and its patches (up to
+  `wine-inventor-11.20-6`) are kept in
+  [docs/archive/own-wine-build/](docs/archive/own-wine-build/README.md).
 - **Installation** (`scripts/install-from-image.py`, `scripts/lib/odis.py`):
   reads Autodesk's install image and runs its packages in the right order
   under Wine, in place of Autodesk's Windows installer front end.
 - **Prefix setup** (`scripts/finish-install.sh`): DXVK for Direct3D 11,
-  vkd3d-proton for Direct3D 12 (Inventor 2027 checks for it),
+  vkd3d-proton for Direct3D 12 (Inventor 2027 checks for it; see below),
   WebView2 for the home page and sign-in, free fonts in place of Windows fonts,
   browser sign-in, and isolation of the Wine prefix from your home folder.
+
+**vkd3d-proton (Direct3D 12):** the installer uses winum's build
+`vkd3d-proton-3.0.1-winum-1`: upstream's 3.0.1 (same source commit) plus one
+fix in its shader converter, dxil-spirv, so that ray payloads with matrices
+compile - without it Inventor 2027's GPU ray tracing fails on Vulkan. The
+NixOS package uses the same archive, so both run the same `d3d12.dll` and
+`d3d12core.dll`. It is built in public by winum's workflow; what the patch
+does, its tests and its review are in winum's
+[gpu/vkd3d-proton/README.md](https://github.com/Harvi654/winum/blob/main/gpu/vkd3d-proton/README.md)
+(tested in Inventor 2027 on an RX 6400, an RTX 5080 and an RX 9060 XT; open
+review points P2-2, an inherited `float2x2` payload limitation of 3.0.1,
+and P3, more fixtures). Existing prefixes get it through migration 0009 at
+the next start (put off while offline); `INV_VKD3D=off` keeps Wine's own
+d3d12.
 
 Details, background and every problem found on the way:
 [docs/arch-hyprland.md](docs/arch-hyprland.md).
 
 ## Roadmap
 
-Planned, roughly in this order:
+Done:
 
-- [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
-- [x] Ubuntu / Debian (Ubuntu 26.04 installs and runs - first test in a VM)
-- [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
-- [ ] openSUSE
-- [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests - Hyprland-specific parts are only window rules
 - [x] prebuilt Wine with the fixes, so nothing has to be compiled (v0.2)
-- [x] a graphical installer, with several releases side by side (v0.2.1, v0.3)
-- [ ] 3D PDF, Inventor Studio, weldments, tube & pipe, cable & harness - test and fix
+- [x] [winum](https://github.com/Harvi654/winum) as the Wine for Inventor
+      (winum-11.20-1): one Wine shared with other engineering programs, with
+      tests on real Windows for every fix
+- [x] a graphical installer, with several releases side by side (v0.2.1, v0.3, v0.4)
 - [x] Inventor 2027 (2027.2 - Arch, and a clean install in an Ubuntu 26.04 VM)
-- [ ] Inventor 2025
+- [x] Ubuntu / Debian (Ubuntu 26.04.1: clean installation of Inventor 2027
+      in a VM with the whole current installer - winum, .NET 4.0 + 4.8,
+      3D PDF and Stress Analysis working, 2026-11-11)
+- [x] Fedora (Fedora 44 Workstation installs and runs - first test in a VM)
+- [x] GPU ray tracing in Inventor 2027 (AMD and NVIDIA; winum's
+      vkd3d-proton, v0.4)
+- [x] 3D PDF (with .NET Framework 4.8)
+- [x] .NET Framework 4.8 in the prefix, set up by the installer (3D PDF,
+      Import CAD's Property Mapping; clean Inventor 2027.2 installation)
+- [x] Import CAD (STEP) into an assembly in 2027 - Reference and Convert
+      Model, with winum-11.20-2 (four ole32/packager fixes by @krokosik);
+      Property Mapping with .NET 4.8
+      ([#10](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/issues/10), v0.4)
+- [x] updates that reach existing installations: numbered prefix
+      migrations, run by the launcher at every start (v0.4)
+- [x] the status bar workaround by default, until a Wine fix (migration
+      0003, v0.4)
+- [x] installer completeness review: a prefix compared with a Windows
+      installation of the same image (files and registry), base and update,
+      and the gaps closed ([review](docs/installer-completeness-review.md), v0.4)
+
+Next release (in progress):
+
+- [ ] Wine 11.22 (winum-11.22-1)
+- [ ] GPU ray tracing set up by the installer, with a check whether the card
+      and driver support it (Inventor 2027: Graphics Driver = DirectX 12 and
+      `EnableHydra`; the registry value of the Graphics Driver choice is still
+      to be found)
+- [ ] Microsoft's Access Database Engine as an optional installer step, for
+      the Electrical Catalog Browser
+- [ ] Autodesk's terms shown before installing, with an explicit yes (as
+      Autodesk's own installer does), and one installer for Inventor,
+      AutoCAD and Revit ([plan](docs/drafts/shared-installer-plan.md))
+
+Later, roughly in this order:
+
+- [ ] Weldments, Tube & Pipe, Cable & Harness, Inventor Studio - test in
+      depth and fix (testers who use them are welcome)
+- [ ] Autodesk Vault Basic client (contribution in review)
+- [ ] openSUSE (contribution in review)
+- [ ] more testing on other hardware (NVIDIA-only, Intel-only, laptops)
+- [ ] other desktops: KDE Plasma and GNOME (Wayland) work in first tests -
+      Hyprland-specific parts are only window rules
+- [ ] AutoCAD (experiments, on the `autocad` branch)
+- [ ] native Wayland, when Wine's Wayland driver can run Inventor's
+      WebView2 pages and dialogs
 
 ## Reporting problems
 
@@ -409,26 +620,29 @@ Thank you all.
 This project started as a fork of
 [cakelesscoder/inventor-on-linux](https://github.com/cakelesscoder/inventor-on-linux),
 which first got Inventor 2026 running under Wine and found the
-`Win32_TimeZone` fix (`patches/wbemprox-timezone.patch`).
+`Win32_TimeZone` fix (now winum's `wbemprox-timezone.patch`).
 
 Most of the code and the Wine patches in this fork were written with the help
 of AI (Claude, by Anthropic) and tested by people on real machines.
 
 ## License
 
-[MIT](LICENSE), like the original project - except the Wine patches in
-`patches/`: they change Wine's code and are therefore under Wine's license,
-the LGPL 2.1 or later. The Wine this project builds and publishes is LGPL 2.1
-or later too. See [the patch layout](patches/README.md).
-
-Every Wine release carries its complete source next to the binary:
-`wine-inventor-<version>-<build>-source.tar.xz` is vanilla Wine with the
-patches applied exactly as built, `PATCHES.txt` (each patch, its date and the
-files it changes; the changed files also say so in a comment at their end) and
-the build files (`scripts/make-wine-source.sh` makes it, reproducibly). The
-binary's `BUILDINFO` lists the versions of the bundled wine-mono and
-wine-gecko - unchanged builds from the Wine project, whose sources are at
+[MIT](LICENSE), like the original project. Wine itself and the Wine patches
+are under Wine's license, the LGPL 2.1 or later: since winum-11.20-1 the Wine
+Inventor runs on comes from [winum](https://github.com/Harvi654/winum), whose
+every release carries its complete source next to the binary
+(`winum-<version>-<build>-source.tar.xz`: vanilla Wine with the patches applied
+exactly as built, `PATCHES.txt` and the build files). The binary's `BUILDINFO`
+lists the patches and the versions of the bundled wine-mono and wine-gecko -
+unchanged builds from the Wine project, whose sources are at
 `dl.winehq.org/wine/wine-mono/` and `dl.winehq.org/wine/wine-gecko/`.
+
+This project's former Wine releases (`wine-inventor-<version>-<build>`, up to
+11.20-6) stay published with their `-source.tar.xz`; their patches and build
+files (LGPL 2.1 or later) are in
+[docs/archive/own-wine-build/](docs/archive/own-wine-build/README.md).
+`patches/libgsf/` holds a patch for libgsf used by the Nix packaging (LGPL as
+libgsf).
 
 Autodesk Inventor and Microsoft WebView2 remain proprietary. The Nix packages
 and installer sources are marked unfree; this repository's license does not

@@ -19,9 +19,44 @@ let
     "2026" = self.packages.x86_64-linux.inventor-2026;
     "2027" = self.packages.x86_64-linux.inventor-2027;
   };
-  packageFor =
+  configuredPackageFor =
     year: if year == "2026" then cfg.package else cfg.packages.${year} or defaultPackages.${year};
+  # The module declares the adskidmgr:// handler below, so its launchers must
+  # not make themselves the user's handler at every launch.
+  packageFor =
+    year:
+    let
+      package = configuredPackageFor year;
+    in
+    if package ? withArgs then package.withArgs { registerHostUrlHandlers = false; } else package;
   desktopNameFor = year: if year == "2026" then "autodesk-inventor" else "autodesk-inventor-${year}";
+  # adskidmgr:// is one scheme for all releases; see nix/url-dispatcher.nix.
+  urlHandler =
+    import ./url-dispatcher.nix
+      {
+        inherit lib;
+        inherit (pkgs) writeShellScript;
+      }
+      (
+        map (year: {
+          name = year;
+          exe = lib.getExe (packageFor year);
+        }) (lib.reverseList (lib.sort builtins.lessThan cfg.versions))
+      );
+  urlHandlerDesktop =
+    (pkgs.makeDesktopItem {
+      name = "autodesk-inventor-url-handler";
+      desktopName = "Autodesk Inventor sign-in";
+      exec = "${urlHandler} %u";
+      noDisplay = true;
+      terminal = false;
+      mimeTypes = [ "x-scheme-handler/adskidmgr" ];
+    }).overrideAttrs
+      (old: {
+        passthru = (old.passthru or { }) // {
+          inherit urlHandler;
+        };
+      });
   desktopFor =
     year:
     pkgs.makeDesktopItem {
@@ -34,13 +69,36 @@ let
         "Graphics"
         "Engineering"
       ];
-      mimeTypes = [ "x-scheme-handler/adskidmgr" ];
     };
-  newestYear = lib.last (lib.sort builtins.lessThan cfg.versions);
 
+  # At the start of a graphical session, report user-level desktop entries
+  # that hide the module's entries or start an old launcher
+  # (nix/desktop-check.sh). It runs regardless of which entry the menu
+  # starts, so it also warns when a hidden entry never reaches the current
+  # launcher.
+  desktopCheck = pkgs.writeShellScript "autodesk-inventor-desktop-check" ''
+    export PATH=${
+      lib.makeBinPath [
+        pkgs.coreutils
+        pkgs.gnugrep
+        pkgs.libnotify
+      ]
+    }:$PATH
+    exec ${pkgs.bash}/bin/bash ${./desktop-check.sh} ${
+      lib.escapeShellArgs (
+        map (year: "${desktopNameFor year}.desktop") cfg.versions
+        ++ [ "autodesk-inventor-url-handler.desktop" ]
+      )
+    } -- ${lib.escapeShellArgs (map (year: lib.getExe (packageFor year)) cfg.versions)}
+  '';
 in
 {
   options.programs.autodesk-inventor = {
+    checkUserDesktopEntries = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = "At the start of each graphical session, warn (in the journal and with a desktop notification) about desktop entries in the user's ~/.local/share/applications that hide the module's Inventor entries or start an old launcher. Nothing is changed or removed.";
+    };
     enable = lib.mkEnableOption "Autodesk Inventor through Wine and nix-overlayfs";
     versions = lib.mkOption {
       type = lib.types.listOf (
@@ -82,6 +140,7 @@ in
       ];
       environment.systemPackages = [
         icons
+        urlHandlerDesktop
       ]
       ++ lib.concatMap (year: [
         (packageFor year)
@@ -90,7 +149,20 @@ in
       hardware.graphics.enable = true;
       programs.fuse.enable = true;
       xdg.mime.enable = true;
-      xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "${desktopNameFor newestYear}.desktop";
+      xdg.mime.defaultApplications."x-scheme-handler/adskidmgr" = "autodesk-inventor-url-handler.desktop";
+      systemd.user.services.autodesk-inventor-desktop-check = lib.mkIf cfg.checkUserDesktopEntries {
+        description = "Check for user desktop entries hiding Autodesk Inventor's";
+        # There is no After=graphical-session.target: WantedBy already orders
+        # the target after this unit (a target's default dependencies), and
+        # the reverse ordering would make a cycle that systemd resolves by
+        # dropping this job.
+        wantedBy = [ "graphical-session.target" ];
+        partOf = [ "graphical-session.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${desktopCheck}";
+        };
+      };
     })
   ];
 }

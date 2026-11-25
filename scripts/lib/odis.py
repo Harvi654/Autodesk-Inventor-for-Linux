@@ -32,7 +32,13 @@ NS = {"m": "https://emsfs.autodesk.com/schema/manifest/1/0"}
 
 # Packages left out by default, by manifest name (case-insensitive): they
 # phone home, watch for "non-genuine" installs, or are Autodesk's own
-# installer/updater - none of them are needed to run Inventor.
+# installer/updater - none of them are needed to run Inventor. A name given
+# with --with is installed all the same.
+# Autodesk Genuine Service: the maintainer wanted it installed as Windows
+# does, but its installer's killBeacon action needs Windows PowerShell,
+# which Wine does not have (1603 on a prefix copy, 2026-11-16); it stays
+# here, --with ags still tries it (docs/installer-completeness-review.md,
+# "On purpose").
 SKIP = {
     "ags": "Autodesk Genuine Service (licence-compliance watcher)",
     "cer": "Customer Error Reporting (crash upload)",
@@ -201,6 +207,15 @@ class Image:
         self.root = os.path.abspath(root)
         self._index = None
 
+    def index(self):
+        """lower-case file name -> paths of all files of the image"""
+        if self._index is None:
+            self._index = {}
+            for d, _, files in os.walk(self.root):
+                for f in files:
+                    self._index.setdefault(f.lower(), []).append(os.path.join(d, f))
+        return self._index
+
     def find(self, rel):
         """Path of a manifest-relative file, or None."""
         if not rel:
@@ -209,13 +224,8 @@ class Image:
         if os.path.exists(p):
             return p
         # metadata copy: same relative path below one of the {GUID} folders
-        if self._index is None:
-            self._index = {}
-            for d, _, files in os.walk(self.root):
-                for f in files:
-                    self._index.setdefault(f.lower(), []).append(os.path.join(d, f))
         want = rel.replace("\\", "/").lower()
-        for cand in self._index.get(os.path.basename(want), []):
+        for cand in self.index().get(os.path.basename(want), []):
             if cand.replace("\\", "/").lower().endswith("/" + want):
                 return cand
         return None
@@ -260,9 +270,229 @@ def _step(root, name, install_as, rel, img, lang):
         "pathMappings": mappings,
         "actions": actions,
         "ignoreFailure": attrs is not None and attrs.get("ignoreFailure") == "true",
+        "successCodes": [int(c.text) for c in inst.findall("m:InstallSuccessCodes/m:SuccessCode", NS)
+                         if c.text and c.text.strip().lstrip("-").isdigit()],
         "manifest": rel,
         "present": bool(img.find(inst.get("file"))),
     }
+
+
+def _local(tag):
+    return tag.rsplit("}", 1)[-1].lower()
+
+
+def _attr(el, *names):
+    """First of these attributes (case-insensitive), or None."""
+    low = {k.lower(): v for k, v in el.attrib.items()}
+    for n in names:
+        if n.lower() in low:
+            return low[n.lower()]
+    return None
+
+
+HIVES = {"hklm": "HKLM", "hkey_local_machine": "HKLM", "hkcu": "HKCU", "hkey_current_user": "HKCU"}
+
+
+def _registry_search(el):
+    """A <RegistrySearch> element -> {"root", "key", "name", "win64", "attrs"}.
+    The attribute names are not documented; the usual spellings are tried,
+    and a root given as the first part of the key (HKLM\\SOFTWARE\\...) is
+    split off. "root"/"key" stay None when they cannot be told; "attrs"
+    lists the attribute names as found, for the log."""
+    root = _attr(el, "root", "hive", "rootKey", "registryRoot")
+    key = _attr(el, "key", "path", "subKey", "keyPath", "registryKey")
+    name = _attr(el, "name", "valueName", "value", "entry")
+    if key:
+        key = key.replace("/", "\\").strip("\\")
+        first = key.split("\\", 1)[0].lower()
+        if first in HIVES:
+            root = root or first
+            key = key.split("\\", 1)[1] if "\\" in key else ""
+    root = HIVES.get((root or "").lower())
+    bits = (_attr(el, "win64", "is64", "x64", "bitness", "view", "registryView") or "").lower()
+    win64 = not (bits in ("false", "no", "0", "32", "x86", "registry32", "wow64"))
+    return {"root": root, "key": key or None, "name": name or "", "win64": win64,
+            "attrs": sorted(el.attrib)}
+
+
+def setup_properties(root):
+    """<Properties><Property property="X" defaultValue="..."> of an image's
+    setup.xml (or bundleManifest.xml): ODIS variables of the whole image,
+    e.g. INV_INSTALL_PATH = %INSTALL_DEST%\\Inventor 2027\\, which package
+    manifests use in action parameters and install locations. Each
+    property: {"name", "default", "searches": [_registry_search(...)]}.
+    Read without the namespace (setup.xml of a product image is not a
+    Bundle). Empty list when there is no such file."""
+    out, seen = [], set()
+    for fn in ("setup.xml", "bundleManifest.xml"):
+        path = os.path.join(root, fn)
+        if not os.path.isfile(path):
+            continue
+        try:
+            tree = ET.parse(path).getroot()
+        except ET.ParseError:
+            continue
+        for props in tree.iter():
+            if _local(props.tag) != "properties":
+                continue
+            for pr in props:
+                name = _attr(pr, "property") if _local(pr.tag) == "property" else None
+                if not name or name.lower() in seen:
+                    continue
+                seen.add(name.lower())
+                out.append({"name": name, "default": _attr(pr, "defaultValue") or "",
+                            "searches": [_registry_search(x) for x in pr.iter()
+                                         if _local(x.tag) == "registrysearch"]})
+    return out
+
+
+VARNAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+UI_NAME_ATTRS = ("property", "name", "id", "variable", "var", "key", "propertyName")
+
+
+def ui_settings_of(path):
+    """([(name, default)], [unnamed element tags]) of one setup UI file:
+    every element with a defaultVal; the name is the first attribute (or
+    the tag) that looks like an ODIS variable. A file the XML parser
+    rejects is read with a plain pattern instead (Inventor 2027's
+    <Setting name="CONTENT_PATH" defaultVal="%PROGRAMDATA%\\Autodesk" ...>
+    was in the image but not found by the first version)."""
+    found, unnamed = [], []
+    try:
+        tree = ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        try:
+            with open(path, "rb") as f:
+                raw = f.read()
+        except OSError:
+            return found, unnamed
+        text = raw.decode("utf-16") if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else raw.decode("utf-8", "replace")
+        for m in re.finditer(r"<([A-Za-z_][\w.-]*)\b([^>]*?)\bdefaultVal\s*=\s*\"([^\"]*)\"([^>]*)>", text):
+            attrs = dict((k.lower(), v) for k, v in re.findall(r"([\w.-]+)\s*=\s*\"([^\"]*)\"", m.group(2) + m.group(4)))
+            names = [attrs.get(n.lower()) for n in UI_NAME_ATTRS] + [m.group(1)]
+            name = next((n for n in names if n and VARNAME.match(n)), None)
+            (found.append((name, m.group(3))) if name else unnamed.append(m.group(1)))
+        return found, unnamed
+    for el in tree.iter():
+        default = _attr(el, "defaultVal")
+        if default is None:
+            continue
+        names = [_attr(el, n) for n in UI_NAME_ATTRS]
+        name = next((n for n in names + [el.tag.rsplit("}", 1)[-1]] if n and VARNAME.match(n)), None)
+        if name:
+            found.append((name, default))
+        else:
+            unnamed.append(el.tag.rsplit("}", 1)[-1])
+    return found, unnamed
+
+
+def setup_ui_settings(img, app, lang="en-US"):
+    """Settings of the setup UI for one application,
+    SetupRes/locale/<lang>/<app>.xml (en-US when the language has none),
+    e.g. CONTENT_PATH = %PROGRAMDATA%\\Autodesk for dclibrary - the folder
+    the user could change in ODIS's dialog. Returns (file or None,
+    [(name, default)], [unnamed element tags])."""
+    for lg in dict.fromkeys((lang, "en-US")):
+        path = img.find("SetupRes/locale/%s/%s.xml" % (lg, app))
+        if path:
+            return (path,) + ui_settings_of(path)
+    return None, [], []
+
+
+def setup_ui_files(img, lang="en-US"):
+    """Every .xml in the image's SetupRes/locale/<lang>/ folders (en-US
+    when the language has none), wherever they are in the image."""
+    for lg in dict.fromkeys((lang, "en-US")):
+        want = "/setupres/locale/%s/" % lg.lower()
+        out = sorted(p for paths in img.index().values() for p in paths
+                     if p.lower().endswith(".xml") and want in p.replace(os.sep, "/").lower())
+        if out:
+            return out
+    return []
+
+
+# ADIX/MSIX folder tokens and VFS folder names -> Windows folders
+FOLDER_TOKENS = {
+    "programfilesx64": r"C:\Program Files", "programfilesx86": r"C:\Program Files (x86)",
+    "programfilescommonx64": r"C:\Program Files\Common Files",
+    "programfilescommonx86": r"C:\Program Files (x86)\Common Files",
+    "common appdata": r"C:\ProgramData", "common documents": r"C:\users\Public\Documents",
+    "systemx64": r"C:\windows\system32", "systemx86": r"C:\windows\syswow64", "system": r"C:\windows\system32",
+    "windows": r"C:\windows", "fonts": r"C:\windows\Fonts",
+}
+
+
+def mapping_source_path(source):
+    """The Windows folder an InstallPathMapping source names: a folder token
+    ([{ProgramFilesX64}]\\Autodesk\\AutoCAD 2027), a VFS path
+    (VFS\\ProgramFilesX64\\...) or a plain C:\\ path; None when not
+    understood."""
+    s = source.replace("/", "\\").strip().rstrip("\\")
+    m = re.match(r"^\[\{([^}]+)\}\]\\?(.*)$", s)
+    if m and m.group(1).lower() in FOLDER_TOKENS:
+        return FOLDER_TOKENS[m.group(1).lower()] + ("\\" + m.group(2) if m.group(2) else "")
+    m = re.match(r"^(?i:vfs)\\([^\\]+)\\?(.*)$", s)
+    if m and m.group(1).lower() in FOLDER_TOKENS:
+        return FOLDER_TOKENS[m.group(1).lower()] + ("\\" + m.group(2) if m.group(2) else "")
+    if re.match(r"^[A-Za-z]:\\", s):
+        return s
+    return None
+
+
+class PathMapper:
+    """The InstallPathMappings of a package applied to Windows paths:
+    a file the package's VFS puts below a mapping's source goes below its
+    target instead (ODIS does this; AceInvAddIn's VFS folder is
+    Program Files\\Autodesk\\AutoCAD 2027, its files belong in Inventor's
+    folder). expand: fills in the target's %VARIABLES%."""
+
+    def __init__(self, mappings, expand):
+        self.rules, self.unread, self.used = [], [], {}
+        for src, dst in (mappings or {}).items():
+            path = mapping_source_path(src or "")
+            target = (expand(dst or "") or "").replace("/", "\\").rstrip("\\")
+            if not path or not target or "%" in target:
+                self.unread.append((src, dst))
+                continue
+            self.rules.append((path.lower(), src, target))
+        self.rules.sort(key=lambda r: -len(r[0]))
+
+    def map(self, winpath):
+        low = winpath.lower()
+        for prefix, src, target in self.rules:
+            if low == prefix or low.startswith(prefix + "\\"):
+                self.used[src] = self.used.get(src, 0) + 1
+                return target + winpath[len(prefix):]
+        return winpath
+
+
+def find_package(img, display_name, lang="en-US"):
+    """A package that no application manifest of the image names - on
+    Windows a prerequisite such as the .NET Framework 4.8, which Setup
+    installs when its <Conditions> say it is missing. Found by
+    Identity/DisplayName among the image's pkg.*.xml files (so its folder is
+    not hard-coded); returns the same step dict as plan(), plus "condition"
+    (the INSTALLED test), or None."""
+    for name, paths in sorted(img.index().items()):
+        if not (name.startswith("pkg.") and name.endswith(".xml")):
+            continue
+        for path in sorted(paths):
+            try:
+                root = ET.parse(path).getroot()
+            except ET.ParseError:
+                continue
+            if _text(root, "m:Identity/m:DisplayName") != display_name:
+                continue
+            rel = os.path.relpath(path, img.root).replace(os.sep, "/")
+            s = _step(root, os.path.splitext(name)[0][4:], "prerequisite", rel, img, lang)
+            if s is None:
+                continue
+            cond = root.find("m:Configuration/m:Conditions/m:Condition", NS)
+            s["condition"] = cond.text.strip() if cond is not None and cond.text else ""
+            return s
+    return None
 
 
 def plan(img, apps=("inventor",), lang="en-US", include_all=False, extra=()):
@@ -293,8 +523,9 @@ def _plan(img, roots, lang, include_all, extra=()):
         if key in seen:
             return
         seen.add(key)
-        if not include_all and name.lower() in SKIP:
-            skipped.append((name, SKIP[name.lower()]))
+        # asked for by name (--with ags): installed although on the skip list
+        if not include_all and name.lower() in SKIP and name.lower() not in extra:
+            skipped.append((name, "%s - install it with --with %s" % (SKIP[name.lower()], name)))
             return
         # language-specific packages (x64/de-DE/...) only for the chosen language
         other = [p for p in rel.replace("\\", "/").split("/") if LOCALE.match(p) and p != lang]

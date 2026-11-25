@@ -44,19 +44,41 @@ EOF
 # Add-ins that crash or are not needed (notes/disabled-addins.md), known
 # crash sources, wine-mono's WPF stub assemblies.
 cfg_disable_addins() {
-    local f
+    local f why off
     mkdir -p "$P_ADDINS_OFF/libs"
-    for f in "${INV_DEFAULT_DISABLED_ADDINS[@]}"; do
-        if [ -f "$P_ADDINS/$f" ]; then mv "$P_ADDINS/$f" "$P_ADDINS_OFF/"; else info "(not present: $f)"; fi
+    # decided once: the list and the message below must agree
+    why="$(dotnet48_why)" || true
+    off=("${INV_DEFAULT_DISABLED_ADDINS[@]}")
+    [ -z "$why" ] || off+=("${INV_DOTNET48_ADDINS[@]}")
+    info "wine: $(command -v wine) ($(wine --version 2>/dev/null)), prefix: $WINEPREFIX"
+    info "off by default here: ${off[*]}"
+    for f in "${off[@]}"; do
+        local found="" rel
+        if [ -f "$P_ADDINS/$f" ]; then mv "$P_ADDINS/$f" "$P_ADDINS_OFF/"; found=1; fi
+        # 2027.2 and later: also in ProgramData (the Assistant, #36); this
+        # runs after every install and update, so a new version folder is
+        # caught too
+        while IFS= read -r rel; do
+            info "off: ProgramData\\...\\Addins\\${rel//\//\\}"; found=1
+        done < <(pd_addin_disable "$f")
+        [ -n "$found" ] || [ -n "$(pd_addins_matching "$P_PD_ADDINS_OFF" "$f")" ] \
+            || [ -f "$P_ADDINS_OFF/$f" ] || info "(not present: $f)"
     done
+    if [ -z "$why" ]; then
+        info ".NET Framework 4.8 in the prefix - 3D PDF (Anark, Publisher), SharedViews and InteractiveTutorial on"
+        # off from a run before .NET Framework 4.8 was installed: on again
+        for f in "${INV_DOTNET48_ADDINS[@]}"; do
+            if [ -f "$P_ADDINS_OFF/$f" ]; then mv "$P_ADDINS_OFF/$f" "$P_ADDINS/"; info "on (.NET Framework 4.8): $f"; fi
+        done
+    else
+        info ".NET Framework 4.8 not in the prefix ($why) - 3D PDF (Anark, Publisher), SharedViews and InteractiveTutorial stay off"
+    fi
 }
 
+# InteractiveTutorial.dll and its resources stay in Bin since 2026-11-16:
+# the tutorial works (migration 0010 puts them back in older prefixes).
 cfg_crash_sources() {
     local f
-    mkdir -p "$P_ADDINS_OFF/libs"
-    for f in "$P_INV/Bin/InteractiveTutorial.dll" "$P_INV/Bin/$LANG/InteractiveTutorial.resources.dll"; do
-        [ -f "$f" ] && mv "$f" "$P_ADDINS_OFF/libs/"
-    done
     [ -f "$P_INV/Bin/CER/senddmp.exe" ] && mv "$P_INV/Bin/CER/senddmp.exe" "$P_INV/Bin/CER/senddmp.exe.disabled"
     for f in "$P_C/windows/system32/bcp47langs.dll" "$P_C/windows/syswow64/bcp47langs.dll"; do
         [ -f "$f" ] && mv "$f" "$f.disabled"

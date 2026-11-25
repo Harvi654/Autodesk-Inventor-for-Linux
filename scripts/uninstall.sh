@@ -19,6 +19,7 @@
 # Autodesk's downloads in your Downloads folder are never touched.
 
 set -euo pipefail
+_INV_FOR_INSTALL=1   # chooses its target itself, not the installed release (common.sh)
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 KEEP_PREFIX=0 YES=0
@@ -69,8 +70,8 @@ if [ -n "${DO[wine]:-}" ]; then
         sudo rm -f /etc/pacman.d/hooks/inventor-wine.hook
         ok "removed"
     fi
-    info "this project's Wine ($INV_WINE_HOME)"
-    rm -rf "$INV_WINE_HOME"/wine-inventor-*-x86_64
+    info "winum and older wine-inventor builds ($INV_WINE_HOME)"
+    rm -rf "$INV_WINE_HOME"/winum-*-x86_64 "$INV_WINE_HOME"/wine-inventor-*-x86_64
     rmdir "$INV_WINE_HOME" 2>/dev/null || true
     ok "removed"
     if [ "$INV_DISTRO" = arch ] && find /usr/lib/wine /usr/bin -maxdepth 3 -name '*.orig-*' 2>/dev/null | grep -q .; then

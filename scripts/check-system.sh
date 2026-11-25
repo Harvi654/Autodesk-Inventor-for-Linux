@@ -49,10 +49,10 @@ if have wine; then
     info "wine --version: $WV"
     PE="$(wine_pe_dir)"
     info "PE DLL dir:     ${PE:-<not found>}"
-    if [ -n "$PE" ] && strings -el "$PE/wbemprox.dll" 2>/dev/null | grep -cx Win32_TimeZone >/dev/null; then
-        ok "wbemprox.dll already has Win32_TimeZone"
+    if [ -n "$(wine_winum_name)" ]; then
+        ok "winum: $(wine_winum_name) (pinned: $INV_WINE_NAME)"
     else
-        warn "wbemprox.dll is unpatched (run scripts/build-wbemprox.sh later)"
+        warn "this Wine is not winum - Inventor's fixes are only in winum (bash scripts/get-wine.sh)"
     fi
     for d in /usr/share/wine/mono "$P_C/windows/mono"; do
         [ -d "$d" ] && info "wine-mono at:   $d ($(ls "$d" 2>/dev/null | tr '\n' ' '))"
@@ -63,10 +63,12 @@ fi
 have winetricks && ok "winetricks" || bad "winetricks missing"
 if [ "$INV_DXVK" = system ]; then
     have setup_dxvk && ok "setup_dxvk ($(command -v setup_dxvk))" || bad "INV_DXVK=system but setup_dxvk is missing"
+elif [ "$INV_DXVK" = none ]; then
+    info "DXVK: not installed in the prefix (INV_DXVK=none)"
 else
     info "DXVK: pinned $DXVK_VER from GitHub (sha256 ${DXVK_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/dxvk-$DXVK_VER.tar.gz" ] && echo ', already downloaded')"
 fi
-[ "$INV_VKD3D" = off ] || info "vkd3d-proton: pinned $VKD3D_VER from GitHub (sha256 ${VKD3D_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" ] && echo ', already downloaded')"
+[ "$INV_VKD3D" = off ] || [ "$INV_VKD3D" = none ] || info "vkd3d-proton: pinned $VKD3D_VER from GitHub (sha256 ${VKD3D_SHA256:0:12}...)$([ -f "$DOWNLOAD_DIR/vkd3d-proton-$VKD3D_VER.tar.zst" ] && echo ', already downloaded')"
 info "Isolation: INV_SANDBOX=$INV_SANDBOX, data folder (D:) = ${INV_DATA_DIR:-<none>}"
 
 hdr "Windows partition ($WIN_ROOT)"
@@ -110,11 +112,18 @@ fi
 info "Inventor.exe FileVersion: $(inv_file_version "$WIN_INV/Bin/Inventor.exe")"
 [ -f "$REG_FILE" ] && ok "registry export present ($(wc -l < "$REG_FILE") lines)" || info "registry export not made yet (scripts/export-registry.sh)"
 
-hdr "Disk space"
-NEED_GB=30
-FREE_GB=$(df -BG --output=avail "$HOME" | tail -1 | tr -dc 0-9)
-info "Free in \$HOME: ${FREE_GB} GB (prefix ~20 GB, +7 GB Content Center, warning below $NEED_GB GB)"
-[ "${FREE_GB:-0}" -ge "$NEED_GB" ] || warn "less than $NEED_GB GB free"
+hdr "Memory and disk space"
+# the same numbers and checks as install.sh and the graphical installer
+# (scripts/lib/requirements.env): per filesystem, for a full installation
+IFS=$'\t' read -r mem_level mem_text < <(inv_requirements mem || echo "ok	memory: unknown")
+if [ "$mem_level" = ok ]; then ok "$mem_text"; else warn "$mem_text"; fi
+info "a full installation: prefix ${REQ_PREFIX_GB} GB (${REQ_PREFIX_NO_CONTENT_GB} GB without Content Center)," \
+     "unpacked downloads ${REQ_MEDIA_GB} GB (only while installing), Wine ${REQ_WINE_GB} GB"
+disk_opts=(--prefix "$INV_PREFIX")
+[ -f "$P_INV/Bin/Inventor.exe" ] && disk_opts+=(--repair)
+while IFS=$'\t' read -r disk_state disk_text; do
+    if [ "$disk_state" = ok ]; then ok "$disk_text"; else warn "$disk_text"; fi
+done < <(inv_requirements disk "${disk_opts[@]}" || true)
 
 hdr "Prefix"
 if [ -d "$WINEPREFIX" ]; then

@@ -1,0 +1,1024 @@
+"""Prefix migrations (scripts/lib/migrations.sh, scripts/migrate-prefix.sh)
+with fake prefixes in a temporary HOME and a fake Wine: its registry lives
+in the prefix's user.reg/system.reg (so backups and restores work on the
+real files), `wineboot -u` copies the fake runtime's ntdll.dll into the
+prefix. No real Wine is started."""
+from pathlib import Path
+import hashlib
+import os
+import subprocess
+import tempfile
+import time
+import unittest
+
+from shell_fixture import fixture_path, shell_script
+
+ROOT = Path(__file__).resolve().parents[1]
+MIGRATIONS = ROOT / "scripts" / "lib" / "migrations"
+
+FAKE_WINE = r"""#!/bin/bash
+# registry: "KEY|VALUE|DATA" lines, HKLM in system.reg, the rest in user.reg
+echo "$*" >> "$WINEPREFIX/calls.log"
+regfile() { case "${1^^}" in HKLM*) echo "$WINEPREFIX/system.reg" ;; *) echo "$WINEPREFIX/user.reg" ;; esac; }
+case "$1" in
+    --version) echo wine-11.20; exit 0 ;;
+    *'\Bin\Inventor.exe')
+        # Inventor's registration (step 0005): its keys in user.reg, the
+        # menu entry a run with winemenubuilder on would leave
+        echo "registration WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-}" >> "$WINEPREFIX/calls.log"
+        [ "$2 $3" = "/install 0" ] || exit 1
+        [ -n "${FAIL_REGISTRATION:-}" ] && exit 1
+        if [[ ";${WINEDLLOVERRIDES:-};" != *";winemenubuilder.exe=d;"* ]]; then
+            mkdir -p "$HOME/.local/share/applications"; touch "$HOME/.local/share/applications/wine-extension-ipt.desktop"
+        fi
+        for k in Inventor.Application Inventor.PartDocument; do
+            printf 'HKCU\\Software\\Classes\\%s||\n' "$k" >> "$WINEPREFIX/user.reg"
+        done
+        exit 0 ;;
+    wineboot)
+        # like Wine: the builtin DLL copies in system32 stay as they are
+        echo 1794413159 > "$WINEPREFIX/.update-timestamp"
+        echo "wineboot WINEDLLOVERRIDES=${WINEDLLOVERRIDES:-}" >> "$WINEPREFIX/calls.log"
+        # Microsoft's mscoree.dll loaded by the update: the .NET shim's window
+        m="$WINEPREFIX/drive_c/windows/system32/mscoree.dll"
+        if [ -f "$m" ] && ! grep -qs WINE_MONO_OVERRIDES "$m" && [[ ";${WINEDLLOVERRIDES:-};" != *";mscoree=d;"* ]]; then
+            echo "rundll32.exe: This application could not be started" >&2; exit 1
+        fi
+        # with isolation (no Z:), Wine finds its wine-mono only through a drive
+        # linked to its own share/wine - else it asks for a mono package
+        if [ -n "${CHECK_SHARE_DRIVE:-}" ]; then
+            root="$(dirname "$(dirname "$(readlink -f "$0")")")"
+            found=""
+            for l in "$WINEPREFIX"/dosdevices/*; do
+                [ "$(readlink -f "$l")" = "$(readlink -f "$root/share/wine")" ] && found=1
+            done
+            [ -n "$found" ] || { echo "Wine Mono Installer: could not find a wine-mono package" >&2; exit 1; }
+        fi
+        [ -n "${FAIL_WINEBOOT:-}" ] && exit 1
+        exit 0 ;;
+    reg)
+        export K="$3"; f="$(regfile "$3")"; touch "$f"
+        case "$2" in
+            add)
+                v="" t=REG_SZ d=""; shift 3
+                while [ $# -gt 0 ]; do case "$1" in /v) v="$2"; shift ;; /t) t="$2"; shift ;; /d) d="$2"; shift ;; esac; shift; done
+                [ -n "${FAIL_REG_VALUE:-}" ] && [ "$v" = "$FAIL_REG_VALUE" ] && exit 1
+                [ "$t" = REG_DWORD ] && d="$(printf '0x%x' "$d")"
+                V="$v" awk -F'|' '!(tolower($1) == tolower(ENVIRON["K"]) && $2 == ENVIRON["V"])' "$f" > "$f.n" 2>/dev/null
+                mv "$f.n" "$f"; printf '%s|%s|%s\n' "$K" "$v" "$d" >> "$f"; exit 0 ;;
+            query)
+                line="$(K="$3" V="$5" awk -F'|' 'tolower($1) == tolower(ENVIRON["K"]) && $2 == ENVIRON["V"]' "$f" | tail -1)"
+                [ -n "$line" ] || exit 1
+                printf '\r\n%s\r\n    %s    REG_SZ    %s\r\n\r\n' "$3" "$5" "${line##*|}"; exit 0 ;;
+        esac ;;
+esac
+exit 0
+"""
+
+
+class Migrations(unittest.TestCase):
+    def setUp(self):
+        if (ROOT / "config.env").exists():
+            self.skipTest("this checkout has a config.env, which would take part")
+        self.tmp = tempfile.TemporaryDirectory(prefix="inventor-migrations-")
+        self.addCleanup(self.tmp.cleanup)
+        t = Path(self.tmp.name)
+        self.home = t / "home"
+        self.home.mkdir()
+        # a fake Wine installation: bin/wine, bin/wineserver, lib/wine/*/ntdll.dll
+        self.rt = t / "runtime"
+        (self.rt / "bin").mkdir(parents=True)
+        for arch in ("x86_64-windows", "i386-windows"):
+            (self.rt / "lib" / "wine" / arch).mkdir(parents=True)
+            (self.rt / "lib" / "wine" / arch / "ntdll.dll").write_bytes(b"ntdll of winum " + arch.encode())
+        w = self.rt / "bin" / "wine"
+        w.write_text(shell_script(FAKE_WINE))
+        w.chmod(0o755)
+        (self.rt / "share" / "wine" / "mono").mkdir(parents=True)
+        ws = self.rt / "bin" / "wineserver"
+        ws.write_text(shell_script("#!/bin/sh\nexit 0\n"))
+        ws.chmod(0o755)
+        wb = self.rt / "bin" / "wineboot"
+        wb.write_text(shell_script('#!/bin/sh\nexec "$(dirname "$0")/wine" wineboot "$@"\n'))
+        wb.chmod(0o755)
+        self.logs = t / "logs"
+        # a synthetic stand-in for libarchive's zip (step 0006): no network
+        import zipfile
+        self.downloads = t / "downloads"
+        self.downloads.mkdir()
+        self.fake_tar = b"MZ fake bsdtar.exe"
+        with zipfile.ZipFile(self.downloads / "libarchive-test-win64.zip", "w") as z:
+            z.writestr("libarchive/bin/bsdtar.exe", self.fake_tar)
+        self.bsdtar_env = t / "bsdtar.env"
+        self.bsdtar_env.write_text(
+            "BSDTAR_VER=3.5.3\nBSDTAR_ZIP=libarchive-test-win64.zip\nBSDTAR_URL=http://127.0.0.1:9/none\n"
+            "BSDTAR_SHA256=%s\nBSDTAR_MEMBER=libarchive/bin/bsdtar.exe\nBSDTAR_EXE_SHA256=%s\n"
+            % (hashlib.sha256((self.downloads / "libarchive-test-win64.zip").read_bytes()).hexdigest(),
+               hashlib.sha256(self.fake_tar).hexdigest()))
+        # a synthetic stand-in for winum's vkd3d-proton archive (step 0009):
+        # a plain tar named .tar.zst and a zstd that passes it through, so
+        # the real `tar --zstd` path runs without zstd installed
+        import io
+        import tarfile
+        z = self.rt / "bin" / "zstd"
+        z.write_text(shell_script("#!/bin/sh\nexec cat\n"))
+        z.chmod(0o755)
+        self.vkd3d = {"x64/d3d12.dll": b"MZ d3d12 x64 winum", "x64/d3d12core.dll": b"MZ d3d12core x64 winum",
+                      "x86/d3d12.dll": b"MZ d3d12 x86 winum", "x86/d3d12core.dll": b"MZ d3d12core x86 winum"}
+        self.vkd3d_tzst = self.downloads / "vkd3d-proton-9.9-test.tar.zst"
+        with tarfile.open(self.vkd3d_tzst, "w") as tf:
+            for name, data in self.vkd3d.items():
+                info = tarfile.TarInfo("vkd3d-proton-9.9-test/" + name)
+                info.size = len(data)
+                tf.addfile(info, io.BytesIO(data))
+        self.vkd3d_env = {
+            "VKD3D_VER": "9.9-test", "VKD3D_DLL_SHA256_VER": "9.9-test", "VKD3D_URL": "http://127.0.0.1:9/none",
+            "VKD3D_SHA256": hashlib.sha256(self.vkd3d_tzst.read_bytes()).hexdigest(),
+            "VKD3D_DLL_SHA256": " ".join("%s=%s" % (n, hashlib.sha256(d).hexdigest()) for n, d in self.vkd3d.items())}
+
+    def prefix(self, name=".wine-inventor2027", year=2027, runtime="old"):
+        p = self.home / name
+        b = p / "drive_c" / "Program Files" / "Autodesk" / ("Inventor %s" % year) / "Bin"
+        (b / "Addins").mkdir(parents=True)
+        (b / "Inventor.exe").write_bytes(b"")
+        for d, arch in (("system32", "x86_64-windows"), ("syswow64", "i386-windows")):
+            (p / "drive_c" / "windows" / d).mkdir(parents=True)
+            data = (b"ntdll of winum " + arch.encode()) if runtime == "winum" else b"ntdll of wine-inventor-11.20-6"
+            (p / "drive_c" / "windows" / d / "ntdll.dll").write_bytes(data)
+            (p / "drive_c" / "windows" / d / "kernel32.dll").write_bytes(b"k32 " + runtime.encode())
+        for r in ("system.reg", "user.reg", "userdef.reg"):
+            (p / r).write_text("WINE REGISTRY Version 2\n")
+        (p / ".update-timestamp").write_text("disable\n")
+        return p
+
+    def env(self, prefix, year=2027, **extra):
+        e = {"HOME": str(self.home), "USER": "test", "PATH": fixture_path(self.rt / "bin"),
+             "INV_PREFIX": str(prefix), "INV_YEAR": str(year), "INV_WINE": "system", "INV_SANDBOX": "0",
+             "INV_LOGDIR": str(self.logs), "XDG_CONFIG_HOME": str(self.home / ".config"),
+             "DOWNLOAD_DIR": str(self.downloads), "INV_BSDTAR_ENV": str(self.bsdtar_env)}
+        e.update(self.vkd3d_env)
+        e.update(extra)
+        return e
+
+    def migrate(self, prefix, *args, year=2027, **extra):
+        return subprocess.run(["bash", "scripts/migrate-prefix.sh"] + list(args), cwd=str(ROOT),
+                              env=self.env(prefix, year, **extra), capture_output=True, text=True)
+
+    def state(self, prefix):
+        f = prefix / ".inventor-on-linux" / "state"
+        return dict(l.split("=", 1) for l in f.read_text().splitlines()) if f.exists() else {}
+
+    # --- whole runs ---------------------------------------------------------
+    def test_old_prefix_gets_every_step(self):
+        # like ~/.wine-invclean: from before migrations, last updated by wine-inventor-11.20-6
+        p = self.prefix(".wine-invclean", 2026)
+        out = self.migrate(p, year=2026)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        st = self.state(p)
+        self.assertIn("adopted", st["done.0001-base-setup"])
+        for step in ("0002-winum-runtime", "0003-x11-driver-inventor"):
+            self.assertIn("applied", st["done." + step], out.stdout)
+        # 0004 is optional: never without being asked for
+        self.assertNotIn("done.0004-enable-hydra", st)
+        self.assertEqual(st["runtime"], "wine-11.20")
+        # wineboot -u ran; isolation off here, so Wine's own updates stay disabled
+        self.assertEqual((p / ".update-timestamp").read_text(), "disable\n")
+        user = (p / "user.reg").read_text()
+        self.assertIn("Inventor.exe\\X11 Driver|UseEGL|N", user)
+        self.assertIn("Inventor.exe\\X11 Driver|ClientSideWithRender|N", user)
+        self.assertNotIn("EnableHydra", user)
+        self.assertIn("wineboot -u", (p / "calls.log").read_text())
+        self.assertTrue((p / ".inventor-on-linux/backup/0002-winum-runtime/files/user.reg").exists())
+        # a second run: nothing to do
+        again = self.migrate(p, year=2026)
+        self.assertIn("nothing to do", again.stdout)
+        self.assertIn("optional  0004-enable-hydra", self.migrate(p, "--status", year=2026).stdout)
+
+    def test_enable_hydra_only_when_asked(self):
+        # on a card without ray tracing hardware EnableHydra=1 sends ray
+        # tracing to the CPU (RX 580, 2026-10-21): only by name
+        p = self.prefix(".wine-invclean", 2026, runtime="winum")
+        self.assertEqual(self.migrate(p, year=2026).returncode, 0)
+        self.assertNotIn("EnableHydra", (p / "user.reg").read_text())
+        out = self.migrate(p, "--run", "0004", year=2026)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        # release 2026 -> RegistryVersion30.0
+        self.assertIn("RegistryVersion30.0\\System\\Preferences\\Driver|EnableHydra|0x1",
+                      (p / "user.reg").read_text())
+        self.assertIn("applied", self.state(p)["done.0004-enable-hydra"])
+
+    def test_clean_prefix_from_today(self):
+        # made with winum-11.20-1 by today's installer: runtime current, the
+        # two registry steps are not in it yet
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        st = self.state(p)
+        self.assertIn("already so", st["done.0002-winum-runtime"])
+        self.assertNotIn("wineboot", (p / "calls.log").read_text())
+        self.assertIn("applied", st["done.0003-x11-driver-inventor"])
+        self.assertNotIn("EnableHydra", (p / "user.reg").read_text())
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_prefix_with_everything_has_nothing_to_do(self):
+        p = self.prefix(runtime="winum")
+        k = "HKCU\\Software\\Wine\\AppDefaults\\Inventor.exe\\X11 Driver"
+        (p / "user.reg").write_text("WINE REGISTRY Version 2\n%s|UseEGL|N\n%s|ClientSideWithRender|N\n" % (k, k)
+                                    + "[Software\\\\Classes\\\\Inventor.Application] 1\n"
+                                    + "[Software\\\\Classes\\\\Inventor.PartDocument\\\\CLSID] 1\n"
+                                    + "HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n")
+        for d in ("system32", "syswow64"):
+            (p / "drive_c/windows" / d / "tar.exe").write_bytes(self.fake_tar)
+        self.put_vkd3d(p, winum=True)
+        before = (p / "user.reg").read_text()
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual((p / "user.reg").read_text(), before)
+        self.assertTrue(all("already so" in v for k, v in self.state(p).items()
+                            if k.startswith("done.") and k != "done.0001-base-setup"))
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    # --- 0005: Inventor's registration ----------------------------------------
+    def test_registration_runs_once_without_menu_entries(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0005-inventor-registration"])
+        user = (p / "user.reg").read_text()
+        self.assertIn("Classes\\Inventor.Application|", user)
+        self.assertIn("Classes\\Inventor.PartDocument|", user)
+        calls = (p / "calls.log").read_text()
+        self.assertEqual(calls.count("registration "), 1)
+        self.assertIn("winemenubuilder.exe=d", calls.split("registration ")[1].splitlines()[0])
+        self.assertEqual(list((self.home / ".local/share/applications").glob("wine-*.desktop"))
+                         if (self.home / ".local/share/applications").exists() else [], [])
+        # done: the next run does not start Inventor again
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+        self.assertEqual((p / "calls.log").read_text().count("registration "), 1)
+
+    def test_registration_that_fails_is_a_warning_only(self):
+        # Inventor runs without these keys: the launcher must not stop
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p, FAIL_REGISTRATION="1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("did not finish", out.stderr)
+        self.assertIn("--run 0005", out.stderr)
+        # trying again by name
+        out = self.migrate(p, "--run", "0005")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Inventor.Application|", (p / "user.reg").read_text())
+
+    def test_registration_sees_real_user_reg_sections(self):
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("[Software\\\\Classes\\\\Inventor.ApplicationX] 1\n")
+        self.migrate(p, "--run", "0003")
+        out = self.migrate(p)
+        self.assertIn("applied", self.state(p)["done.0005-inventor-registration"], out.stdout + out.stderr)
+
+    # --- 0006: tar.exe ----------------------------------------------------------
+    def test_tar_exe_and_its_license(self):
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+        for d in ("system32", "syswow64"):
+            self.assertEqual((p / "drive_c/windows" / d / "tar.exe").read_bytes(), self.fake_tar)
+        lic = (p / ".inventor-on-linux/doc/libarchive-3.5.3/COPYING").read_text()
+        self.assertIn("Tim Kientzle", lic)
+
+    def test_tar_exe_with_a_wrong_checksum_is_put_off(self):
+        p = self.prefix(runtime="winum")
+        self.bsdtar_env.write_text(self.bsdtar_env.read_text().replace("BSDTAR_SHA256=", "BSDTAR_SHA256=0"))
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("checksum mismatch", out.stdout + out.stderr)
+        self.assertIn("0006-bsdtar-tar-exe put off", out.stderr)
+        self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
+        self.assertNotIn("done.0006-bsdtar-tar-exe", self.state(p))
+
+    def test_offline_start_is_not_stopped_by_the_tar_exe_download(self):
+        # what the launcher runs at every start (run_migrations), with no
+        # zip in downloads/ and the server not reachable
+        (self.downloads / "libarchive-test-win64.zip").rename(self.downloads.parent / "zip-away")
+        p = self.prefix(runtime="winum")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("bsdtar download failed (offline?)", out.stderr)
+        self.assertIn("0006-bsdtar-tar-exe put off", out.stderr)
+        st = self.state(p)
+        self.assertNotIn("done.0006-bsdtar-tar-exe", st)
+        self.assertIn("deferred.0006-bsdtar-tar-exe", st)
+        # the steps after it still ran
+        self.assertIn("done.0007-public-documents-paths", st)
+        self.assertFalse((p / "drive_c/windows/system32/tar.exe").exists())
+        # the next start does not try the download again
+        t0 = time.monotonic()
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("put off earlier (cannot be done now) - not tried again yet", out.stdout)
+        self.assertNotIn("downloading", out.stdout)
+        self.assertLess(time.monotonic() - t0, 30)
+        # online again: by name at once
+        (self.downloads.parent / "zip-away").rename(self.downloads / "libarchive-test-win64.zip")
+        out = self.migrate(p, "--run", "0006")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+        self.assertEqual((p / "drive_c/windows/system32/tar.exe").read_bytes(), self.fake_tar)
+
+    def test_put_off_step_is_tried_again_later(self):
+        (self.downloads / "libarchive-test-win64.zip").rename(self.downloads.parent / "zip-away")
+        p = self.prefix(runtime="winum")
+        self.migrate(p)
+        (self.downloads.parent / "zip-away").rename(self.downloads / "libarchive-test-win64.zip")
+        out = self.migrate(p, MIG_DEFER_HOURS="0")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0006-bsdtar-tar-exe"])
+
+    # --- 0009: vkd3d-proton from winum --------------------------------------------
+    def put_vkd3d(self, p, winum=False):
+        """d3d12/d3d12core in the prefix: the pinned (winum) ones, or stand-ins for upstream's 3.0.1."""
+        for d, arch in (("system32", "x64"), ("syswow64", "x86")):
+            for n in ("d3d12", "d3d12core"):
+                data = self.vkd3d["%s/%s.dll" % (arch, n)] if winum else b"MZ upstream 3.0.1 " + n.encode()
+                (p / "drive_c/windows" / d / (n + ".dll")).write_bytes(data)
+
+    def test_vkd3d_proton_from_winum_with_a_backup(self):
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0009-vkd3d-proton-winum"])
+        for d, arch in (("system32", "x64"), ("syswow64", "x86")):
+            for n in ("d3d12", "d3d12core"):
+                self.assertEqual((p / "drive_c/windows" / d / (n + ".dll")).read_bytes(),
+                                 self.vkd3d["%s/%s.dll" % (arch, n)])
+                self.assertEqual((p / ".inventor-on-linux/backup/0009-vkd3d-proton-winum/files/drive_c/windows"
+                                  / d / (n + ".dll")).read_bytes(), b"MZ upstream 3.0.1 " + n.encode())
+        user = (p / "user.reg").read_text()
+        self.assertIn("HKCU\\Software\\Wine\\DllOverrides|d3d12|native", user)
+        self.assertIn("HKCU\\Software\\Wine\\DllOverrides|d3d12core|native", user)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_vkd3d_proton_already_winum_is_left_alone(self):
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p, winum=True)
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
+
+    def test_vkd3d_proton_off_is_left_alone(self):
+        # INV_VKD3D=off: Wine's own d3d12, whatever DLLs are in system32
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p, INV_VKD3D="off")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+        self.assertNotIn("DllOverrides|d3d12|", (p / "user.reg").read_text())
+
+    def test_vkd3d_proton_version_of_the_user_is_left_alone(self):
+        # VKD3D_VER changed in config.env without the DLL hashes: the pinned
+        # hashes are of another release, so 0009 must not run (it would fail
+        # at vkd3d_ok at every start) and downloads nothing
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p, VKD3D_VER="3.0.2", VKD3D_SHA256="1" * 64)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0009-vkd3d-proton-winum"])
+        for text in ("downloading", "vkd3d-proton 3.0.2", "put off"):
+            self.assertNotIn(text, out.stdout + out.stderr)
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+        self.assertIn("nothing to do", self.migrate(p, VKD3D_VER="3.0.2", VKD3D_SHA256="1" * 64).stdout)
+
+    def test_offline_start_is_not_stopped_by_the_vkd3d_proton_download(self):
+        self.vkd3d_tzst.rename(self.downloads.parent / "vkd3d-away")
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("vkd3d-proton download failed (offline?)", out.stderr)
+        self.assertIn("0009-vkd3d-proton-winum put off", out.stderr)
+        st = self.state(p)
+        self.assertNotIn("done.0009-vkd3d-proton-winum", st)
+        self.assertIn("deferred.0009-vkd3d-proton-winum", st)
+        # upstream's DLLs stay until it can be done
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+        (self.downloads.parent / "vkd3d-away").rename(self.vkd3d_tzst)
+        out = self.migrate(p, "--run", "0009")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0009-vkd3d-proton-winum"])
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), self.vkd3d["x64/d3d12.dll"])
+
+    def test_vkd3d_proton_with_a_wrong_checksum_is_put_off(self):
+        p = self.prefix(runtime="winum")
+        self.put_vkd3d(p)
+        out = self.migrate(p, VKD3D_SHA256="0" * 64)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("checksum mismatch", out.stderr)
+        self.assertIn("0009-vkd3d-proton-winum put off", out.stderr)
+        self.assertNotIn("done.0009-vkd3d-proton-winum", self.state(p))
+        self.assertEqual((p / "drive_c/windows/system32/d3d12.dll").read_bytes(), b"MZ upstream 3.0.1 d3d12")
+    # --- 0010: add-ins on as on Windows ---------------------------------------------
+    FORMER_OFF = ["Autodesk.Feedback.Inventor.addin", "Autodesk.PerfFeedbackAddin.Inventor.addin",
+                  "Autodesk.InteractiveTutorial.Inventor.addin", "autodesk.translatorfusion.inventor.addin",
+                  "Autodesk.SharedViews.Inventor.addin", "Autodesk.AssistantAddin.Inventor.addin"]
+
+    def old_addins(self, p, dotnet48=False):
+        """A prefix as finish-install.sh left it before 2026-11-16: six add-ins
+        and InteractiveTutorial's libraries in Addins.disabled."""
+        inv = p / "drive_c/Program Files/Autodesk/Inventor 2027"
+        (inv / "Addins.disabled/libs").mkdir(parents=True)
+        (inv / "Bin/en-US").mkdir(parents=True)
+        for f in self.FORMER_OFF:
+            (inv / "Addins.disabled" / f).write_text("<Addin/>")
+        (inv / "Addins.disabled/libs/InteractiveTutorial.dll").write_bytes(b"MZ tutorial")
+        (inv / "Addins.disabled/libs/InteractiveTutorial.resources.dll").write_bytes(b"MZ tutorial en-US")
+        (inv / "Bin/Addins/iLogic.addin").write_text("<Addin/>")
+        if dotnet48:
+            for fw in ("Framework64", "Framework"):
+                d = p / "drive_c/windows/Microsoft.NET" / fw / "v4.0.30319"
+                d.mkdir(parents=True)
+                (d / "clr.dll").write_bytes(b"MZ")
+            for d in ("system32", "syswow64"):
+                (p / "drive_c/windows" / d / "mscoree.dll").write_bytes(b"MZ mscoree")
+            with open(p / "user.reg", "a") as f:
+                f.write("HKCU\\Software\\Wine\\DllOverrides|mscoree|native\n")
+        return inv
+
+    def on_off(self, inv):
+        on = sorted(f.name for f in (inv / "Bin/Addins").glob("*.addin"))
+        off = sorted(f.name for f in (inv / "Addins.disabled").glob("*.addin"))
+        return on, off
+
+    def test_former_default_addins_on_without_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0010-default-addins-on"])
+        # 0012: without .NET Framework 4.8 the tutorial is off again (it
+        # crashed Inventor on Wine Mono); its libraries stay in Bin
+        self.assertIn("applied", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        on, off = self.on_off(inv)
+        self.assertEqual(off, ["Autodesk.AssistantAddin.Inventor.addin",
+                               "Autodesk.InteractiveTutorial.Inventor.addin",
+                               "Autodesk.SharedViews.Inventor.addin"])
+        for f in self.FORMER_OFF[:2] + [self.FORMER_OFF[3], "iLogic.addin"]:
+            self.assertIn(f, on)
+        self.assertEqual((inv / "Bin/InteractiveTutorial.dll").read_bytes(), b"MZ tutorial")
+        self.assertEqual((inv / "Bin/en-US/InteractiveTutorial.resources.dll").read_bytes(), b"MZ tutorial en-US")
+        self.assertEqual(list((inv / "Addins.disabled/libs").iterdir()), [])
+        # the backup holds both ends of every move (with spaces in the path)
+        man = (p / ".inventor-on-linux/backup/0010-default-addins-on/manifest").read_text()
+        self.assertIn("saved\tdrive_c/Program Files/Autodesk/Inventor 2027/Addins.disabled/"
+                      "Autodesk.Feedback.Inventor.addin", man)
+        self.assertIn("absent\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/Addins/"
+                      "Autodesk.Feedback.Inventor.addin", man)
+        self.assertIn("absent\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/InteractiveTutorial.dll", man)
+        self.assertNotIn("AssistantAddin", man)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+        # put back by hand, newest first: as it was
+        out = self.migrate(p, "--restore", "0012-tutorial-off-without-dotnet48")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        out = self.migrate(p, "--restore", "0010-default-addins-on")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(self.on_off(inv)[1], sorted(self.FORMER_OFF))
+        self.assertFalse((inv / "Bin/InteractiveTutorial.dll").exists())
+
+    def test_shared_views_on_with_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p, dotnet48=True)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.AssistantAddin.Inventor.addin"])
+        self.assertIn("Autodesk.SharedViews.Inventor.addin", self.on_off(inv)[0])
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        self.assertIn("already so", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+
+    # --- 0012: the tutorial off without .NET Framework 4.8 ------------------------
+    def upgraded_with_tutorial_on(self, p, dotnet48=False):
+        """A v0.3.x prefix that already went through 0010 (tutorial on), 0012 not yet."""
+        inv = self.old_addins(p, dotnet48=dotnet48)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        off = inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin"
+        if off.exists():
+            off.rename(inv / "Bin/Addins/Autodesk.InteractiveTutorial.Inventor.addin")
+        st = p / ".inventor-on-linux/state"
+        st.write_text("".join(l for l in st.read_text().splitlines(True)
+                              if not l.startswith("done.0012-")))
+        return inv
+
+    def test_tutorial_off_after_0010_without_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.upgraded_with_tutorial_on(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[1])
+        self.assertNotIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        # the libraries stay where 0010 put them, the other add-ins stay on
+        self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
+        self.assertIn("Autodesk.Feedback.Inventor.addin", self.on_off(inv)[0])
+        man = (p / ".inventor-on-linux/backup/0012-tutorial-off-without-dotnet48/manifest").read_text()
+        self.assertIn("saved\tdrive_c/Program Files/Autodesk/Inventor 2027/Bin/Addins/"
+                      "Autodesk.InteractiveTutorial.Inventor.addin", man)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_tutorial_stays_on_with_dotnet48(self):
+        p = self.prefix(runtime="winum")
+        inv = self.upgraded_with_tutorial_on(p, dotnet48=True)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+
+    def test_tutorial_in_both_folders_is_left_alone(self):
+        p = self.prefix(runtime="winum")
+        inv = self.upgraded_with_tutorial_on(p)
+        (inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin").write_text("<Addin old/>")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0012-tutorial-off-without-dotnet48"])
+        self.assertTrue((inv / "Bin/Addins/Autodesk.InteractiveTutorial.Inventor.addin").exists())
+        self.assertEqual((inv / "Addins.disabled/Autodesk.InteractiveTutorial.Inventor.addin").read_text(),
+                         "<Addin old/>")
+
+    def test_addin_already_on_is_not_overwritten(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p)
+        (inv / "Bin/Addins/Autodesk.Feedback.Inventor.addin").write_text("<Addin new/>")
+        (inv / "Bin/InteractiveTutorial.dll").write_bytes(b"MZ tutorial new")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual((inv / "Bin/Addins/Autodesk.Feedback.Inventor.addin").read_text(), "<Addin new/>")
+        self.assertTrue((inv / "Addins.disabled/Autodesk.Feedback.Inventor.addin").exists())
+        self.assertEqual((inv / "Bin/InteractiveTutorial.dll").read_bytes(), b"MZ tutorial new")
+        self.assertTrue((inv / "Addins.disabled/libs/InteractiveTutorial.dll").exists())
+        self.assertIn("Autodesk.PerfFeedbackAddin.Inventor.addin", self.on_off(inv)[0])
+
+    def test_prefix_without_disabled_addins_has_nothing_to_do(self):
+        p = self.prefix(runtime="winum")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0010-default-addins-on"])
+
+    def addins(self, p, *args, **extra):
+        return subprocess.run(["bash", "scripts/addins.sh"] + list(args), cwd=str(ROOT),
+                              env=self.env(p, **extra), capture_output=True, text=True)
+
+    def test_addins_sh_disable_enable_reset(self):
+        p = self.prefix(runtime="winum")
+        inv = self.old_addins(p)
+        self.migrate(p)
+        # after 0010 and 0012 without .NET 4.8: the tutorial is off
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[1])
+        out = self.addins(p, "disable", "feedback.inventor")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.Feedback.Inventor.addin", self.on_off(inv)[1])
+        out = self.addins(p, "enable", "assistant")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        # enable-safe without .NET 4.8: SharedViews and the tutorial stay off
+        out = self.addins(p, "enable-safe")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("kept disabled: Autodesk.SharedViews.Inventor.addin (needs .NET Framework 4.8)", out.stdout)
+        self.assertIn("kept disabled: Autodesk.InteractiveTutorial.Inventor.addin (needs .NET Framework 4.8)",
+                      out.stdout)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.InteractiveTutorial.Inventor.addin",
+                                               "Autodesk.SharedViews.Inventor.addin"])
+        # by name it can still be turned on (a user who wants to try it)
+        out = self.addins(p, "enable", "tutorial")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("Autodesk.InteractiveTutorial.Inventor.addin", self.on_off(inv)[0])
+        # reset: the defaults - the Assistant off, and without .NET 4.8
+        # SharedViews and the tutorial; the tutorial's libraries in Bin
+        (inv / "Bin/InteractiveTutorial.dll").rename(inv / "Addins.disabled/libs/InteractiveTutorial.dll")
+        out = self.addins(p, "reset")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual(self.on_off(inv)[1], ["Autodesk.AssistantAddin.Inventor.addin",
+                                               "Autodesk.InteractiveTutorial.Inventor.addin",
+                                               "Autodesk.SharedViews.Inventor.addin"])
+        self.assertTrue((inv / "Bin/InteractiveTutorial.dll").exists())
+        self.assertNotIn("SharedViews then crashes", (ROOT / "scripts/addins.sh").read_text())
+
+    # --- 0011: Wine's menu builder off in the prefix ------------------------------
+    def menu_entries(self, p):
+        """What winemenubuilder -a -r left for prefix P (2026-11-16), one for
+        another prefix, a desktop file of something else, Wine's MIME packages."""
+        data = self.home / ".local/share"
+        apps = data / "applications"
+        (apps / "wine/Programs/Autodesk").mkdir(parents=True)
+        mine = {}
+        for name in ("wine-extension-ipt.desktop", "wine-extension-dwg.desktop", "wine-extension-dwg;*.idw.desktop",
+                     "wine-protocol-adskidmgr.desktop", "wine/Programs/Autodesk/Inventor 2026.desktop"):
+            mine[name] = apps / name
+            mine[name].write_text('[Desktop Entry]\nExec=env "WINEPREFIX=%s" wine start /ProgIDOpen x %%f\n' % p)
+        other = apps / "wine-extension-pdf.desktop"
+        other.write_text('[Desktop Entry]\nExec=env "WINEPREFIX=%s" wine start x %%f\n' % (self.home / ".wine"))
+        unrelated = apps / "org.gnome.Nautilus.desktop"
+        unrelated.write_text("[Desktop Entry]\nExec=nautilus\n")
+        (data / "mime/packages").mkdir(parents=True)
+        wine_ipt = data / "mime/packages/x-wine-extension-ipt.xml"
+        wine_ipt.write_text("<mime-info/>")
+        wine_pdf = data / "mime/packages/x-wine-extension-pdf.xml"
+        wine_pdf.write_text("<mime-info/>")
+        return mine, [other, unrelated, wine_pdf], wine_ipt
+
+    # --- 0013: the Assistant off in ProgramData (2027.2, #36) ------------------
+    ASSISTANT = "Autodesk.AssistantAddin.Inventor.addin"
+
+    def prefix_2027_2(self):
+        """A 2027.2 prefix: the Assistant in ProgramData, on, next to its DLLs."""
+        p = self.prefix(runtime="winum")
+        d = p / "drive_c/ProgramData/Autodesk/Inventor 2027/Addins/Assistant/31.20.33400"
+        d.mkdir(parents=True)
+        (d / self.ASSISTANT).write_text("<Addin><LoadOnStartUp>1</LoadOnStartUp></Addin>")
+        (d / "InvMcp.dll").write_bytes(b"MZ mcp")
+        return p, d
+
+    def test_assistant_off_in_programdata(self):
+        p, d = self.prefix_2027_2()
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0013-assistant-off-programdata"])
+        inv = p / "drive_c/Program Files/Autodesk/Inventor 2027"
+        moved = inv / "Addins.disabled/programdata/Assistant/31.20.33400" / self.ASSISTANT
+        self.assertFalse((d / self.ASSISTANT).exists())
+        self.assertIn("LoadOnStartUp", moved.read_text())
+        self.assertEqual((d / "InvMcp.dll").read_bytes(), b"MZ mcp")   # only the .addin moves
+        # --restore puts it back and removes the moved copy
+        out = self.migrate(p, "--restore", "0013-assistant-off-programdata")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertTrue((d / self.ASSISTANT).exists())
+        self.assertFalse(moved.exists())
+
+    def test_assistant_without_programdata_copy_has_nothing_to_do(self):
+        p = self.prefix(runtime="winum")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0013-assistant-off-programdata"])
+
+    def test_assistant_already_off_is_left_alone(self):
+        p, d = self.prefix_2027_2()
+        inv = p / "drive_c/Program Files/Autodesk/Inventor 2027"
+        off = inv / "Addins.disabled/programdata/Assistant/31.20.33400"
+        off.mkdir(parents=True)
+        (off / self.ASSISTANT).write_text("<Addin old/>")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("already so", self.state(p)["done.0013-assistant-off-programdata"])
+        self.assertTrue((d / self.ASSISTANT).exists())
+        self.assertEqual((off / self.ASSISTANT).read_text(), "<Addin old/>")
+
+    def test_addins_sh_handles_programdata(self):
+        p, d = self.prefix_2027_2()
+        out = self.addins(p, "list")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("(ProgramData: Assistant/31.20.33400/%s)" % self.ASSISTANT,
+                      out.stdout.split("disabled:")[0])
+        out = self.addins(p, "disable", "assistant")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertFalse((d / self.ASSISTANT).exists())
+        self.assertIn("ProgramData", self.addins(p, "list").stdout.split("disabled:")[1])
+        out = self.addins(p, "enable", "assistant")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertTrue((d / self.ASSISTANT).exists())
+        out = self.addins(p, "reset")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertFalse((d / self.ASSISTANT).exists())
+        self.assertNotEqual(self.addins(p, "enable", "nosuchaddin").returncode, 0)
+
+    def test_addins_sh_sees_programdata_addin_at_top_level(self):
+        # Inventor Nastran 2027 puts its .addin straight into ProgramData\...\Addins
+        p, _ = self.prefix_2027_2()
+        top = p / "drive_c/ProgramData/Autodesk/Inventor 2027/Addins"
+        (top / "autodesk.inventor.nastran.addin").write_text("<Addin/>")
+        out = self.addins(p, "list")
+        self.assertIn("autodesk.inventor.nastran.addin  (ProgramData: autodesk.inventor.nastran.addin)",
+                      out.stdout.split("disabled:")[0])
+        self.assertEqual(self.addins(p, "disable", "nastran").returncode, 0)
+        self.assertFalse((top / "autodesk.inventor.nastran.addin").exists())
+        self.assertEqual(self.addins(p, "enable", "nastran").returncode, 0)
+        self.assertTrue((top / "autodesk.inventor.nastran.addin").exists())
+
+    def test_menu_builder_off_in_the_prefix_and_its_entries_removed(self):
+        p = self.prefix(runtime="winum")
+        mine, keep, wine_ipt = self.menu_entries(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0011-winemenubuilder-off"])
+        # an empty value: what Wine's loader reads as disabled
+        self.assertIn("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n", (p / "user.reg").read_text())
+        for f in mine.values():
+            self.assertFalse(f.exists(), f)
+        self.assertFalse(wine_ipt.exists())
+        self.assertFalse((self.home / ".local/share/applications/wine").exists())   # empty folders go
+        for f in keep:
+            self.assertTrue(f.exists(), f)
+        self.assertIn("removed 6 Wine menu entries and file types", out.stdout)
+        self.assertIn("nothing to do", self.migrate(p).stdout)
+
+    def test_menu_entries_made_again_are_removed_by_a_new_run(self):
+        # key already set (e.g. a new prefix), but a run by hand with
+        # another Wine left entries: the step is still needed
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n")
+        mine, keep, _ = self.menu_entries(p)
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0011-winemenubuilder-off"])
+        self.assertFalse(any(f.exists() for f in mine.values()))
+
+    def test_menu_builder_value_other_than_empty_is_replaced(self):
+        # "builtin" (or "native") would run it again
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|builtin\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        user = (p / "user.reg").read_text()
+        self.assertIn("DllOverrides|winemenubuilder.exe|\n", user)
+        self.assertNotIn("winemenubuilder.exe|builtin", user)
+
+    def test_menu_builder_key_already_off_and_no_entries(self):
+        p = self.prefix(runtime="winum")
+        with open(p / "user.reg", "a") as f:
+            f.write("HKCU\\Software\\Wine\\DllOverrides|winemenubuilder.exe|\n")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        self.assertIn("already so", self.state(p)["done.0011-winemenubuilder-off"])
+
+    # --- 0007: %PUBLIC% in Autodesk's plain strings -------------------------------
+    def test_public_paths_in_autodesk_strings(self):
+        p = self.prefix(runtime="winum")
+        (p / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n\n"
+            "[Software\\\\Autodesk\\\\Inventor\\\\RegistryVersion31.0\\\\TaskScheduler\\\\Installation Path] 1\n"
+            "\"DBQ\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Task Scheduler\\\\TaskScheduler.db\"\n"
+            "\"Other\"=\"C:\\\\x\"\n\n"
+            "[Software\\\\Microsoft\\\\Windows\\\\HTML Help] 1\n"
+            "\"admapi_31_0.chm\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Local Help\\\\\"\n\n"
+            "[Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Explorer\\\\Shell Folders] 1\n"
+            "\"Common Documents\"=str(2):\"%PUBLIC%\\\\Documents\"\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0007-public-documents-paths"])
+        self.assertIn("2 value(s) now point to", out.stdout)
+        system = (p / "system.reg").read_text()
+        self.assertIn("HKLM\\Software\\Autodesk\\Inventor\\RegistryVersion31.0\\TaskScheduler\\Installation Path"
+                      "|DBQ|C:\\users\\Public\\Documents\\Autodesk\\Inventor 2027\\Task Scheduler\\TaskScheduler.db",
+                      system)
+        self.assertIn("HKLM\\Software\\Microsoft\\Windows\\HTML Help|admapi_31_0.chm|C:\\users\\Public\\", system)
+        # Wine's own REG_EXPAND_SZ value and other values are not touched
+        calls = (p / "calls.log").read_text()
+        self.assertNotIn("Shell Folders", calls)
+        self.assertNotIn("/v Other", calls)
+
+    def test_public_paths_in_the_32_bit_view(self):
+        # what 0007 left on the maintainer's prefix
+        p = self.prefix(runtime="winum")
+        (p / "system.reg").write_text(
+            "WINE REGISTRY Version 2\n\n"
+            "[Software\\\\Wow6432Node\\\\Microsoft\\\\Windows\\\\HTML Help] 1\n"
+            "\"admapi_31_0.chm\"=\"%PUBLIC%\\\\Documents\\\\Autodesk\\\\Inventor 2027\\\\Local Help\\\\\"\n")
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        st = self.state(p)
+        self.assertIn("already so", st["done.0007-public-documents-paths"])
+        self.assertIn("applied", st["done.0008-public-documents-paths-wow64"])
+        self.assertIn("HKLM\\Software\\Wow6432Node\\Microsoft\\Windows\\HTML Help|admapi_31_0.chm|"
+                      "C:\\users\\Public\\Documents\\Autodesk\\Inventor 2027\\Local Help\\",
+                      (p / "system.reg").read_text())
+
+    # --- failure and restore ------------------------------------------------
+    def test_failing_step_is_restored_and_stops(self):
+        # 0003 writes UseEGL, then fails on ClientSideWithRender
+        p = self.prefix(runtime="winum")
+        before = (p / "user.reg").read_text()
+        out = self.migrate(p, FAIL_REG_VALUE="ClientSideWithRender")
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("0003-x11-driver-inventor failed", out.stderr)
+        st = self.state(p)
+        self.assertIn("done.0002-winum-runtime", st)
+        self.assertNotIn("done.0003-x11-driver-inventor", st)
+        # user.reg is exactly as before 0003: its UseEGL is gone again
+        self.assertEqual((p / "user.reg").read_text(), before)
+        self.assertNotIn("UseEGL", (p / "user.reg").read_text())
+        # the next run (problem gone) does 0003 only
+        out = self.migrate(p)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0003-x11-driver-inventor"])
+
+    def test_isolated_prefix_links_the_new_wine_before_wineboot(self):
+        # a 2026 prefix from before winum with isolation on: its font/data
+        # drive still points at the old Wine's share/wine
+        p = self.prefix(".wine-invclean", 2026)
+        old_share = Path(self.tmp.name) / "old-wine" / "share" / "wine"
+        old_share.mkdir(parents=True)
+        dd = p / "dosdevices"
+        dd.mkdir()
+        (dd / "c:").symlink_to("../drive_c")
+        (dd / "u:").symlink_to(old_share)
+        (dd / "z:").symlink_to("/")
+        out = self.migrate(p, year=2026, INV_SANDBOX="1", CHECK_SHARE_DRIVE="1")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("applied", self.state(p)["done.0002-winum-runtime"])
+        links = {l.name: os.path.realpath(l) for l in dd.iterdir()}
+        self.assertIn(os.path.realpath(self.rt / "share" / "wine"), links.values())
+        self.assertNotIn("z:", links)
+        # the header names the runtime as the state records it
+        self.assertIn("wineboot -u with wine-11.20", out.stdout)
+
+    def test_runtime_name_in_header(self):
+        (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-1-x86_64\n")
+        p = self.prefix(".wine-invclean", 2026)
+        out = self.migrate(p, year=2026)
+        self.assertIn("wineboot -u with wine-11.20 winum-11.20-1-x86_64", out.stdout)
+        self.assertEqual(self.state(p)["runtime"], "wine-11.20 winum-11.20-1-x86_64")
+
+    def test_update_with_dotnet_disables_mscoree_only_then(self):
+        # .NET Framework in place of wine-mono: Microsoft's mscoree.dll
+        p = self.prefix(".wine-invclean", 2026)
+        for d in ("system32", "syswow64"):
+            (p / "drive_c" / "windows" / d / "mscoree.dll").write_bytes(b"MZ microsoft")
+        out = self.migrate(p, "--run", "0002", year=2026)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        line = [l for l in (p / "calls.log").read_text().splitlines() if l.startswith("wineboot WINEDLLOVERRIDES=")][0]
+        self.assertIn("mscoree=d", line.split(";"))
+        # wine-mono's mscoree: left alone, so the update can update wine-mono
+        q = self.prefix(".wine-inventor2027", 2027)
+        for d in ("system32", "syswow64"):
+            (q / "drive_c" / "windows" / d / "mscoree.dll").write_bytes(b"MZ..WINE_MONO_OVERRIDES..")
+        out = self.migrate(q, "--run", "0002")
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        line = [l for l in (q / "calls.log").read_text().splitlines() if l.startswith("wineboot WINEDLLOVERRIDES=")][0]
+        self.assertNotIn("mscoree", line)
+
+    def test_failing_wineboot_is_undone(self):
+        p = self.prefix(".wine-invclean", 2026)
+        out = self.migrate(p, year=2026, FAIL_WINEBOOT="1")
+        self.assertNotEqual(out.returncode, 0)
+        # the fake wineboot wrote a timestamp before failing: put back
+        self.assertEqual((p / ".update-timestamp").read_text(), "disable\n")
+        self.assertNotIn("runtime", self.state(p))
+        self.assertNotIn("done.0002-winum-runtime", self.state(p))
+        self.assertNotIn("done.0003-x11-driver-inventor", self.state(p))
+
+    def test_runtime_check_used_by_the_launcher(self):
+        def differs(prefix):
+            r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
+                                "source scripts/lib/migrations.sh; prefix_runtime_differs && echo DIFFERS || echo SAME"],
+                               cwd=str(ROOT), env=self.env(prefix), capture_output=True, text=True)
+            return r.stdout.strip()
+        old = self.prefix(".wine-inventor2026", 2026)
+        made = self.prefix(".wine-inventor2027", 2027, runtime="winum")
+        self.assertEqual(differs(old), "DIFFERS")      # no record, DLL copies of another Wine
+        self.assertEqual(differs(made), "SAME")        # no record, made by this Wine
+        self.migrate(old, year=2026)
+        self.assertEqual(differs(old), "SAME")         # recorded by 0002
+        # a newer winum later: the record no longer matches
+        (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
+        self.assertEqual(differs(old), "DIFFERS")
+
+    def test_launcher_says_why_it_updates(self):
+        # the everyday prefix case: same `wine --version`, another runtime record
+        def reason(prefix):
+            r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
+                                "source scripts/lib/migrations.sh; prefix_update_reason"],
+                               cwd=str(ROOT), env=self.env(prefix), capture_output=True, text=True)
+            return r.stdout.strip()
+        p = self.prefix(runtime="winum")
+        (p / ".inventor-wine-version").write_text("wine-11.20\n")
+        self.assertEqual(reason(p), "")                       # made by this Wine, no record
+        (p / ".inventor-on-linux").mkdir()
+        (p / ".inventor-on-linux/state").write_text("schema=1\nruntime=wine-11.20\n")
+        (self.rt / "BUILDINFO").write_text("winum - Fortified Wine\n\nname:        winum-11.20-2-x86_64\n")
+        self.assertEqual(reason(p), 'the prefix was last updated for "wine-11.20", now '
+                                    '"wine-11.20 winum-11.20-2-x86_64" (runtime= in .inventor-on-linux/state)')
+        (p / ".inventor-on-linux/state").write_text("runtime=wine-11.20 winum-11.20-2-x86_64\n")
+        self.assertEqual(reason(p), "")
+        (p / ".inventor-wine-version").write_text("wine-10.0\n")
+        self.assertEqual(reason(p), "the prefix was last set up for wine-10.0 (.inventor-wine-version), now wine-11.20")
+
+    def notice(self, prefix, year=2027):
+        r = subprocess.run(["bash", "-c", "source scripts/lib/common.sh >/dev/null 2>&1; "
+                            "source scripts/lib/migrations.sh; dotnet48_notice_once"],
+                           cwd=str(ROOT), env=self.env(prefix, year), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout
+
+    def test_dotnet48_notice_once_per_prefix(self):
+        # a prefix installed before the installer had the .NET 4.8 step
+        p = self.prefix(".wine-invclean", 2026)
+        first = self.notice(p, 2026)
+        self.assertIn("This prefix has no .NET Framework 4.8", first)
+        self.assertIn("A new installation adds it", first)
+        self.assertIn("README.md", first)
+        self.assertIn("shown", self.state(p)["notice.dotnet48"])
+        self.assertEqual(self.notice(p, 2026), "")
+        self.assertEqual(self.notice(p, 2026), "")
+
+    def test_no_dotnet48_notice_with_dotnet(self):
+        p = self.prefix(runtime="winum")
+        d = p / "drive_c" / "windows" / "Microsoft.NET" / "Framework64" / "v4.0.30319"
+        d.mkdir(parents=True)
+        (d / "clr.dll").write_bytes(b"MZ")
+        self.assertEqual(self.notice(p), "")
+        self.assertNotIn("notice.dotnet48", self.state(p))
+
+    def test_restore_by_hand(self):
+        p = self.prefix(runtime="winum")
+        self.assertEqual(self.migrate(p).returncode, 0)
+        out = self.migrate(p, "--restore", "0003-x11-driver-inventor")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertNotIn("UseEGL", (p / "user.reg").read_text())
+
+    # --- guards ---------------------------------------------------------------
+    def test_busy_prefix_is_left_alone(self):
+        p = self.prefix(runtime="winum")
+        proc = subprocess.Popen(["bash", "-c", 'exec -a "C:\\\\Program Files\\\\Autodesk\\\\Inventor.exe" sleep 30'],
+                                env=dict(os.environ, WINEPREFIX=str(p)))
+        self.addCleanup(proc.kill)
+        time.sleep(0.3)
+        out = self.migrate(p)
+        self.assertNotEqual(out.returncode, 0)
+        self.assertIn("Inventor.exe is running", out.stderr)
+        self.assertEqual(self.state(p), {})
+
+    def test_status_changes_nothing(self):
+        p = self.prefix(".wine-invclean", 2026)
+        out = self.migrate(p, "--status", year=2026)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("0001-base-setup (before migrations - adopted on the first run)", out.stdout)
+        self.assertIn("pending   0002-winum-runtime", out.stdout)
+        self.assertFalse((p / ".inventor-on-linux").exists())
+        self.assertFalse((p / "calls.log").exists() and "reg add" in (p / "calls.log").read_text())
+
+    def test_optional_step_only_by_name(self):
+        p = self.prefix(runtime="winum")
+        mdir = Path(self.tmp.name) / "migs"
+        mdir.mkdir()
+        (mdir / "0001-base-setup.sh").write_text('MIG_DESC="base"\nmig_apply() { :; }\n')
+        (mdir / "0009-big.sh").write_text('MIG_DESC="big"\nMIG_OPTIONAL=1\nmig_apply() { touch "$WINEPREFIX/big-done"; }\n')
+        out = self.migrate(p, INV_MIG_DIR=str(mdir))
+        self.assertIn("nothing to do", out.stdout)
+        self.assertFalse((p / "big-done").exists())
+        out = self.migrate(p, "--run", "0009", INV_MIG_DIR=str(mdir))
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertTrue((p / "big-done").exists())
+
+    def test_a_failing_command_inside_a_step_stops_it(self):
+        # run from an `||` (as the runner does), a subshell would ignore set -e
+        p = self.prefix(runtime="winum")
+        mdir = Path(self.tmp.name) / "migs-fail"
+        mdir.mkdir()
+        (mdir / "0001-base-setup.sh").write_text('MIG_DESC="base"\nmig_apply() { :; }\n')
+        (mdir / "0002-half.sh").write_text(
+            'MIG_DESC="half"\nmig_apply() {\n    echo half >> "$WINEPREFIX/user.reg"\n    false\n'
+            '    touch "$WINEPREFIX/after-false"\n}\n')
+        before = (p / "user.reg").read_text()
+        out = self.migrate(p, INV_MIG_DIR=str(mdir))
+        self.assertNotEqual(out.returncode, 0, out.stdout)
+        self.assertFalse((p / "after-false").exists())
+        self.assertEqual((p / "user.reg").read_text(), before)
+        self.assertNotIn("done.0002-half", self.state(p))
+
+    def test_all_installed_prefixes(self):
+        a = self.prefix(".wine-inventor2026", 2026, runtime="winum")
+        b = self.prefix(".wine-inventor2027", 2027, runtime="winum")
+        env = self.env(a)
+        del env["INV_PREFIX"], env["INV_YEAR"]
+        out = subprocess.run(["bash", "scripts/migrate-prefix.sh", "--all"], cwd=str(ROOT), env=env,
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertIn("== Inventor 2026 in %s" % a, out.stdout)
+        for x in (a, b):
+            self.assertIn("Inventor.exe\\X11 Driver|UseEGL|N", (x / "user.reg").read_text())
+            self.assertNotIn("EnableHydra", (x / "user.reg").read_text())
+
+
+class MigrationFilesAreNeverEdited(unittest.TestCase):
+    """A change to the prefix is a new migration file, never an edit of an
+    old one (AGENTS.md): every file is listed with its SHA-256 in
+    scripts/lib/migrations/SHA256SUMS, and a listed file must not change."""
+
+    def test_listed_files_unchanged_and_all_listed(self):
+        sums = {}
+        for line in (MIGRATIONS / "SHA256SUMS").read_text().splitlines():
+            h, name = line.split(None, 1)
+            sums[name.strip()] = h
+        files = sorted(p.name for p in MIGRATIONS.glob("[0-9][0-9][0-9][0-9]-*.sh"))
+        self.assertEqual(sorted(sums), files, "every migration is listed in SHA256SUMS (and nothing else)")
+        for name in files:
+            self.assertEqual(hashlib.sha256((MIGRATIONS / name).read_bytes()).hexdigest(), sums[name],
+                             "%s was edited - write a new migration instead" % name)
+
+    def test_finish_install_changes_the_prefix_only_through_migrations(self):
+        text = (ROOT / "scripts" / "finish-install.sh").read_text()
+        for word in ("wine_reg_add", "install_dxvk", "install_vkd3d", "cfg_disable_addins", "cfg_isolation",
+                     "webview2_reg"):
+            self.assertNotIn(word, text, "finish-install.sh changes the prefix outside a migration: " + word)
+        self.assertIn("run_migrations --with-base", text)
+
+
+if __name__ == "__main__":
+    unittest.main()

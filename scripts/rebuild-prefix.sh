@@ -82,7 +82,7 @@ ok "prefix created"
 step "Windows 10 mode, X11 (XWayland) graphics driver..."
 cfg_wine_mode
 
-step "Installing DXVK ($([ "$INV_DXVK" = system ] && echo "system setup_dxvk" || echo "$DXVK_VER, pinned"))..."
+step "Installing DXVK ($(dxvk_label))..."
 install_dxvk
 
 step "Starting WebView2 install in the background..."
@@ -201,7 +201,7 @@ cfg_sso_plugin
 step "Disabling non-essential and Wine-broken add-ins (see notes/disabled-addins.md)..."
 cfg_disable_addins
 
-step "Removing known crash sources (InteractiveTutorial, CER reporter, bcp47langs)..."
+step "Removing known crash sources (CER reporter, bcp47langs)..."
 cfg_crash_sources
 
 step "Removing wine-mono WPF stub assemblies (README: Key Discovery #1)..."

@@ -10,11 +10,12 @@
 #
 # Steps (each can be rerun - finished work is skipped):
 #   1. system packages (pacman / apt / dnf)                 phase0-setup.sh
-#   2. this project's Wine (vanilla Wine + patches/,          get-wine.sh
+#   2. winum (vanilla Wine + winum's patches, a release      get-wine.sh
 #      downloaded to ~/.local/share/inventor-on-linux;
-#      INV_WINE=system: fixes built into the system's Wine    build-wine-dll.sh)
+#      INV_WINE=system: the Wine in PATH is used as it is)
 #   3. unpack the downloads
-#   4. install Inventor + Content Center libraries          install-from-image.py
+#   4. install Inventor, Content Center libraries,          install-from-image.py
+#      DWG TrueView, Electrical Catalog Browser (as ODIS)
 #   5. install the updates
 #   6. Wine settings, DXVK, WebView2, fonts, isolation      finish-install.sh
 #   7. app-launcher entry and the browser-login handler     install-desktop-integration.sh
@@ -22,7 +23,10 @@
 # Options:
 #   --prefix DIR       Wine prefix (default ~/.wine-inventor<year>; the year comes
 #                      from the download names, or INV_YEAR=2027)
-#   --no-content       leave out the Content Center libraries (~12.7 GB)
+#   --no-content       leave out the Content Center libraries (about 7.5 GB)
+#   --no-trueview      leave out DWG TrueView (installed with Inventor on Windows)
+#   --no-electrical    leave out the Electrical Catalog Browser (likewise)
+#   --with-electrical  install it (the default; kept for older command lines)
 #   --skip-packages    don't install system packages (already there)
 #   --skip-wine        don't install/check Wine
 #   --no-desktop       no app-launcher entry (e.g. for a test prefix)
@@ -30,22 +34,26 @@
 # A log of everything is written to logs/install-<date>.log.
 
 set -Eeuo pipefail
+_INV_FOR_INSTALL=1   # chooses its target itself, not the installed release (common.sh)
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 _ORIG_ARGS=("$@")
 PREFIX="$INV_PREFIX"
 LANG="en-US"
 PREFIX_GIVEN=0
-NO_CONTENT=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
+APP_OPTS=() SKIP_PKG=0 SKIP_WINE=0 NO_DESKTOP=0 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --lang)LANG="$2"; shift ;;
         --prefix) PREFIX="$2"; PREFIX_GIVEN=1; shift ;;
-        --no-content) NO_CONTENT=(--no-content) ;;
+        --no-content) APP_OPTS+=(--no-content) ;;
+        --no-trueview) APP_OPTS+=(--no-app dwgtrueview) ;;
+        --no-electrical) APP_OPTS+=(--no-app aceinvaddin) ;;
+        --with-electrical) APP_OPTS+=(--include-app aceinvaddin) ;;
         --skip-packages) SKIP_PKG=1 ;;
         --skip-wine) SKIP_WINE=1 ;;
         --no-desktop) NO_DESKTOP=1 ;;
-        -h|--help) sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,35p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         -*) die "unknown option: $1 (see --help)" ;;
         *) ARGS+=("$1") ;;
     esac
@@ -153,7 +161,7 @@ unpack() {
     if [ ! -f "$dest/.unpacked" ]; then
         mkdir -p "$dest"
         for f in "${parts[@]}"; do
-            info "unpacking $(basename "$f") (several minutes, ~10 GB)" >&2
+            info "unpacking $(basename "$f") (several minutes, up to ${REQ_MEDIA_GB} GB)" >&2
             if ! 7z x -y -o"$dest" "$f" >/dev/null 2>&1; then
                 # not a 7-Zip archive (e.g. Autodesk's web "Install" .exe): not ours
                 rm -rf "$dest"; return 0
@@ -179,32 +187,60 @@ for a in "${ARGS[@]}"; do [ -e "$a" ] || die "not found: $a"; done
 if [ -d "$PREFIX/drive_c" ] && [ ! -f "$PREFIX/.odis-install-state.json" ]; then
     die "$PREFIX already exists and was not made by this installer - move it away (e.g. mv $PREFIX $PREFIX.old) or use --prefix"
 fi
-FREE_GB=$(( $(df --output=avail -k "$HOME" | tail -1) / 1024 / 1024 ))
-[ "$FREE_GB" -ge 40 ] || warn "only $FREE_GB GB free in $HOME - Inventor with libraries needs ~40 GB (plus ~15 GB for the unpacked download)"
+# memory and disk space: warnings only (scripts/lib/requirements.env)
+IFS=$'\t' read -r mem_level mem_text < <(inv_requirements mem || echo "ok	memory: unknown")
+if [ "$mem_level" = ok ]; then info "$mem_text"; else warn "$mem_text"; fi
+# the downloads still to be unpacked into $CACHE (an unpacked image or a
+# download unpacked by an earlier run needs nothing there)
+media_needed() {
+    local a f name
+    for a in "${ARGS[@]}"; do
+        if [ -d "$a" ]; then
+            [ -n "$(find_image "$a")" ] && continue
+            while IFS= read -r f; do
+                name="$(basename "${f%.*}")"; name="${name%_[0-9][0-9][0-9]_[0-9][0-9][0-9]}"
+                [ -f "$CACHE/$name/.unpacked" ] || return 0
+            done < <(find "$a" -maxdepth 1 -type f \( -iname '*.exe' -o -iname '*.7z' \))
+        else
+            name="$(basename "${a%.*}")"; name="${name%_[0-9][0-9][0-9]_[0-9][0-9][0-9]}"
+            [ -f "$CACHE/$name/.unpacked" ] || return 0
+        fi
+    done
+    return 1
+}
+disk_opts=(--prefix "$PREFIX" --cache "$CACHE" --wine-dir "$INV_WINE_HOME" --downloads "$DOWNLOAD_DIR")
+case " ${APP_OPTS[*]-} " in *" --no-content "*) disk_opts+=(--no-content) ;; esac
+media_needed || disk_opts+=(--no-media)
+if [ "$SKIP_WINE" -eq 1 ] || [ "$INV_WINE" = system ] || [ -d "$INV_WINE_HOME/$INV_WINE_NAME" ]; then
+    disk_opts+=(--no-wine)
+fi
+[ -f "$PREFIX/drive_c/Program Files/Autodesk/Inventor $INV_YEAR/Bin/Inventor.exe" ] && disk_opts+=(--repair)
+while IFS=$'\t' read -r disk_state disk_text; do
+    if [ "$disk_state" = ok ]; then info "$disk_text"
+    else warn "$disk_text - not enough free space, the installation may stop partway (--no-content saves about $REQ_CONTENT_GB GB)"; fi
+done < <(inv_requirements disk "${disk_opts[@]}" || true)
 info "prefix:  $PREFIX"
 info "log:     $LOG"
-# (the graphical installer asks for the password when the packages are installed)
-[ -n "${INV_GUI:-}" ] || sudo -v || die "sudo is needed for the system packages"
+# sudo only for the system packages (phase0-setup.sh); no later step uses
+# it. The graphical installer asks for the password when they are installed.
+if [ -z "${INV_GUI:-}" ] && [ "$SKIP_PKG" -eq 0 ]; then
+    sudo -v || die "sudo is needed for the system packages (--skip-packages if they are installed)"
+fi
 ok "ok"
 
 step "System packages..."
 if [ "$SKIP_PKG" -eq 1 ]; then info "skipped (--skip-packages)"
 else bash "$SCRIPTS_DIR/phase0-setup.sh"; fi
 
-step "Wine with this project's fixes..."
+step "Wine (winum)..."
 if [ "$SKIP_WINE" -eq 1 ]; then info "skipped (--skip-wine)"
 elif [ "$INV_WINE" = system ]; then
-    info "INV_WINE=system: building the fixes into the system's Wine ($(wine --version 2>/dev/null))"
-    info "built from Wine's source the first time (10-30 minutes), later only checked"
-    wineserver -k 2>/dev/null || true
-    for p in "${WINE_FIX_PARTS[@]}"; do
-        info "-- $p"
-        bash "$SCRIPTS_DIR/build-wine-dll.sh" "$p" --install --hook
-    done
+    if [ -n "$(wine_winum_name)" ]; then ok "INV_WINE=system: $(wine_winum_name) in PATH"
+    else warn "INV_WINE=system: $(wine --version 2>/dev/null) is not winum - Inventor's fixes are only in winum (bash $SCRIPTS_DIR/get-wine.sh)"; fi
 else
     bash "$SCRIPTS_DIR/get-wine.sh"
     select_wine
-    [ "$INV_WINE_ACTIVE" = bundled ] || die "this project's Wine is not usable - see above"
+    [ "$INV_WINE_ACTIVE" = bundled ] || die "winum is not usable - see above"
     ok "$(wine --version) from $INV_WINE_DIR"
 fi
 
@@ -266,7 +302,7 @@ fi
 
 step "Installing Inventor (Autodesk's installers, under Wine - 15-40 minutes)..."
 if [ -n "$PRODUCT" ]; then
-    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${NO_CONTENT[@]}" --lang "$LANG"
+    python3 "$SCRIPTS_DIR/install-from-image.py" "$PRODUCT" --prefix "$PREFIX" "${APP_OPTS[@]}" --lang "$LANG"
 else
     info "already installed"
 fi
@@ -290,5 +326,6 @@ else bash "$SCRIPTS_DIR/install-desktop-integration.sh"; fi
 
 ok "Inventor is installed."
 [ "$NO_DESKTOP" -eq 1 ] && info "Start it with:" || info "Start it from your app launcher (\"Autodesk Inventor $INV_YEAR\") or with:"
-info "    INV_PREFIX=$PREFIX bash $SCRIPTS_DIR/launch-inventor.sh"
+info "    export INV_PREFIX=$PREFIX"
+info "    bash $SCRIPTS_DIR/launch-inventor.sh"
 info "The first start asks you to sign in with your Autodesk account in the browser."

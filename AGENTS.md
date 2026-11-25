@@ -16,25 +16,64 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
   ODIS install image under Wine (MSI/EXE/ZIP/7Z/ADIX, quirks, skip list).
 - `scripts/finish-install.sh`, `scripts/lib/configure.sh` - prefix setup
   (DXVK, vkd3d-proton, WebView2, fonts, disabled add-ins, isolation).
+- `scripts/lib/migrations.sh` + `scripts/lib/migrations/` - numbered prefix
+  migrations (state and backups in `<prefix>/.inventor-on-linux/`);
+  `scripts/migrate-prefix.sh` runs them, `finish-install.sh` runs them all.
 - `scripts/launch-inventor.sh` - starts Identity Manager, licensing service,
   then Inventor. `scripts/lib/common.sh` - shared settings, release/prefix
   detection (`INV_YEAR`, `INV_PREFIX`, `inventor_installs`).
-- `patches/*.patch` - Wine patches; `wine/version.env` + `wine/SHA256SUMS`;
-  `.github/workflows/build-wine.yml` builds and publishes `wine-<ver>-<build>`.
+- Wine: [winum](https://github.com/Harvi654/winum) since winum-11.20-1 -
+  `wine/version.env` names the release, `wine/SHA256SUMS` its checksum,
+  `scripts/get-wine.sh` installs it, the flake input `winum` (`nix/wine.nix`)
+  builds the same `patches/series`. The former own build (`patches/*.patch`,
+  `build-wine.yml`, `build-wine-dll.sh`, `wine-inventor-<ver>-<build>`) is in
+  `docs/archive/own-wine-build/`. `patches/libgsf/` is the flake's libgsf fix.
 - `notes/`, `docs/` - findings (disabled add-ins, Hyprland, NixOS).
 
 ## Rules
 - **One Autodesk release per Wine prefix**, never a second program or release
   into an existing prefix. Default prefix `~/.wine-inventor<year>`.
+  Exception (maintainer, 2026-11-23): a **companion product** of the same
+  year that works together with the product inside it - the Vault client
+  with its Inventor add-in - goes into that product's prefix, through the
+  same installer path. Nothing else does.
+- **Supported releases** (maintainer, 2026-11-16): the newest Inventor
+  release (now 2027) is fully supported - Windows comparisons, update tests
+  and new work target it; the previous one (now 2026) is maintained - it
+  stays working through the shared code, but is not compared with Windows
+  or tested after each change. When a new release comes out, the oldest
+  drops out and its specific notes move to `docs/archive/`. README:
+  "Supported releases".
+- **Every change to what a prefix gets is a new migration file**
+  (`scripts/lib/migrations/NNNN-<what>.sh`, listed in its `SHA256SUMS`),
+  never an edit of an old one and never a change made only in
+  `finish-install.sh` - existing installations get it through the
+  migrations, new ones too. `tests/test_migrations.py` guards it.
 - **Never commit or publish:** `registry/*.reg`, logs, Autodesk binaries or
   installers, Autodesk tokens/session URLs (ODIS `.info` files, IdServices
   logs), personal data (names, e-mails, home paths of real users).
 - Autodesk files are never fetched, mirrored or cached publicly (NixOS uses
   `requireFile` + `unfree`).
 - Downloads (DXVK, vkd3d-proton, Wine) are version-pinned and SHA-256 checked.
-  Something new that `finish-install.sh` downloads must also be added to
-  `nix/inventor.nix` (fetchurl + link into `DOWNLOAD_DIR`) - the Nix build
-  sandbox has no network.
+  Something new that the installation downloads is named in the pull
+  request ("new download: ..."), because the Nix build sandbox has no
+  network and `nix/inventor.nix` needs it too (fetchurl + link into
+  `DOWNLOAD_DIR`).
+- **Nix is updated in batches** (agreed with @krokosik, 2026-11-18, #30):
+  no pull request waits for a Nix test or asks for one, and contributors
+  are not pinged about Nix on every change. @krokosik brings the flake up
+  to date at a release or when he needs to; the CI Nix check stays as the
+  guard against outright breakage, and a red one is fixed before merging
+  as always. With the narrowed filesets @krokosik proposed, the Nix build
+  depends only on the files it runs, so most script changes do not
+  rebuild it.
+- **A fix in Wine comes first** (in winum, with a test that passes on
+  Windows). A workaround here (installer step, migration, launcher
+  setting) only when a Wine fix is not feasible or far too large, and
+  its docs then say why (e.g. DWG TrueView's per-user seed, #28:
+  RegLoadAppKey would need a binary hive reader in wineserver). Settings
+  that are this project's own choices (overrides, add-ins, fonts) are
+  not workarounds and belong here.
 - No AUR packages. Microsoft DLLs only as black boxes (no disassembly).
 - Don't reverse engineer or work around Autodesk licensing or copy protection.
 - Commits: plain English subject, body says why; signed release tags `v*` are
@@ -56,6 +95,14 @@ For Nix/NixOS work, also read [nix/AGENTS.md](nix/AGENTS.md).
   full and what was only skimmed.
 
 ## Wine changes
+Since winum-11.20-1 Wine fixes are made in winum and follow winum's
+AGENTS.md (patch series, markers, validation, release from a signed tag).
+Here a new winum release means: `wine/version.env`, its SHA-256 in
+`wine/SHA256SUMS` from the published release, and the flake input `winum`
+(rev of the tag, `flake.lock`) - in one commit, after the release exists.
+The rules below are kept as they were written for this repository's former
+own build (`docs/archive/own-wine-build/`) and still describe how winum works.
+
 - A fix is a `patches/<dll>-<what>.patch` against the Wine version in
   `wine/version.env`, with a test in Wine's test suite where possible.
 - Raise `WINE_BUILD` when patches change; the workflow publishes the release;
@@ -99,6 +146,12 @@ normal build. A patch that passes its tests but does not fix the user's
 problem is not added.
 
 ### Clean room
+- The maintainer's Windows VM: measurements (L1 tests, MEASURE programs,
+  reference installs, captures) run offline, from snapshots that never had
+  network, so the Windows build and the installed packages stay fixed and
+  nothing leaves the VM. Checks of a program's behaviour that need sign-in
+  or network run in a separate online snapshot, which is never used for
+  measurements afterwards (maintainer, 2026-11-16).
 - Allowed: observing behaviour from outside - Wine debug channels (`+relay`,
   `+seh`, `+ole`, ...), also with native Microsoft components (.NET 4.8,
   WebView2), and stack addresses at a crash. When a native Microsoft component
@@ -108,6 +161,10 @@ problem is not added.
   other vendors') binaries beyond crash addresses.
 - Bug reports for Wine contain only the application's side and our own tests,
   never internals of Microsoft DLLs.
+- Allowed: Microsoft's public documentation (learn.microsoft.com), to
+  understand an API and choose what to measure. Never the source of a
+  test's expected values (the measurement wins), and its text is not
+  copied into code or comments.
 - AI may have seen other projects' code (Mesa, ReactOS, ...): ask for original
   code and say so in the patch; for a larger patch ask a second model whether
   it resembles a known project.

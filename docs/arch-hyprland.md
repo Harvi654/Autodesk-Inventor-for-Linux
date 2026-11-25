@@ -1,23 +1,33 @@
-# Arch Linux + Hyprland
+# Arch Linux + Hyprland: setup notes and findings
 
-Notes for running this project on vanilla Arch with the Hyprland compositor,
-with Windows (and Inventor) installed on a second disk in a dual-boot.
+The engineering log of this project: how the installation works, every
+problem found on the way (symptom, cause down to the Wine function, fix,
+how it was found) and the dated **Result log** at the end. Written on Arch
+Linux with Hyprland and KDE Plasma; most of it applies to every
+distribution. For installing and using Inventor, read the
+[README](../README.md) first.
 
-The original setup was done on CachyOS. Everything Inventor-specific is the same;
-the differences are packages, mounting, and Wayland/XWayland details.
+Wine fixes are being moved to [winum](https://github.com/Harvi654/winum),
+a Wine shared with other engineering programs; its per-patch pages
+(`docs/patches/`) carry the validation tables. Sections here describe what
+Inventor needed and point there for details.
 
-## Order of operations
+Some older sections mention `rebuild-prefix.sh` or `/mnt/windows`: that was
+the first setup, which copied a Windows installation. Its sections are in
+[archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-retired-2026-11-08.md).
 
-```bash
-bash scripts/phase0-setup.sh                 # packages from official repos only (asks for sudo)
-sudo mount -t ntfs3 -o ro /dev/sdXN /mnt/windows   # see "Mounting Windows" below
-bash scripts/check-system.sh                 # read-only; fix anything it marks ERROR
-bash scripts/export-registry.sh              # registry/autodesk-full.reg (gitignored)
-bash scripts/build-wbemprox.sh --install --hook   # patched Wine WMI DLL
-bash scripts/rebuild-prefix.sh               # ~15-30 min, mostly copying
-bash scripts/install-desktop-integration.sh  # adskidmgr:// handler + launcher entry
-bash scripts/launch-inventor.sh              # first run opens the browser for SSO
-```
+## Contents
+
+- **Installation:** [One command: scripts/install.sh](#one-command-scriptsinstallsh); [Installing from Autodesk's install image (no Windows needed)](#installing-from-autodesks-install-image-no-windows-needed); [Inventor 2027: unpacked image without a year, the 2027.2 Update (issue #6)](#inventor-2027-unpacked-image-without-a-year-the-20272-update-issue-6)
+- **Desktop:** [Hyprland](#hyprland)
+- **Prefix setup:** [OGSFactory.dll is not modified](#ogsfactorydll-is-not-modified); [DXVK and isolation](#dxvk-and-isolation); [Windows fonts are required](#windows-fonts-are-required); [Default.ipj is required (materials, appearances, shading)](#defaultipj-is-required-materials-appearances-shading); [WebView2: white licensing window, empty Home tab](#webview2-white-licensing-window-empty-home-tab); [File icons and thumbnails](#file-icons-and-thumbnails)
+- **Fixes by area:** [Design Accelerator (Shaft, gears, ...): "Failed to create shaft"](#design-accelerator-shaft-gears--failed-to-create-shaft); [Content Center](#content-center); [Frame Generator: Insert Frame creates nothing](#frame-generator-insert-frame-creates-nothing); [Drawings: editing dimension text](#drawings-editing-dimension-text); [Sketch: an edited dimension shows only after the mouse moves](#sketch-an-edited-dimension-shows-only-after-the-mouse-moves); [Sketch: black rectangles around the sketch input boxes (fixed)](#sketch-black-rectangles-around-the-sketch-input-boxes-fixed); [Crash "XI_BadDevice ... X_GetDeviceButtonMapping" (Hole command)](#crash-xi_baddevice--x_getdevicebuttonmapping-hole-command); [Status bar: white instead of dark](#status-bar-white-instead-of-dark); [Open: crash while browsing (fixed in wine-11.20-4)](#open-crash-while-browsing-fixed-in-wine-1120-4); [Frame Analysis: Simulate crashes the solver (fixed in wine-11.20-6)](#frame-analysis-simulate-crashes-the-solver-fixed-in-wine-1120-6); [Import CAD (STEP) and Property Mapping in 2027 (issue #10)](#import-cad-step-and-property-mapping-in-2027-issue-10)
+- **Graphics and repainting:** [GPU ray tracing (Inventor 2027, works in testing)](#gpu-ray-tracing-inventor-2027-works-in-testing); [Status bar: old text stays after GPU ray tracing (workaround)](#status-bar-old-text-stays-after-gpu-ray-tracing-workaround); [Window drawn shifted after ray tracing (open)](#window-drawn-shifted-after-ray-tracing-open); [Home page stays stale after a dialog (open)](#home-page-stays-stale-after-a-dialog-open)
+- **3D PDF:** [3D PDF (Anark) - works in testing](#3d-pdf-anark---works-in-testing); [.NET Framework 4.8 in the prefix](#net-framework-48-in-the-prefix-installer-step)
+- **Wine:** [Prefix migrations](#prefix-migrations-updating-an-installed-prefix-2026-11-11); [This project's own Wine (v0.2)](#this-projects-own-wine-v02); [winum as the Wine for Inventor](#winum-as-the-wine-for-inventor-winum-11201)
+- **NixOS:** [NixOS: writable state hid DXVK; 2026 sign-in opened 2027](#nixos-writable-state-hid-dxvk-2026-sign-in-opened-2027)
+- **Desktop entries:** [Wine's menu builder off in the prefix (migration 0011)](#wines-menu-builder-off-in-the-prefix-migration-0011)
+- **Logs:** [Known harmless log messages](#known-harmless-log-messages); [Result log](#result-log)
 
 ## One command: scripts/install.sh
 
@@ -43,15 +53,17 @@ The 2026.x update is a separate download (account -> Updates); the
 
 ## Installing from Autodesk's install image (no Windows needed)
 
-Work in progress, but it gets to a working Inventor. Instead of copying a
-Windows installation, Autodesk's own packages are installed under Wine:
+This is how `install.sh` installs Inventor: instead of copying a Windows
+installation (the first setup of this project, archived), Autodesk's own
+packages are installed under Wine. The steps by hand:
 
 ```bash
 # IMAGE = the unpacked "Browser download" (folder with Setup.exe, manifest/, x64/ ...)
 python3 scripts/odis-plan.py "$IMAGE"                        # what will be installed, in which order
 python3 scripts/install-from-image.py "$IMAGE"               # into ~/.wine-invtest (test prefix)
-INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh   # DXVK, WebView2, isolation, ...
-INV_PREFIX=~/.wine-invtest bash scripts/launch-inventor.sh  # first start: Autodesk login in the browser
+export INV_PREFIX=~/.wine-invtest
+bash scripts/finish-install.sh                               # DXVK, WebView2, isolation, ...
+bash scripts/launch-inventor.sh                              # first start: Autodesk login in the browser
 ```
 
 How it works: the image's manifests (`manifest/app.inventor.xml`, `pkg.*.xml`)
@@ -78,7 +90,8 @@ What had to be worked around (all handled by the scripts):
 
 ```bash
 python3 scripts/install-from-image.py Inventor_2026.4_Update.exe   # the .exe from Autodesk, unpacked with 7z
-INV_PREFIX=~/.wine-invtest bash scripts/finish-install.sh
+export INV_PREFIX=~/.wine-invtest
+bash scripts/finish-install.sh
 ```
 
 | Problem | Cause | Fix |
@@ -190,33 +203,49 @@ stricter than needed and say different things - still to be aligned.
 (`python3 -m unittest discover -s tests`, 21 OK), fake-prefix tests for
 `uninstall.sh`, a full installation in a clean Ubuntu VM and an update on Arch.
 
-## Mounting Windows
-
-Mount **read-only**. The scripts only read from it, and if Windows Fast Startup
-or hibernation is on, mounting NTFS read-write can corrupt it (the kernel `ntfs3`
-driver refuses rw in that case anyway).
-
-```bash
-sudo mkdir -p /mnt/windows
-sudo mount -t ntfs3 -o ro /dev/sdc2 /mnt/windows      # replace sdc2 with your partition
-```
-
-Permanent (`/etc/fstab`, use the UUID from `lsblk -f`; `nofail` so boot doesn't
-hang if the disk is missing):
-
-```
-UUID=XXXXXXXXXXXXXXXX  /mnt/windows  ntfs3  ro,nofail,uid=1000,gid=1000  0 0
-```
-
-Windows only has to be mounted while building the prefix. Launching Inventor
-uses the copy inside `~/.wine-inventor2026`.
-
 ## Hyprland
 
 Wine runs through **XWayland** (the prefix pins Wine's X11 driver). Make sure
 XWayland is enabled (it is by default) and `DISPLAY` is set in your session.
 
 ### HiDPI / fractional scaling
+
+On 2026-11-10, NixOS + Hyprland already had `force_zero_scaling=true`, but
+Inventor 2027's ribbon and status text looked jagged while the Home WebView
+text looked smooth. The prefix had `FontSmoothing="2"`,
+`FontSmoothingType=1` (grayscale), RGB orientation (`1`), and 120 DPI.
+A local experiment changed only the smoothing type to `2` (ClearType), using
+the packaged Wine inside the launcher's composed prefix before starting
+Inventor:
+
+```bash
+wine reg query 'HKCU\Control Panel\Desktop' /v FontSmoothingType
+wine reg add 'HKCU\Control Panel\Desktop' /v FontSmoothingType /t REG_DWORD /d 2 /f
+```
+
+These commands require the package's Wine and active composed `WINEPREFIX`;
+do not use a system Wine or assume the source installer's prefix location.
+Restore `/d 1` to undo this experiment. The live registry query confirmed the
+change from `1` to `2`; the user reported no visible improvement. No default
+package setting or Wine patch was changed.
+
+Follow-up: a synthetic GDI probe run inside Inventor's actual user and mount
+namespaces confirmed smoothing type `2`, but zero intermediate pixels in small
+Tahoma text. Wine's `+font` trace reported `aa disabled by GASP` from
+`freetype_get_aa_flags()` in `dlls/win32u/freetype.c`. Segoe UI and Noto Sans
+rendered with intermediate pixels in the same DIB test. This user had Windows
+fonts available from a mounted Windows installation; the package's free-family
+replacements do not override an already available real family. A local
+`HKLM\Software\Microsoft\Windows NT\CurrentVersion\FontSubstitutes` string
+`Tahoma=Segoe UI`, followed by restart, changed system menu/status fonts to
+Segoe UI. Their probe output then had intermediate pixels; explicit Tahoma
+requests remained unsmoothed. The user confirmed that the change looked good.
+The Nix launcher now checks real host/prefix font families and applies this
+mapping only when Segoe UI is available. It removes that mapping if the family
+disappears and preserves substitutions to other families. No fonts are added
+to the package. Local rollback is to delete that value and restart; the launcher
+will restore it if Segoe UI is still available. Other launchers are unchanged.
+See [the probe and commands](wine-repro/win32u-font-smoothing/README.md).
 
 With monitor scale > 1, XWayland apps are upscaled and look blurry. Two options:
 
@@ -231,8 +260,8 @@ With monitor scale > 1, XWayland apps are upscaled and look blurry. Two options:
 
    ```bash
    # DPI inside Wine: 96 = 100 %, 144 = 150 %, 192 = 200 %
-   WINEPREFIX=~/.wine-inventor2026 wine reg add 'HKCU\Control Panel\Desktop' \
-       /v LogPixels /t REG_DWORD /d 144 /f
+   export WINEPREFIX=~/.wine-inventor2026
+   wine reg add 'HKCU\Control Panel\Desktop' /v LogPixels /t REG_DWORD /d 144 /f
    ```
 
 2. Keep the default (blurry but correctly sized). Fine on scale 1.
@@ -248,6 +277,11 @@ and glitchy; fractional-scale text remained blurry. Use X11/XWayland while
 waiting for upstream support. See the [reproducer and investigation](wine-repro/winewayland-cross-process-gdi/README.md)
 for screenshots, diagnosis, patch limitations, validation and tracked issues,
 including [Wine #58921](https://bugs.winehq.org/show_bug.cgi?id=58921).
+
+Retested 2026-11-07 on a copy of the 2027 prefix with Wine's Wayland driver:
+GPU ray tracing worked, but the WebView2 pages stayed broken, dialogs were
+abnormal, dimension values could not be typed and Restore Down/maximise was
+not right. The X11 driver through XWayland stays the supported path.
 
 ### Window rules
 
@@ -281,43 +315,6 @@ xdg-settings get default-web-browser
 
 Firefox asks once which application should open the link - choose
 "Autodesk Identity Manager" and tick "always".
-
-## wine-mono on Arch
-
-README "Key Discovery #1" says the WPF stub assemblies in the wine-mono GAC must
-be deleted. On Arch the `wine-mono` package is a **shared system install**
-(`/usr/share/wine/mono/wine-mono-*`), not a copy inside the prefix, so
-`rebuild-prefix.sh` only warns instead of deleting system files.
-
-Status: **untested on Arch.** If Inventor exits right after starting (log shows
-a mono assertion and `Environment.Exit`), options to try, in this order:
-
-1. Remove the four DLLs from the system install
-   (`PresentationCore`, `PresentationFramework`, `WindowsBase`, `System.Xaml`
-   under `/usr/share/wine/mono/wine-mono-*/lib/mono/gac/`). A `wine-mono` update
-   restores them.
-2. Uninstall the `wine-mono` package and let Wine install mono into the prefix
-   (it offers to on `wineboot`), then rerun `rebuild-prefix.sh`, which then
-   finds and removes the stubs inside the prefix.
-
-Please report which one was needed.
-
-## Differences from the original scripts
-
-| Area | Original | Here |
-|------|----------|------|
-| Component versions | hard-coded (Licensing 15.4.2.4, Components 1.8.0, IdMgr 1.16.5.1/1.14.0.3, build 30.0.17500) | detected from `/mnt/windows` and the registry export |
-| Registry export | generated but never imported | imported with `regedit` **as UTF-16** before setting keys (see below) |
-| `rebuild-prefix.sh` | under `set -e`, any failing `cp`/`mv ... 2>/dev/null` of an optional file (license cache, Design Data dir that doesn't exist yet, `wineserver -k` with nothing running) can abort the run | optional steps warn and continue |
-| OGSFactory.dll patch | written blindly at fixed offsets | not needed: fixed in Wine (wbemprox patch), Autodesk files stay untouched |
-| WebView2 installer | expected in `/tmp`, never downloaded | downloaded to `downloads/` |
-| Wine patch | `patch -p1` fails (absolute `/tmp/...` paths in header) | regenerated as a proper `a/ b/` patch |
-| Logs | `~/Projects/Inventor on linux/logs` | `logs/` in the checkout |
-| IPC cleanup | only `interprocess/01000000` | whole `interprocess/` (Open Problem #4) |
-| `msquic=` override | documented, not set | set in `launch-inventor.sh` |
-| Packages | `dxvk-mingw-git` via pacman (not in Arch repos) | official repos only, no AUR |
-| DXVK | `setup_dxvk` from a system package | release 2.7.1 from github.com/doitsujin/dxvk, SHA-256 pinned (same hash as winetricks `dxvk2071`); `INV_DXVK=system` to use `setup_dxvk`; vkd3d-proton 3.0.1 (Direct3D 12) from github.com/HansKristian-Work/vkd3d-proton, SHA-256 pinned, `INV_VKD3D=off` keeps Wine's d3d12 |
-| File access | `Z:` = whole filesystem, Documents/Desktop/... linked into `$HOME` | only `C:` (prefix) and `D:` = `~/Inventor`; `--no-sandbox` restores Wine defaults |
 
 ## OGSFactory.dll is not modified
 
@@ -380,20 +377,6 @@ scanning drives, default save locations in `$HOME` - not against malicious
 code. A real boundary needs a namespace sandbox such as `bubblewrap`, which is
 harder here because the browser login (`adskidmgr://` handler) and the
 wineserver socket must cross it. Not done yet.
-
-## Registry import must be UTF-16
-
-`hivexregedit` writes strings as `hex(1):` UTF-16LE bytes into a plain-text
-file. Wine's `regedit` reads a file without a UTF-16 byte-order mark as ANSI and
-widens each byte of `hex(1)` data separately, so `"False"` is stored as
-`F\0a\0l\0s\0e\0`. It looks normal in logs, but .NET rejects it. Inventor's
-InfoCenter then fails silently (`InfoCenter.log` in
-`%LOCALAPPDATA%\Autodesk\Inventor 2026\ENU\`: *String 'False' was not
-recognized as a valid Boolean*) and Inventor dies at startup with
-`NullReferenceException` in `InforCenterUtil.GetInfoCenterHwnd()`.
-
-`import_reg_file` converts the export to UTF-16LE with a BOM before importing.
-To repair an older prefix: `bash scripts/import-registry.sh`.
 
 ## Windows fonts are required
 
@@ -709,30 +692,10 @@ the background is painted in `WM_ERASEBKGND`, `WM_PAINT` paints it only if
 nobody erased (`ps.fErase`), invalidations ask for an erase, and owner-drawn
 parts get no theme pane. Built into `comctl32` and `comctl32_v6`. Confirmed:
 the status bar is dark with "Ready", coordinates and "Fully Constrained"
-as on Windows.
-
-## This project's own Wine (v0.2)
-
-Up to v0.1 the fixes were built per DLL and copied over the system's Wine
-(`build-wine-dll.sh --install`). Every Arch Wine update replaced them, and the
-prefix then ran without them until `rebuild-wine-fixes.sh`. Since v0.2 the
-whole Wine is built once, in public, by `.github/workflows/build-wine.yml`
-(`scripts/build-wine.sh`: vanilla source of the version in `wine/version.env`,
-all of `patches/`, `--enable-archs=x86_64,i386`, Arch Linux container) and
-published as release `wine-<version>-<build>`. `scripts/get-wine.sh` downloads
-it, checks it against `wine/SHA256SUMS` and unpacks it to
-`~/.local/share/inventor-on-linux/`; `common.sh` puts its `bin/` first in
-`PATH` (`INV_WINE=auto|bundled|system`). The system's Wine is not touched.
-The build also patches the 32-bit (i386) PE DLLs, which the per-DLL builds
-never did. A build made on Arch also runs on Ubuntu 24.04 (glibc 2.38 symbols).
-
-**Do not mix Wine versions on one prefix.** The first test used a 11.19 build
-while Arch had moved to 11.20: the launcher's `wineboot -u` then switched the
-prefix between the two versions on every start, and under KDE the maximized
-Inventor window lost its own title bar row (quick access toolbar, user name)
-behind a KDE title bar, and only part of the window was drawn. With the 11.20
-build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
-the version the prefix was last updated with, and move forward only.
+as on Windows. Later findings (2026-11-07/08): the patch matches Windows for
+Inventor's themed status bar, and the old text that stays after GPU ray
+tracing has another cause - see "Status bar: old text stays after GPU ray
+tracing". A v2 in winum corrects the patch for unthemed status bars.
 
 ## Open: crash while browsing (fixed in wine-11.20-4)
 
@@ -899,6 +862,86 @@ the same day, then no longer - switching to Frame Analysis, Stress Analysis
 and Dynamic Simulation all went fine. No reliable steps yet; when it shows
 again, note the exact steps and take a `+win,+msg` trace.
 
+**2026-11-23, first trace.** Seen again on a fresh Inventor 2027.2 prefix
+(installed from the Create Installer image), with winum-11.20-2 and with
+the 11.22-2 test build: after switching an assembly to Frame Analysis the
+left pane and the right (Assistant) pane show copies of the ribbon and the
+browser - the top-left corner of the Inventor window, shifted down and to
+the right. Minimise and restore clears it. Trace (test build,
+`WINEDEBUG=+win,+msg`, 784 000 lines; the maintainer kept it locally):
+
+- `move_window_bits copying (0,0)-(350,868) -> (1570,146)-(1920,1014)`:
+  Wine copied the pixels of the window's old place (the top-left corner,
+  i.e. the ribbon and browser) to the right pane's place. The window is
+  `0x101be` (child of `0x30094`, 350 x 868, the right pane's container;
+  `invalidate_dce 0x101be parent 0x30094, old_rect (0,0)-(350,868)` just
+  before, then `apply_window_pos win 0x101be surface (nil) -> (nil)`).
+- The `SetWindowPos` calls on `0x101be` in that stretch have flags
+  `0x1837` (no move, no size, `SWP_FRAMECHANGED`): the window itself is
+  not moved in that call, yet its "old" rectangle is still at `(0,0)`.
+- During the switch Inventor sends `WM_SETREDRAW` 0 and then 1 to the
+  panes, which belong to other threads (`0abc`, `0768`) than the main
+  window (`0314`).
+
+**Hypothesis (not measured yet):** the pane container was laid out at
+`(0,0)` while it was not shown or not painted, then placed at its real
+spot; at the next frame-changed `SetWindowPos` Wine treats the old
+`(0,0)` area as the window's valid bits and copies them
+(`win32u/window.c` `apply_window_pos` -> `get_valid_rects` /
+`move_window_bits` in `dce.c`). Windows should have no valid bits for a
+window that was not visible or never painted at the old place, so it
+would copy nothing and send `WM_PAINT`. Next: find where `0x101be` and
+`0x30094` got their positions and visibility between creation and this
+point; then a MEASURE program for the offline Windows VM (a child in a
+container, laid out at 0,0 while hidden or with redraw off, moved, then
+`SetWindowPos(SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOSIZE)`: does Windows copy
+bits, does it send `WM_PAINT`), and from that a `user32` test. Commands
+used:
+
+```bash
+export WINEDEBUG=+win,+msg
+bash scripts/launch-inventor.sh > frame-redraw.log 2>&1
+grep -a -n -E 'move_window_bits|LockWindowUpdate' frame-redraw.log | tail -45
+sed -n '<line-25>,<line>p' frame-redraw.log    # the lines before a suspicious copy
+```
+
+**2026-11-23, second round.** A MEASURE program (winum branch
+`topic/user32-stale-bits-measure`, commit `4b4603e`,
+`docs/wine-repro/user32-setwindowpos-stale-bits/`) tried 20 cases - a
+child shown at (0,0) and moved without painting, moved while hidden,
+`WM_SETREDRAW` off/on with `SWP_FRAMECHANGED`, a moved intermediate parent,
+cross-thread, and "G": a container partly or fully covered by a sibling
+"ribbon" window and then moved. Windows 10, vanilla Wine 11.22 and the
+winum 11.22-2 test build agree in pixels, update regions and message
+counts on x86_64 and i686 (only the absolute window position differs by 3
+pixels): Wine copies only the visible part and invalidates the covered
+part, like Windows. So the simple form of the hypothesis is wrong.
+Further facts from the trace: no child window covers the ribbon band
+`(0,0)-(1920,146)` - the frame `0x30094` most likely paints the ribbon
+itself, and it has no `WS_CLIPCHILDREN` (style `0x15cf0000`); Inventor
+creates its panes at (0,0) (230x230, 240x520, 350x868) and lays them out
+later; `0x101be` has one child (`0x101c2`) and gets no `WM_PAINT` between
+the frame-changed call and the move. Third round (case H): a frame without
+`WS_CLIPCHILDREN` painting the band across a container at (0,0), then the
+`0x1837` call and the move. If that matches Windows too, the rounds stop
+here and the issue waits for a trace that shows more.
+
+**2026-11-23, third round (case H, winum `a8469ff`).** A frame without
+`WS_CLIPCHILDREN` that paints a band across a child container, then
+`RedrawWindow(frame, RDW_INVALIDATE|RDW_UPDATENOW)`: **Windows 10 repaints
+the overlapped container at once** (its update region is empty when the
+call returns; its own child gets no new `WM_PAINT`), **Wine leaves the
+container's repaint pending** (vanilla 11.22 and winum 11.22-2 alike,
+x86_64 and i686). The red pixel carried by the later move is not the
+whole story (on Windows it also survived in one variant), so this does
+not yet explain why Inventor's pane stays stale - but it is the first
+measured difference on the way. The three rounds of guessing end here.
+Next, as a narrow task: a `user32` test for this `RDW_UPDATENOW`
+difference (passes on Windows), a candidate fix in `win32u`, a test build,
+and the Frame Analysis switch as its L4; if the panes still go stale, the
+candidate is not added (the test stays as the record and for a Wine bug
+report).
+
 ### Still open (found by the fuzzer, not needed by Inventor)
 
 - `Commit` on a transacted substorage whose parent was reverted dereferences
@@ -918,21 +961,704 @@ the wrappers (generated, one per vtable method); the logic is "enter
 should pass on Windows 10 (`rkernel.exe` suggests it does) - and whether a
 per-file lock would be closer to Windows.
 
-## GPU ray tracing (Inventor 2027, not working yet)
+## Import CAD (STEP) and Property Mapping in 2027 (issue #10)
 
-Tested 2026-10-21 on an RX 6400 (RDNA 2, on the Linux host via `INV_GPU=6400`,
-monitor on the other card): Inventor 2027 runs on DirectX 12 through
-vkd3d-proton, which reports `DXR 1.1 support enabled` and `DX Ultimate`;
-Vulkan has `VK_KHR_ray_tracing_pipeline`, `acceleration_structure`,
-`ray_query`. Inventor still greys out *Enable Viewport GPU Ray Tracing*
-("The graphics card in use does not support this option") and never loads
-`aurora.dll` (its GPU ray tracer). Ruled out: driver name/version (Wine does not
-register `InstalledDisplayDrivers`; with `INV_DRIVER_NAMES=1` Diagnostics shows
-"aticfx64 ... 35.0.21025.1024" instead of "Unknown", no change), Windows build,
-no capability cached in the registry (`GraphicsUtil` has `UseGPURaytracing=1`).
-Still open: DXVK answers an unknown `IDXGIAdapter` query `f0db4c7f-fe5a-42a2-
-bd62-f2a6cf6fc83e` (possibly DXCore) right before vkd3d-proton starts. A test
-with an NVIDIA RTX card would show whether this is AMD-specific.
+Reported by @krokosik on 2026-11-10 (NixOS, Inventor 2027, Wine 11.20).
+Fixed: Property Mapping by .NET Framework 4.8 in the prefix, Import CAD
+into an assembly by four Wine fixes in winum-11.20-2. The investigation
+notes that led there (the trace of the insert step, the VBA class,
+templates and output locations ruled out, the import tests, the log
+noise) are in
+[archive/arch-hyprland-issue-10-investigation-2026-11-12.md](archive/arch-hyprland-issue-10-investigation-2026-11-12.md).
+
+**Symptoms.** Assembly -> Place -> Import CAD of a STEP file ends with
+"Could not Insert Object" after Load Model has shown the model; File ->
+Open of a STEP file shows the same message. The import dialog's Property
+Mapping button crashes `AnyCADPropertyMappingTool.exe` (a write fault in
+Autodesk's `rxapprenticeservercore`). The same files import on Windows.
+
+**Property Mapping.** The tool is a .NET Framework program and ran on Wine
+Mono, which calls the members of an `InterfaceIsIDispatch` COM interface
+through the vtable instead of `IDispatch::Invoke` (.NET uses `Invoke`).
+With Microsoft's .NET Framework 4.8 in the prefix the dialog works: the
+script install runs the installer's .NET step (section ".NET Framework 4.8
+in the prefix (installer step)"), the Nix package takes nix-overlayfs's
+`dotnet-framework-4-8` layer (the same order: Wine Mono and its `mscoree`
+out, Windows 7 for the setups, 4.0 first, then 4.8; the layer keeps
+Microsoft's `mscoree.dll`).
+
+**Could not Insert Object - cause.** After the import, Inventor embeds its
+translation report (an `.htm` in `%TEMP%`) with `OleCreateFromFileEx`, and
+Reference Model stores the part inside the assembly (`LocalDocs`). Four
+Wine bugs on that path, all measured on Windows 10:
+
+1. `ole32-createfromfile-package`: Windows wraps a file whose class is not
+   an embedding server in an OLE Package (`{0003000C-...}`,
+   `\1Ole10Native`); Wine failed the call.
+2. `packager-save-view-advise`: Wine's Package had no class, save, extent,
+   advise or `IViewObject2`; Inventor needs each.
+3. `ole32-storage-localdocs`: `StgCreateDocfile("**<assembly>*LocalDocs*...")`
+   must fail with `STG_E_INVALIDNAME` (Wine: `E_FAIL`), and a sub-storage
+   opened with `STGM_SIMPLE` must work (Wine refused everything in it), else
+   the part is unresolved after reopening.
+4. `ole32-propset-null-strings`: a `VT_LPWSTR` property with a NULL string
+   is stored with length 0 on Windows; Wine crashed and the save aborted.
+
+Turning the report's embedding off (`Translators\EmbedInDocument=0`) lets
+Convert Model through without fix 1, but it is not needed with the fixes
+and saving was worse with it, so it is not used.
+
+**Fix.** The four patches are in winum-11.20-2's series (winum PR #1;
+their pages are in winum's `docs/patches/`, the reproducers and Windows
+measurements in winum's `docs/wine-repro/ole32-createfromfile-html`).
+The Nix package can also run winum candidates for testing before a
+release: `wineCandidates = [ "<topic>" ]` in `flake.nix` and
+`--override-input winum-candidates path:<winum checkout>`. Only the Wine
+Inventor runs changes; the installation layers are not rebuilt
+(`docs/nixos.md`).
+
+**How it was found.** Wine traces only (`WINEDEBUG=+ole,+storage,+seh`,
+`err+all,warn+ole` from a marker taken just before OK), on NixOS under
+Xvfb; nothing read inside Autodesk's binaries beyond crash addresses.
+Windows behaviour from small public test programs (MEASURE programs,
+`pkgprobe`) run on Windows 10.
+
+**Validation.** Wine tests in `dlls/ole32/tests/{ole2,storage32,stg_prop}.c`
+and `dlls/packager/tests/oleobj.c`: fail on vanilla Wine, pass with the
+patches; L1 on Windows 10 x86_64 and i686 (the contributor's host and the
+maintainer's VM, 0 failures); L2 in winum CI (0 regressions); L4 on NixOS
+(candidate v5 with the .NET layer: Property Mapping, Reference Model
+import, place, save, restart, reopen, Convert Model with the report
+embedded) and on Arch with Inventor 2027.2 (maintainer: Reference and
+Convert Model, save, restart, reopen, File -> Open of a STEP). Cross
+review: Codex, v5 approved (2026-11-12).
+
+## GPU ray tracing (Inventor 2027, works in testing)
+
+**Symptom (until 2026-11-06):** *Enable Viewport GPU Ray Tracing* was greyed
+out ("The graphics card in use does not support this option"), although
+vkd3d-proton reported DXR 1.1 on the RX 6400. The earlier investigation is
+archived in [archive/arch-hyprland-retired-2026-11-08.md](archive/arch-hyprland-retired-2026-11-08.md).
+
+**Cause, two separate problems:**
+
+1. Wine (opengl32): Windows reports window pixel formats with 8/8/8 bits of
+   colour and no alpha as 32 colour bits; GLX and EGL report 24.
+   `wglChoosePixelFormat` compares colour bits before alpha, so Inventor's two
+   pixel-format choices disagreed, the second `SetPixelFormat` failed and
+   Inventor declared the card unsupported. Fixed by
+   `opengl32-window-format-color-bits` in winum (values measured on
+   Windows 10 with an own MEASURE program, Wine test passes on Windows 10
+   x86_64 and i686).
+2. vkd3d-proton (dxil-spirv): ray payloads with matrices became 12-component
+   vectors, which SPIR-V does not allow (RADV has no long-vector extension),
+   so the ray tracing pipelines failed. Fixed by
+   `gpu/vkd3d-proton/dxil-spirv-ray-payload-long-vector.patch` in winum
+   (vectors longer than 4 become arrays; synthetic shaders fail without and
+   validate with it in CI). Released as `vkd3d-proton-3.0.1-winum-1`; the
+   installer uses it since 2026-11-16 and migration 0009 puts it into
+   existing prefixes (Result log, 2026-11-16).
+
+**Settings it needs** (set by hand for now; the installer will do it in the
+next release):
+
+- Inventor 2027: **Application Options > Hardware > Graphics Driver =
+  DirectX 12** (2027 offers DirectX 11 and DirectX 12). Then the viewport
+  and ray tracing run on Direct3D 12, that is vkd3d-proton (winum's build) -
+  the path the fixes above and their tests are for. Fresh 2027.2
+  installation, 2026-11-16 (maintainer, 31 GiB, winum-11.20-2): GPU ray
+  tracing worked after this switch alone; `EnableHydra` was already 1,
+  set by Inventor itself when "Enable Viewport GPU Ray Tracing" is ticked;
+- `HKCU\Software\Autodesk\Inventor\RegistryVersion31.0\System\Preferences\Driver`
+  `EnableHydra` = 1 (DWORD);
+- `HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver` `UseEGL` = `N`
+  (GLX; the tested path);
+- `HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver`
+  `ClientSideWithRender` = `N` (see the status bar section below);
+- a GPU with hardware ray tracing and a Vulkan driver with
+  `VK_KHR_ray_tracing_pipeline` and `VK_KHR_acceleration_structure`
+  (tested: AMD RDNA 2 with RADV, NVIDIA RTX with the proprietary driver);
+  `INV_GPU` picks the card when there are several.
+
+**What to expect:** the option is available, the ray tracing panel shows
+**GPU**, Low/Draft/High render on the graphics card (High converges in about
+a second on a small part on an RTX 5080). Known side effects: without
+`ClientSideWithRender=N` the status bar text overlaps; after ray tracing has
+been started, Restore Down and maximising again can leave parts of the window
+drawn shifted (section below).
+
+**Inventor 2026: not supported.** 2026 has no DirectX 12 graphics driver:
+its viewport is Direct3D 11 (DXVK), and its ray tracing renders with
+Direct3D 12 and hands the texture to Direct3D 11. That needs Direct3D 12 ->
+11 shared textures. krokosik's PR #3 got 2026.4 working on an RTX 3060 with
+exactly that: a backport of DXVK PR #5257, texture descriptors bridged
+through Wine's D3DKMT, and a patched vkd3d-proton 2.14.1. This project
+does not carry those patches, and 2027 with DirectX 12 does not need them.
+In the fresh 2026.4 installation of 2026-11-16, clicking GPU ray tracing
+hung Inventor once and did nothing the second time; the log had no vkd3d
+DXR lines. In 2026: untick "Enable Viewport GPU Ray Tracing"; CPU ray
+tracing works. No fix planned (2026 is maintained, not developed further,
+see README "Supported releases"); PR #3 is the starting point for anyone
+who wants it.
+
+**Validation:** opengl32 fix L1 (Windows 10, both architectures) and cross
+review (Codex); vkd3d-proton port cross review (Codex, 2026-11-07; one CI
+check fixed after it, an inherited `float2x2` payload limitation of
+vkd3d-proton 3.0.1 open). L4: Inventor 2027 on an RX 6400 (maintainer,
+part, assembly, drawing, PDF, save/reopen) and on an RTX 5080 (tester in
+PR #3); 2026-11-12 also on an RX 9060 XT (RDNA 4, RADV, Mesa 26.2.6) with
+winum-11.20-1, the same patched vkd3d-proton 3.0.1 (artifact of winum run
+42339679557) and `EnableHydra` set with `migrate-prefix.sh --run 0004`:
+the option is available, the panel says GPU, Low/Draft/High, orbiting
+while rendering, an assembly and the status bar are fine; Restore Down and
+maximising again can still leave white lines in the UI until the window is
+minimised and restored. Not a guarantee for other cards or drivers -
+reports welcome.
+Details: winum `docs/patches/opengl32-window-format-color-bits.md`,
+`docs/wine-repro/opengl32-pixel-format-alpha/`, `gpu/vkd3d-proton/`.
+
+## Status bar: old text stays after GPU ray tracing (workaround)
+
+**Symptom:** once GPU ray tracing has been started in a maximised window, new
+status texts ("Ready", coordinates, prompts) are drawn over the old ones and
+the strip never clears; Restore Down cleans it, maximising again brings it
+back. Seen on AMD (RX 6400) and NVIDIA (RTX 5080).
+
+**Cause, as far as measured:** not the status bar patch. Windows 10
+measurements (own MEASURE program) and Wine traces show that Inventor asks
+for the erase and fills the strip with an opaque `ExtTextOutW` before
+drawing the text, the same before and after ray tracing, and Wine's paint
+areas do not change. A Wine trace channel added only to a diagnostic build
+(`+sbdiag`) showed that after ray tracing starts in a maximised window Wine
+stops drawing the status bar into the window's bitmap surface and draws
+directly to the X11 window through XRender; the fills report success, but
+the old text survives on screen. With Wine's XRender drawing disabled for
+Inventor the direct path is still taken and the text stays clean in all four
+states (before, after ray tracing, restored, maximised again), with ray
+tracing working. The exact faulty XRender operation is not identified yet.
+
+**Workaround:** with Inventor closed, using the same Wine and prefix as
+Inventor:
+
+```bash
+export WINEPREFIX=~/.wine-inventor2027
+wine reg add 'HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver' /v ClientSideWithRender /t REG_SZ /d N /f
+```
+
+It disables Wine's XRender 2D drawing for Inventor only. Smoke test on AMD
+(part, assembly, drawing, 2D PDF, ray tracing, save, close, reopen): OK, no
+change in fonts or responsiveness noticed. NVIDIA not yet confirmed.
+
+The status bar patch (`comctl32-statusbar-erase-background`, the dark status
+bar) matches Windows for Inventor's themed status bar; its divergence for
+unthemed status bars is corrected by a v2 candidate in winum. Full
+investigation: winum `docs/wine-repro/comctl32-statusbar-erase/README.md`.
+
+**For a Wine bug report:** a synthetic reproducer has not reproduced it yet
+(Vulkan, D3D12, OpenGL and their combinations in a maximised window, two
+GPUs); the trigger is still Inventor's switch to GPU ray tracing. Report
+when there is a public test case.
+
+## Window drawn shifted after ray tracing (open)
+
+After GPU ray tracing has been started, Restore Down and maximising again can
+leave parts of the interface drawn in other places, with a white strip along
+the top and left of the viewport. Minimising and showing the window again, or
+reopening it, clears it. In a fresh session without starting ray tracing,
+repeated Restore Down/maximise is correct. `ClientSideWithRender=N` does not
+change it. Cause unknown; possibly the same window-surface change as the
+status bar, not proven.
+
+## Home page stays stale after a dialog (open)
+
+After closing Application Options, the Home page (WebView2) can keep showing
+an old picture until it is clicked. Seen on AMD and NVIDIA, also before the
+ray tracing work. `ClientSideWithRender=N` does not change it. Not yet
+investigated; an earlier attribution to WebView2's GPU process was premature.
+
+## 3D PDF (Anark) - works in testing
+
+**Current release:** *Publish* crashes Anark's `corewrapper.exe` under
+wine-mono, so 3D PDF is off.
+
+**In testing (next release):** with Microsoft's .NET Framework 4.8 installed
+in the prefix (used as a black box) instead of wine-mono for the .NET
+Framework parts, `corewrapper.exe` runs. The export then took about
+7 minutes: every typelib-marshaled proxy for an Inventor interface parsed
+Inventor's type library again, because Wine dropped the library from its
+cache when the last reference went. The winum patch
+`oleaut32-typelib-keep-released` keeps up to 8 released libraries (Windows
+keeps released libraries too, measured): part 15 s, assembly 20 s, the PRC
+model present in the PDF (Inventor 2027.2, 2026-11-03, with a draft of the
+patch). The patch passed cross review and L1 and is in winum-11.20-1. The
+installer's .NET Framework 4.8 step (section ".NET Framework 4.8 in the
+prefix") turns the two add-ins on. Open: L4 with winum-11.20-1 and a prefix
+from the clean installation, and tests by others.
+Measurements: [wine-repro/oleaut32-typelib-cache](wine-repro/oleaut32-typelib-cache/README.md).
+
+## .NET Framework 4.8 in the prefix (installer step)
+
+**Why:** Inventor's .NET Framework programs ran on wine-mono and crashed
+there: Anark's `corewrapper.exe` (3D PDF Publish) and AnyCAD's
+`AnyCADPropertyMappingTool.exe` (Import CAD -> Property Mapping, issue #10).
+With Microsoft's .NET Framework 4.8 in the prefix (used as a black box) both
+run. The test prefixes got it with winetricks' `dotnet48` verb.
+
+**Where the installer comes from:** Autodesk's own image, not a download.
+The 2027 image has `3rdParty/dotNetFramework/48/pkg.dotnet48.xml` (".NET
+Framework Runtime 4.8", build 4.8.3928.0): `dotNetFx48_Full_x86_x64.exe` with
+`/q /norestart`, success code 5100 besides 0, `ignoreFailure`, and the
+condition `528039 < %NET_FRAMEWORK_RELEASE%` (the `Release` value under
+`HKLM\SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full`) for "already
+installed". For reference only, the file in the maintainer's 2027 image
+(`..._db_002_002`) has SHA-256
+`9b1f71cd1b86bb6ee6303f7be6fbbe71807a51bb913844c85fc235d5978f3a0f`; it is not
+checked, other images (2026, updates) may carry another build. The language
+packs (`dotNetFx48LP_*`, `pkg.dotnet48_<lcid>.xml`) are not needed.
+
+**Why it never ran:** in both images (2026 and 2027, `..._db_002_002`) the
+only manifest that names it is DWG TrueView's (`x64/dwgviewr/pkg.dwgviewr.xml`,
+a `core` dependency with `external="true"`), and DWG TrueView is not part of
+the product's plan - it comes with the 2027.2 Update. `odis.py` plans what
+the application manifests and their `<Dependencies>` reach, so the product
+installation never met the package; on Windows, Setup runs it as a
+prerequisite when its condition says it is missing. And under Wine the
+installer finds wine-mono claiming 4.8: it exits 0 and installs nothing (the
+2027.2 Update runs the same installer with that result, see the Ubuntu VM
+entry in the Result log).
+
+**What the step does** (`install_dotnet48` in `scripts/install-from-image.py`,
+after the product's packages, product images only, skipped when already
+done; `--no-dotnet48` leaves it out). It does what winetricks'
+[`dotnet48` verb](https://github.com/Winetricks/winetricks/blob/master/src/winetricks)
+does, **including the `dotnet40` step it runs first** (`load_dotnet48`,
+`load_remove_mono`, `load_dotnet40`, read at version `20260125-next`); only
+the 4.8 installer comes from Autodesk's image instead of a download:
+
+1. Find the package by its `Identity/DisplayName` among the image's
+   `pkg.*.xml` (`odis.find_package`), so the folder is not hard-coded; read
+   the file and parameters from it.
+2. Remove wine-mono as `remove_mono` does: every "Wine Mono" entry of
+   `wine uninstaller --list`, then the `NDP\v3.5` and `NDP\v4` keys it wrote,
+   and Wine's mono-backed `mscoree.dll` in `system32`/`syswow64` (the copy
+   that contains `WINE_MONO_OVERRIDES`).
+3. Check that `NDP\v4\Full\Release` is gone and no "Wine Mono" entry is
+   left (else stop: the 4.8 installer would do nothing).
+4. **.NET Framework 4.0, as `dotnet40` does:** `dotNetFx40_Full_x86_x64.exe`
+   from Microsoft (pinned like DXVK: URL and SHA-256
+   `65e064258f2e418816b304f646ff9e87af101e4c9552ab064bb74d281c38659f` as in
+   winetricks, confirmed by the maintainer's download 2026-11-11; cached in
+   `DOWNLOAD_DIR`, a wrong checksum deletes it and stops), Windows version
+   `winxp` while it runs, `/q /c:"install.exe /q"`, then `mscoree=native`,
+   `NDP\v4\Full` `Install`=1 and `Version`=4.0.30319, `OnlyUseLatestCLR=1`
+   in `HKLM\Software\(Wow6432Node\).NETFramework`, the previous Windows
+   version back. Checked by Microsoft's `mscoree.dll` in `system32` and
+   `syswow64`; skipped when they are already there. **Why it is needed:**
+   4.0 brings `mscoree.dll`; the 4.8 installer does not carry it (on Windows
+   7 and later it is a file of the system) - found by the maintainer: on a
+   prefix with 4.8 alone, even a repair (`REINSTALL=ALL`, "Final Result ...
+   Success (0x00000000)") left no `mscoree.dll`.
+5. **.NET Framework 4.8** from the image, as `load_dotnet48` runs it:
+   Windows version `win7` while it runs (the verb leaves it; we put the
+   previous value back), `fusion=b`, the manifest's parameters.
+6. For both installers: `wineserver -k` before; afterwards wait until none
+   of the setup's processes (`Setup.exe`, `SetupUtility.exe`,
+   `msiexec.exe`, `ngen.exe`, `mscorsvw.exe`, the package itself) has run
+   for 20 s (limit one hour), then `wineserver -k` (what is left are the
+   prefix's services, which never exit) and set `mscoree=native` in
+   `DllOverrides`.
+7. Check the result, not the exit code: `clr.dll` in
+   `windows\Microsoft.NET\Framework64\v4.0.30319` and `...\Framework\...`,
+   Microsoft's `mscoree.dll` in `system32` and `syswow64` (there, and not
+   Wine's mono one), the `mscoree` override, and a "Final Result" line with
+   "Success" in the newest `Microsoft .NET Framework 4.8 Setup_*.html` of
+   the prefix's Temp folder (the setup writes it in UTF-16; the value can
+   be in the next table cell). If it is not there, the install stops with a
+   message (wine-mono is gone by then, so a prefix without either is not
+   left silently).
+
+**First clean installation (2026-11-11, `f6a280b`) stopped in this step,
+two faults:**
+
+- *wine-mono was not removed, so the installer did nothing.* The log said
+  "Wine Mono: not installed", but a new winum-11.20-1 prefix has the entry
+  "Wine Mono Windows Support" and `NDP\v4\Full` with `Release` 0x82348
+  (533320), `Version` 4.7.03190, `Install` 1. Cause: `wine uninstaller
+  --list` prints its list on **stderr** (`{GUID}|||Wine Mono Windows
+  Support`) and the step read only stdout (winetricks reads `2>&1`); the
+  NDP keys were deleted only after an uninstall, so they stayed, the
+  package condition `528039 < Release` held, and `dotNetFx48_Full_x86_x64.exe
+  /q /norestart` exited 0 after 23 s with no `clr.dll`. Fix: both streams
+  are read; the `NDP\v3.5` and `NDP\v4` keys are deleted every time; before
+  the installer runs, `NDP\v4\Full\Release` must be gone and no "Wine Mono"
+  entry left, else the step stops with that message. Checked here with
+  winum-11.20-1 in a new prefix: entry found and removed, keys gone, mono
+  `mscoree.dll` deleted from `system32` and `syswow64`.
+- *`wineserver -w` never returned.* After the installer it waited for
+  `MicrosoftEdgeUpdate.exe /c` (WebView2's updater) and
+  `FNPLicensingService64.exe`. These are Windows services that Autodesk's
+  and WebView2's packages register and that Wine's `services.exe` starts by
+  itself whenever a Wine process starts in the prefix; they never exit.
+  `stop_licensing_service()` only ends the `AdskLicensingService.exe` that
+  `install-from-image.py` starts itself as a plain process, so the FlexNet
+  service was still running - most likely (to confirm: its `Start` value
+  under `HKLM\System\CurrentControlSet\Services`). Fix: `wineserver -k`
+  before the step, and after the installer has exited (`wine` returns with
+  it) `wineserver -k` and only then `-w`.
+
+**Second clean installation (2026-11-11, `75712cc`): .NET 4.8 incomplete.**
+`clr.dll` was in both Framework folders, but `mscoree.dll` in neither
+`system32` nor `syswow64`, so with `mscoree=native` no .NET Framework
+program could start. `wine dotNetFx48_Full_x86_x64.exe /q /norestart`
+returned 0 after 41 s - the package is a self-extractor that exits while
+the `Setup.exe` it started goes on - and the `wineserver -k` right after it
+ended the setup half-way: its log
+(`Microsoft .NET Framework 4.8 Setup_<time>.html` in Temp) has no "Final
+Result". The 2027.2 Update's run of the same installer then said "BlockIf:
+.NET Framework 4.8 or a later update is already installed" and "Final
+Result: ... Success" without adding anything. The step's check (clr.dll and
+the override only) passed it. Fixes:
+
+- *Wait for the setup, not for the prefix.* Two ways were possible:
+  stopping and disabling the services that never exit (FlexNet's
+  `FNPLicensingService64`, Edge Update) for the step and restoring them,
+  then `wineserver -w`; or waiting for the setup's own processes. The step
+  waits for the processes (read from `/proc`: `WINEPREFIX` of this prefix
+  in the environment, the Windows image name as the first word of the
+  command line): it does not change services that Autodesk's and
+  WebView2's installers registered, does not depend on their names, which
+  differ between releases, and needs nothing restored if the step stops
+  half-way. The process names are the .NET setup's own and stable; an
+  unknown helper would show as a missing file or a missing "Final Result",
+  not as a silent success.
+- *Check what makes .NET usable:* `mscoree.dll` in `system32` and
+  `syswow64` and the setup's "Final Result" (above), in
+  `dotnet48_missing()`; `dotnet48_present` (launcher, add-ins) checks the
+  files and the override - the setup log can be cleaned from Temp later.
+- *A prefix left like this* repairs itself when the same command runs
+  again: the step sees the missing files, deletes the NDP keys again (the
+  setup's "BlockIf" reads them) and runs the installer again. The failure
+  message says so, and that deleting the prefix and installing again also
+  works.
+- *Anark and Publisher:* in this state the old `dotnet48_present` returned
+  true (no `mscoree.dll` at all, so `! grep -qs` on it was true), so
+  `cfg_disable_addins` did not disable them and, finding nothing in
+  `Addins.disabled`, printed nothing - its `info` lines go to stdout,
+  which `install.sh` writes to its log, but that branch had no line of
+  its own. It now always prints which way it went (".NET Framework 4.8 in
+  the prefix - 3D PDF (Anark, Publisher) on" or "... not in the prefix -
+  ... stays off"). If the two add-ins showed as off in Inventor, the
+  likely reason is that without `mscoree.dll` no .NET add-in can load,
+  not that they were moved (to confirm: `bash scripts/addins.sh list`).
+
+**Anark and Publisher off after the second clean installation (follow-up):**
+`addins.sh list` showed exactly `Anark.Core.addin`,
+`Autodesk.Publisher.Inventor.addin` and
+`autodesk.translatorfusion.inventor.addin` in `Addins.disabled`, and the
+install log had neither the ".NET Framework 4.8 ... stays off" nor an "on
+(.NET Framework 4.8)" line - one of the two is printed whenever the
+`topic/dotnet48` code of `75712cc` runs `cfg_disable_addins`. Run here with
+winum-11.20-1 under `set -Eeuo pipefail` (as `finish-install.sh` runs),
+`dotnet48_present` saw the right `wine` and `WINEPREFIX` and returned the
+right answer. Two wrong guesses were made here: another checkout, and then
+that `config.env` named an emptied prefix. The maintainer found what it
+was: no fault at all. The installer had done it right
+(`~/.wine-inventor2027/.../Addins.disabled` held only AssistantAddin,
+Feedback, InteractiveTutorial, PerfFeedback, SharedViews and
+translatorfusion, moved at 18:28 by step 8). `addins.sh list` without
+`INV_YEAR` read the maintainer's working Inventor 2026 prefix
+(`~/.wine-invclean`, named in `config.env` on purpose), where Anark and
+Publisher are off by the old default list - correct for that prefix.
+What came out of it: `addins.sh` prints the release, the prefix and where
+the prefix came from on its first line, so it is clear which one it reads
+(the case without `config.env` and an empty `~/.wine-inventor2026` was left
+out then and added back after the Ubuntu VM installation, Result log
+2026-11-11);
+`list` no longer exits 1 without an `Addins.disabled/libs`; and only when
+the prefix `config.env` names holds no Inventor at all does `common.sh`
+take the release it finds installed (a `config.env` prefix with Inventor is
+kept; with `INV_YEAR=2027` given, the 2027 prefix is used as before).
+Still useful from the first round:
+`cfg_disable_addins` now logs the `wine` it uses,
+the prefix, the list it applies and, when .NET 4.8 counts as missing, the
+first condition that failed (`dotnet48_why`); it decides once, so the list
+and the message cannot disagree; and the registry query no longer goes
+through a pipe that `pipefail` could fail.
+
+**Wine update:** with winum-11.20-1, after the removal above, a stand-in
+native `mscoree.dll` (a small DLL built with MinGW, not Microsoft's) and
+`mscoree=native`, `wineboot -u` brought back neither the uninstall entry
+nor the NDP keys, left the override and did not touch the DLL. To catch it
+should a later Wine do so, `dotnet48_present` also fails when Wine's
+mono-backed `mscoree.dll` (it contains `WINE_MONO_OVERRIDES`) is back in
+`system32`, and the launcher warns when the prefix's install state records
+the step but `dotnet48_present` fails.
+
+**`dotnet40` (2026-11-11, third round):** the first version left the
+verb's `dotnet40` step out, on the assumption that 4.8 replaces 4.x in
+place. It does not bring `mscoree.dll`, so the step now runs `dotnet40` as
+well (item 4 above). The same round fixed the "Final Result" check: the
+setup's HTML log is UTF-16, which the check read as UTF-8 and so never
+found the line.
+
+**Why after the product's packages, in install-from-image.py:** the test
+prefixes got .NET 4.8 after Inventor was installed (winetricks on a finished
+prefix), so this is the tested order; on Windows Setup installs it first,
+which would run Autodesk's own MSI custom actions on Microsoft's .NET under
+Wine - untested. `install-from-image.py` is the place that has the image;
+`finish-install.sh` only has the prefix. Updates (`--prepared-prefix`, Nix,
+`install.sh`) run after the product image, so they find .NET 4.8 installed.
+**A prefix installed before this step (2026-11-11)** runs on wine-mono and
+keeps doing so: no prefix migration adds .NET (it replaces wine-mono, which
+cannot be undone step by step - phase 4 in
+`docs/drafts/prefix-migrations.md`, written when a user asks for it). The
+way is a new installation (README, "3D PDF and Property Mapping in an older
+installation"): the old prefix moved aside, `install.sh` again; the files in
+`~/Inventor` (D:) stay, the user signs in again. The launcher says so once
+per prefix (`dotnet48_notice_once`, `notice.dotnet48` in the prefix's
+state), not at every start. Running the product image through
+`install-from-image.py` on an existing prefix would also run the step, but
+without a backup and untested - not recommended.
+
+**Not planning prerequisites in general:** `odis.py` could plan every
+prerequisite and evaluate its `<Conditions>` like Setup. Under Wine the
+conditions are what is unreliable (wine-mono reports a 4.8 release), the
+step needs work around the installer that a generic one would not do
+(remove wine-mono, overrides, check the files), and other prerequisites
+would start running in the prefix, untested. So only this one package, by
+name.
+
+**Add-ins:** `Anark.Core.addin` and `Autodesk.Publisher.Inventor.addin` are
+off by default only while .NET Framework 4.8 is missing
+(`INV_DOTNET48_ADDINS`, `inv_default_disabled_addins` in `common.sh`);
+`finish-install.sh` and `addins.sh reset` turn them on in a prefix that has
+it.
+
+**Nix:** the 4.8 installer is part of the image that `requireFile` already
+covers; the 4.0 installer is a `fetchurl` with the same URL and SHA-256,
+linked into `DOWNLOAD_DIR` as DXVK and vkd3d-proton are. `nix/inventor.nix` keeps Microsoft's
+`mscoree.dll` when the library prunes Wine's stock DLLs and checks for both
+`clr.dll` after the installation. Open for @krokosik: how removing wine-mono
+(uninstaller, deleted files and keys) looks in the captured installation
+layer over the base layers.
+
+**Inventor 2026:** its image (`..._db_002_002`) has the same package at the
+same place (`3rdParty/dotNetFramework/48/pkg.dotnet48.xml`, also referenced
+only by DWG TrueView), so the step runs for 2026 too.
+
+**L4, clean installation (2026-11-11, maintainer):** Arch, winum-11.20-1,
+Inventor 2027.2, a new prefix installed from `topic/dotnet48` at `bea99d2`.
+.NET Framework 4.0 and 4.8 installed: Microsoft's `mscoree.dll` in
+`system32` (444 752 bytes) and `syswow64` (297 808 bytes), the 4.8 setup's
+"Final Result" Success; 3D PDF's add-ins on. Start, sign-in, Wine 11.20
+with no warning from the launcher, part, assembly, save/reopen, restart:
+OK. 3D PDF Publish: OK. Import CAD's Property Mapping opens (it crashed on
+wine-mono). Stress Analysis on a 500 mm tube with a hole: element size
+0.01 -> 68 718 elements / 109 318 nodes, 0.005 -> 558 221 elements /
+816 748 nodes; mesh and simulation about 4 minutes, OK. Import of a STEP
+file into an assembly still fails on the clean prefix ("Could not Insert
+Object"), into a part it works - issue #10, a separate matter (section
+"Import CAD (STEP) and Property Mapping in 2027").
+
+**Open:** whether `wineboot -u` (the launcher after a Wine update) brings
+wine-mono back with a real winum update (tested only with a stand-in DLL);
+a clean installation of Inventor 2026; L5 (a week of use).
+
+## Prefix migrations: updating an installed prefix (2026-11-11)
+
+**Problem:** everything in the prefix (registry, DLL overrides, DXVK,
+add-ins, ...) was set only by `finish-install.sh` at installation; an
+existing installation got a change only by reinstalling. Plan:
+`docs/drafts/prefix-migrations.md`.
+
+**What it is now:** numbered steps in `scripts/lib/migrations/`
+(`NNNN-<what>.sh`, runner `scripts/lib/migrations.sh`, overview in the
+folder's README). The prefix records what it has had in
+`<prefix>/.inventor-on-linux/state`; each step saves what it changes to
+`.inventor-on-linux/backup/<step>/` (the registry files always) and, if it
+fails, that is put back and the run stops. `finish-install.sh` runs all
+steps (0001 is its former setup, moved unchanged); `launch-inventor.sh`
+runs the pending ones at every start (seconds when there are none);
+`scripts/migrate-prefix.sh` does it by hand (`--status`, `--dry-run`,
+`--all`, `--run`, `--restore`); the GUI's Update runs `--all`. A prefix from
+before migrations is adopted: recorded as having step 0001, nothing
+changed. Each step runs in its own `bash -Eeuo pipefail`: a first version
+ran it in a subshell, where bash ignores `set -e` when the call sits in an
+`||` - a failing `wineboot -u` was not stopped; a test now covers it.
+
+**The first steps:**
+- `0002-winum-runtime`: `wineboot -u` when the prefix was last updated for
+  another Wine, then `runtime=` in the state. The launcher compared only
+  `wine --version`, which is `wine-11.20` for `wine-inventor-11.20-6` and
+  for winum-11.20-1, so it would not have updated a prefix moving to winum.
+  Finding on the way: `wineboot -u` does not replace the copies of Wine's
+  builtin DLLs in `system32`/`syswow64` (winum-11.20-1, with copies from
+  Wine 11.21 and a non-Wine file; mtime unchanged), so a prefix without a
+  record is judged by them only as "made by this Wine" (equal) or not; the
+  launcher now also runs `wineboot -u` when the record differs (a new winum
+  build of the same Wine version) and writes the record.
+  First test on the maintainer's reflink copy of their 2026 prefix from
+  before winum, isolation on (2026-11-11, `baf523b`): 0001 adopted, 0002 and
+  0003 applied, `runtime=wine-11.20 winum-11.20-1-x86_64`, afterwards only
+  C:, D:, T:, U: (U: -> winum's `share/wine`), `.update-timestamp` still
+  `disable`. But during `wineboot -u` Wine showed "Wine Mono Installer -
+  could not find a wine-mono package": with isolation there is no Z:, Wine
+  reaches its own `share/wine` (wine-mono) only through the drive
+  `sandbox_fs` links to it, and before the step that drive still pointed at
+  the old Wine. Fixed: the step runs `sandbox_fs` before `wineboot -u` (and
+  again after it); a test with a fake `wineboot` that fails without such a
+  drive covers it (without the fix it fails). The step's header printed
+  "wineboot -u with wine-11.20" without the winum build because it used the
+  launcher's `INV_WINUM`, empty in `migrate-prefix.sh`; it now prints
+  `wine_runtime_id`, the same string the state records. Step 0002 had run
+  only on that copy and is not on `main`, so it was changed in place.
+  Second test, a reflink copy of the clean 2027 prefix with .NET 4.8,
+  `migrate-prefix.sh --run 0002` forced (2026-11-11): `wineboot -u` did not
+  bring wine-mono back - no uninstall entry, `NDP\v4\Full` still Release
+  0x80eb1 / Version 4.8.03761, Microsoft's `mscoree.dll` unchanged
+  (444 752 / 297 808 bytes), `dotnet48_present` true, before and after
+  identical. But a window "rundll32.exe - This application could not be
+  started" (the .NET shim's, with a link to Microsoft's .NET
+  troubleshooting) came up and waited. With `WINEDEBUG=+process,+loaddll`:
+  the update runs `rundll32 setupapi,InstallHinfSection` three times
+  (`PreInstall`, `DefaultInstall` 64-bit, `Wow64Install` 32-bit); the 64-bit
+  `DefaultInstall` loaded Microsoft's `mscoree.dll` and
+  `Framework64\...\mscoreei.dll` and never unloaded them, the 32-bit one
+  loaded and unloaded them. `NoGuiFromShim=1` (both registry views) did not
+  stop the window. `WINEDLLOVERRIDES=mscoree=d` for the update did: no
+  window, no `mscoree` load, .NET unchanged, and Inventor then started from
+  the launcher (which applied the pending 0003 on the way). So
+  `wine_update_prefix` (common.sh) runs `wineboot -u` with `mscoree=d` when
+  the prefix has Microsoft's `mscoree.dll` (the .NET installer registered it
+  already, and an update that cannot load it cannot bring wine-mono back);
+  a prefix on wine-mono keeps it, so wine-mono can still be updated. 0002
+  and the launcher use it; 0002 is changed in place (only on test copies,
+  not on `main`).
+- `0003-x11-driver-inventor`: `UseEGL=N`, `ClientSideWithRender=N` for
+  `Inventor.exe` (sections "GPU ray tracing" and "Status bar: old text
+  stays after GPU ray tracing").
+- `0004-enable-hydra` (**optional**, `migrate-prefix.sh --run 0004` only):
+  `EnableHydra=1`, `RegistryVersion30.0` (2026) or `31.0` (2027). Not for
+  every prefix: on a card without ray tracing hardware (RX 580, the
+  maintainer's measurement of 2026-10-21 in PR #3) it switches Inventor to
+  Hydra/USD and ray tracing runs on the CPU at about 1200 % CPU. It becomes a
+  normal step with a GPU check and an L4 on a ray tracing card.
+- `0009-vkd3d-proton-winum` (2026-11-16): `d3d12.dll`, `d3d12core.dll`
+  (system32, syswow64) from winum's `vkd3d-proton-3.0.1-winum-1` in place
+  of upstream's 3.0.1, only with `INV_VKD3D=pinned` and when the DLLs are
+  not the pinned ones (SHA-256 of each DLL, `VKD3D_DLL_SHA256` in
+  common.sh); the old DLLs go to the backup; offline it is put off
+  (`MIG_DEFER`) like 0006.
+- Waiting: optional .NET 4.8 for old prefixes (phase 4, proposal in the plan).
+
+**Rule (AGENTS.md):** every change to what a prefix gets is a new step,
+listed in `SHA256SUMS`; `tests/test_migrations.py` fails on an edited or
+unlisted step and on prefix changes in `finish-install.sh`.
+
+**Checked:** 16 tests with fake prefixes and a fake Wine whose registry is
+the prefix's `user.reg`/`system.reg` (old prefix gets 0002-0003 and then
+"nothing to do"; a prefix made by winum gets 0003; 0004 only by name; a prefix with
+everything is untouched; a failing step and a failing `wineboot -u` are put
+back; `--restore`; a busy prefix is left alone; `--status` writes nothing;
+optional steps only by name; `--all`; the runtime check; a failing command
+in the middle of a step; with isolation, the new Wine's `share/wine` linked
+before `wineboot -u`; `mscoree=d` for the update only with Microsoft's
+`mscoree.dll`; the runtime name in the step's header), and 2 guard
+tests. With winum-11.20-1
+on a test prefix whose `ntdll.dll` copies came from Wine 11.21 (as a
+pre-winum prefix): 0002-0004 applied in 15 s (0004 was not optional yet), the values readable with
+`wine reg query`, a second run "nothing to do", backups 3 MB each.
+
+**L4 (maintainer, 2026-11-11, reflink copies of their prefixes):**
+- Inventor 2026 from before winum, isolation on: 0001 adopted, 0002 and
+  0003 applied; start, part, assembly, save, reopen and restart OK; the
+  launcher afterwards "up to date - nothing to do". This prefix still runs
+  on wine-mono (no .NET 4.8: it was installed before the installer had
+  that step), so Property Mapping crashes there as in issue #10 - not a
+  migration matter, and `wineboot -u` left its wine-mono as it was.
+- Inventor 2027 with .NET 4.8 (the clean installation of the same day):
+  `--run 0002` forced, at `4f5e980` with no window; wine-mono did not come
+  back (no uninstall entry, `NDP\v4\Full` Release 0x80eb1 / Version
+  4.8.03761, Microsoft's `mscoree.dll` unchanged, `dotnet48_present` true);
+  the launcher applied the pending 0003 by itself; Property Mapping and 3D
+  PDF Publish OK.
+
+**Open:** Nix (@krokosik) - the steps run inside `finish-install.sh` in the
+build, the launcher part is not wired; the phase 4 step (.NET 4.8 for old
+prefixes) is not written - it is done when a user asks for it; until then a
+new installation is the way (section ".NET Framework 4.8 in the prefix").
+
+## This project's own Wine (v0.2)
+
+Up to v0.1 the fixes were built per DLL and copied over the system's Wine
+(`build-wine-dll.sh --install`). Every Arch Wine update replaced them, and the
+prefix then ran without them until `rebuild-wine-fixes.sh`. Since v0.2 the
+whole Wine is built once, in public, by `.github/workflows/build-wine.yml`
+(`scripts/build-wine.sh`: vanilla source of the version in `wine/version.env`,
+all of `patches/`, `--enable-archs=x86_64,i386`, Arch Linux container) and
+published as release `wine-<version>-<build>`. `scripts/get-wine.sh` downloads
+it, checks it against `wine/SHA256SUMS` and unpacks it to
+`~/.local/share/inventor-on-linux/`; `common.sh` puts its `bin/` first in
+`PATH` (`INV_WINE=auto|bundled|system`). The system's Wine is not touched.
+The build also patches the 32-bit (i386) PE DLLs, which the per-DLL builds
+never did. A build made on Arch also runs on Ubuntu 24.04 (glibc 2.38 symbols).
+
+**Do not mix Wine versions on one prefix.** The first test used a 11.19 build
+while Arch had moved to 11.20: the launcher's `wineboot -u` then switched the
+prefix between the two versions on every start, and under KDE the maximized
+Inventor window lost its own title bar row (quick access toolbar, user name)
+behind a KDE title bar, and only part of the window was drawn. With the 11.20
+build (`wine-11.20-1`) maximizing is correct again. Keep `wine/version.env` on
+the version the prefix was last updated with, and move forward only.
+
+## winum as the Wine for Inventor (winum-11.20-1)
+
+**What changed for the user:** Inventor runs on
+[winum](https://github.com/Harvi654/winum) `winum-11.20-1` instead of this
+project's own `wine-inventor-11.20-6`. `scripts/get-wine.sh` downloads
+`winum-11.20-1-x86_64.tar.xz` from winum's releases, checks it against
+`wine/SHA256SUMS` and unpacks it to `~/.local/share/inventor-on-linux/`; an
+installed older `wine-inventor-*` build keeps working until then (the
+launcher says a newer one is named). NixOS builds the same series from the
+flake input `winum` (`nix/wine.nix`).
+
+**Why:** winum carries the same fixes, now each with a Wine test that passed
+on real Windows 10 (or a recorded reason why there cannot be one), paired L2
+runs against vanilla Wine, cross review by a second assistant and L4 in
+Inventor; the series is shared with the SOLIDWORKS project. All 27 patches
+of `wine-inventor-11.20-6` are in winum's series of 62; 15 of them in a
+revised version, the other 12 with the same code (for
+example the toolbar `TB_SETROWS` fix, which now gives the symbol palette
+Windows' 40x24 buttons); winum also has fixes from the SOLIDWORKS work and
+the two oleaut32/opengl32 fixes that were drafts here. Record:
+`docs/release/winum-11.20-1.md` in winum.
+
+**False "Wine fixes not installed" warning:** with winum in `PATH`
+(`INV_WINE=system`, `PATH=<winum>/bin:$PATH`) the launcher warned that the
+fixes were missing and asked for `rebuild-wine-fixes.sh`. It compared the
+per-DLL backups of the v0.1 way (`build-wine-dll.sh --install`, `*.orig-<wine
+version>` next to the system's DLLs), which a winum never has. The check and
+the per-DLL builds are retired; the launcher reads the `BUILDINFO` next to the
+Wine in `PATH` (`wine_winum_name` in `common.sh`): a winum is named in the
+start line, any other Wine gets one line that the fixes are only in winum.
+
+**Archived:** `patches/*.patch` (with `debug/`, `drafts/`), `build-wine.sh`,
+`make-wine-source.sh`, `lib/wine-patches.sh`, the "Build Wine" workflow and
+the per-DLL scripts (`build-wine-dll.sh`, `build-wbemprox.sh`,
+`rebuild-wine-fixes.sh`) are in `docs/archive/own-wine-build/`, unchanged.
+`patches/libgsf/` stays (the flake's libgsf overlay).
+
+**Checks:** `bash -n` on all scripts, `python3 -m unittest discover -s
+tests`; the launcher's Wine detection with a fake winum and a fake plain Wine
+in `PATH` (commands in the commit). Nix: `flake.lock` gains only the input
+`winum` (narHash equal to `nix hash path` of `git archive winum-11.20-1`);
+`nix flake check` with the new check `winum-pin` (version.env and the flake
+input name the same release) runs in this repository's CI and with
+@krokosik.
+
+**Open:** L4 of the downloaded winum-11.20-1 release in Inventor 2026 and
+2027 (start, part, assembly, drawing, save/reopen, restart, plus the symbol
+palette); the NixOS build of the winum series (@krokosik).
 
 ## Known harmless log messages
 
@@ -942,8 +1668,556 @@ with an NVIDIA RTX card would show whether this is AMD-specific.
 - `class {cfe9f29b-...} not registered`: not registered on Windows either.
 - `class {1060954f-...} not registered`: the Fusion interop add-in, disabled by
   default (`scripts/addins.sh enable translatorfusion` to try it).
+- `clr_optimization_v4.0.30319_32` / `_64` "failed to start" (`mscorsvw.exe`,
+  an `mscoree` import): the .NET Framework's native image service, which
+  Wine's service manager cannot start; seen on working prefixes too
+  (maintainer, 2026-11-16). Inventor does not need it.
+- `Error running cmd ... winemenubuilder.exe -a -r (126)` from `wineboot`:
+  Wine's menu builder is disabled in the prefix (migration 0011; before,
+  through `WINEDLLOVERRIDES`), so it cannot start - intended (section
+  "Wine's menu builder off in the prefix").
+
+## Wine's menu builder off in the prefix (migration 0011)
+
+**Symptom.** After a fresh Inventor 2026 installation had finished (22:56,
+2026-11-16), the maintainer ran `wineserver -k` and then
+`wine reg query ...` by hand in a terminal (diagnostics, 23:09). Wine
+started the prefix again, and `wineboot` ran `winemenubuilder.exe -a -r`.
+It wrote 18 entries into `~/.local/share/applications` that pointed at
+`~/.wine-inventor2026`: `wine-extension-{application, appref-ms, chm, crt,
+dwg, "dwg;*.idw", hlp, iam, ide, ipn, ipt, msp, reg, vbs, xaml,
+xbap}.desktop` and `wine-protocol-{acad-acc, adskidmgr}.desktop` - file
+associations, and the sign-in protocol, that start Autodesk's programs
+without this project's launcher. The same happened earlier that day with
+a Microsoft installer run by hand. `install-desktop-integration.sh`
+removed them.
+
+**Cause.** The menu builder was off only through the environment:
+`WINEDLLOVERRIDES=winemenubuilder.exe=d`, set by `common.sh` and
+`install-from-image.py`, so by the installer and the launcher. A plain
+`wine ...` from a guide or a terminal does not have it.
+
+**Fix.** Migration `0011-winemenubuilder-off` sets
+`HKCU\Software\Wine\DllOverrides` `"winemenubuilder.exe"=""` in the prefix.
+An empty load order is what Wine's loader reads as disabled
+(`dlls/ntdll/unix/loadorder.c`, `parse_load_order` starts from "disabled"
+and only `n`/`b` change it; `remove_dll_ext` strips only `.dll`, so the
+value name keeps its `.exe`) - the same as the environment setting, which
+Wine checks first and which stays (harmless, and it covers the time before
+the migration ran). Then the step removes the prefix's menu entries as
+`install-desktop-integration.sh` does: every `.desktop` file under
+`~/.local/share/applications` with `WINEPREFIX=<this prefix>` in it, Wine's
+own MIME packages and icons for `.ipt/.iam/.idw/.ipn/.ipj`, then
+`update-desktop-database` and `update-mime-database`. Entries of other
+prefixes and other programs stay. Both now use one function,
+`remove_wine_menu_entries` (common.sh). The entries are outside the prefix
+and not in the migration's backup (Wine made them; the registry backup
+holds the key). A new prefix gets the key the same way, since
+`finish-install.sh` runs every migration.
+
+**What changes otherwise.** Nothing for the installer, the launcher,
+Inventor's registration (0005), updates and the uninstall: they already
+ran with the menu builder disabled through the environment, and nothing
+in this project runs it on purpose. `wineboot` logs
+`Error running cmd ... winemenubuilder.exe -a -r (126)` - expected, as
+before under the environment setting. Whoever wants Wine's menu entries
+for this prefix back deletes the value
+(`wine reg delete 'HKCU\Software\Wine\DllOverrides' /v winemenubuilder.exe /f`)
+and runs Wine without `common.sh`.
+
+**Tested.** `tests/test_migrations.py`: the key is written with an empty
+value; the prefix's entries (extension, protocol, a Start-menu shortcut in
+`wine/Programs/...`, Wine's `x-wine-extension-ipt` package) go; another
+prefix's entry, a desktop file of another program and Wine's
+`x-wine-extension-pdf` package stay; a value such as `builtin` is
+replaced; a prefix with the key and no entries is "already so"; with the
+key already set, new entries still make the step run. Open: the
+maintainer's check on a prefix copy (start, sign-in, an update, then a
+plain `wineserver -k; wine reg query ...` without new entries).
+
+## NixOS: writable state hid DXVK; 2026 sign-in opened 2027
+
+Two problems of the declarative (nix-overlayfs) install, fixed in
+nix-overlayfs; details for users in `docs/nixos.md`.
+
+**DXVK hidden by Wine's own DLLs.** Symptom: nothing visible at first; the
+2026 writable state (`~/.local/share/autodesk-inventor-2026`) had grown to
+660 MB. Cause: that state is the upper layer of an overlay above the Nix
+layers, and a file in it always wins. Wine's `wineboot` updates a prefix
+(`PreInstall`, `DefaultInstall`, `Wow64Install` from `wine.inf`) when
+`.update-timestamp` is missing or does not match `wine.inf`
+(`programs/wineboot/wineboot.c`, `update_timestamp()`); an older nix-overlayfs
+did not carry that file into the layers, so one launch on 2026-10-22 copied
+about 1,480 builtin DLLs and EXEs into the writable state. Among them
+`system32/d3d11.dll`, `dxgi.dll`, `d3d12.dll`, `d3d12core.dll`: Wine's builtins
+(1 MB, marked `Wine builtin DLL` at offset 0x40) above DXVK's and
+vkd3d-proton's (4.4 MB for `d3d11.dll`), for good - later rebuilds re-merged
+the registry, never the files. With the `native` overrides from
+`install_dxvk`, Wine refuses a file carrying the builtin marker
+(`load_builtin()` in `dlls/ntdll/unix/loader.c` returns `STATUS_DLL_NOT_FOUND`
+for a native-only load order), so Direct3D failed to load. Found with:
+
+```bash
+cd ~/.local/share/autodesk-inventor-2026
+find drive_c/windows -name '*.dll' | wc -l
+dd if=drive_c/windows/system32/d3d11.dll bs=1 skip=64 count=16 status=none; echo
+stat -c '%s %y' drive_c/windows/system32/d3d11.dll .update-timestamp
+```
+
+Fix (nix-overlayfs): the launcher writes `disable` into the writable layer's
+`.update-timestamp` before mounting, which wineboot honours; when the Nix
+layers change it moves Wine builtin copies that hide a layer file to
+`.nix-overlayfs/shadowed/<time>/` and reports other hiding files in
+`.nix-overlayfs/shadowed-files`. Check after a launch: `DXVK_HUD=1 inventor`.
+
+**Sign-in callback of 2026 opened 2027.** With both releases installed, the
+browser's `adskidmgr://` callback for a running 2026 started Inventor 2027.
+Cause: one URL scheme for both; the module made the newest release the
+default, and every launch also made its own nix-overlayfs handler the user's
+default (`~/.local/share/applications/*-nix-overlayfs-url-handler.desktop`,
+`~/.config/mimeapps.list`); a release without a running session starts itself
+with the callback. Fix: the module installs one handler,
+`autodesk-inventor-url-handler.desktop`. It asks each release's launcher to
+forward the callback to its running session
+(`--nix-overlayfs-forward-url`, status 3 = no session) and starts the newest
+release only when none runs; the module's launchers no longer register
+handlers (`registerHostUrlHandlers = false`) and remove the ones they wrote
+earlier. Check: `xdg-mime query default x-scheme-handler/adskidmgr`.
+
+Also in nix-overlayfs: layers' DLL overrides are merged instead of one
+replacing another; directories of killed sessions in
+`~/.cache/nix-overlayfs/tmp` are removed; installations depend on the WebView2
+layer itself rather than its launcher, so launcher-only changes no longer
+reinstall Inventor.
+
+Validation: nix-overlayfs unit and VM tests (fake prefixes and a Wine probe,
+no Autodesk code); the flake's `nixos-module` and `url-dispatcher` checks;
+smoke test in Inventor 2026 and 2027 on 2026-11-13 (result log). Still open:
+a real Autodesk sign-in of 2026 with 2027 installed (the routing was checked
+with a test callback). Not a Wine bug.
+
+## Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run (open, winum candidates)
+
+**Symptom.** Inventor Nastran 2027, installed as a companion product into
+the Inventor 2027.2 prefix, shows "Could not start the user interface
+components ... 0x80040154" at Generate Mesh and Run (mesh, solve and
+results work after OK). Not on Windows 10.
+
+**Causes, in the order they were found** (each a winum candidate,
+measured on offline Windows 10 first; details in the result log):
+
+| Gap | winum candidate (branch) | State |
+| --- | --- | --- |
+| VBScript calls a WMI method (`StdRegProv`), Wine bug 39463 | `wbemdisp-method-invoke` (`topic/wbemdisp-method-invoke-measure`) | L1, cross reviewed |
+| `ADODB.Stream` UTF-8 text | `msado15-stream-charset` (`topic/msado15-stream-charset-measure`) | L1, review pending |
+| COM looks in `HKCU\Software\Classes` first (part of bug 17019) | `combase-per-user-classes` (`topic/combase-per-user-classes-measure`) | cross reviewed |
+| `HKEY_CLASSES_ROOT` read opens of a per-user CLSID (part of bug 17019) | `kernelbase-hkcr-class-reads` (`topic/kernelbase-hkcr-read-measure`) | L1, cross reviewed 2026-11-24 |
+| Every token reports High integrity | `server-limited-token-medium-integrity` (`topic/token-integrity-level`) | L1 (normal and elevated console), L2 local, L3, L4 for Nastran (2026-11-24); Inventor smoke test, ODIS, AutoCAD pending |
+
+**The last cause (found 2026-11-24).** Nastran registers its .NET classes
+`NEWPFUI.NEWPFUIImpl` `{29DEEFDB-1653-39CB-A663-9103D3F3DED7}` and
+`NEWPFUI.NEProgressImpl` `{AB1C9E36-DFCC-3C54-B03A-C67772EF2ACB}` per user
+only (`HKCU\Software\Classes\CLSID`, `InprocServer32` = `mscoree.dll`,
+subkey `2027.2.0.0`, `CodeBase` to `NEWPFUI.dll`) - the same as Windows.
+The .NET Framework 4.8 COM shim (`mscoreei.dll`, native) asks for the
+process token's integrity level before it uses the registration; at High
+it ignores the HKCU registration and only looks in HKLM, so
+`DllGetClassObject` returns `0x80070002`. Windows does the same in an
+elevated console. Wine reported High for every process: the token's
+integrity level was a constant in ntdll
+(`NtQueryInformationToken(TokenIntegrityLevel)`, `dlls/ntdll/unix/security.c`),
+and wineserver has no level per token. On Windows a normal process runs
+with the limited half of the administrator's token at Medium.
+
+**Fix (winum candidate, not released).** wineserver keeps an integrity
+level per token: Medium for the limited token every process started from
+Linux gets, High for a full or default admin token (elevated programs,
+explorer.exe); duplicates keep it; ntdll reports it. Not a workaround
+here: the launcher and the prefix do not change.
+
+**How it was found** (the repro needs no Autodesk files, synthetic
+variant in winum `docs/wine-repro/server-token-integrity-vbs/`):
+
+```bash
+printf 'On Error Resume Next\r\nSet o = CreateObject(WScript.Arguments(0))\r\nWScript.Echo WScript.Arguments(0) & " err=0x" & Hex(Err.Number) & " " & Err.Description\r\n' > "$INV_PREFIX/drive_c/newpfui.vbs"
+WINEDEBUG=err+ole wine cscript //nologo 'C:\newpfui.vbs' NEWPFUI.NEProgressImpl
+WINEDEBUG=+relay wine cscript //nologo 'C:\newpfui.vbs' NEWPFUI.NEProgressImpl 2>&1 | grep -E 'OpenThreadToken|GetTokenInformation|GetSidSubAuthority|RegOpenKeyEx' | tail -20
+```
+
+Wine: `err=0x1AD`, `err:ole ... DllGetClassObject returned 0x80070002`
+for `mscoree.dll`. Windows 10, same script: normal console (Medium,
+S-1-16-8192) works, elevated console (High, S-1-16-12288) `err=0x1AD`.
+The trace shows `RegOpenKeyExW(HKCR, CLSID\{AB1C...}\InprocServer32)`
+succeeding (kernelbase candidate), then `OpenThreadToken`
+(`STATUS_NO_TOKEN`), `GetTokenInformation(..., TokenIntegrityLevel)` on the
+process token and `GetSidSubAuthority`, then only HKLM. `+relay` on a
+native Microsoft DLL (.NET Framework 4.8 with `mscoree` native), observed
+from outside only. Note: the prefix's `HKCU\Software\Wine\Debug` holds a
+default `RelayFromExclude`, so `RelayFromInclude` is ignored there.
+
+**Virtual desktop: the dialog stays.** Wine gives the desktop process
+(explorer.exe) an administrator token, and what it starts inherits it.
+With `INV_VDESKTOP` the launcher starts Inventor through
+`wine explorer /desktop=... Inventor.exe`, so Inventor runs at High and
+Nastran's dialog comes back. Without a virtual desktop (the default)
+Inventor is started from Linux and runs at Medium. On Windows explorer
+runs at Medium; a fix belongs in Wine (separate candidate).
+
+**Still open.** The Inventor smoke test with the candidate (assembly,
+drawing, save/reopen, restart), the ODIS installer and Vault (a lower
+integrity level could change what an Autodesk component that checks it
+does), AutoCAD (wineserver and ntdll are shared). In the same run,
+not yet attributed and without visible effect: `DllGetClassObject`
+0x80070002 on `C:\windows\system32\MSCOREE.DLL` for four CLSIDs that
+are registered nowhere (`{1060954f-c50a-4cdd-8edd-3d1c69915120}`,
+`{3bdd8d79-2179-4b11-8a5a-257b1c0263ac}`,
+`{4e2d52fb-8288-4427-b912-20ef97f073c9}`,
+`{b99db61b-f61e-4a56-ae2c-3fb608a2547d}`), probably registration-free
+`clrClass` entries of a manifest; next a `+actctx` trace and a Windows
+ProcMon check, and the same lines on a runtime without the candidate.
+A black bar above the result legend in the Nastran view is a separate
+question (Windows screenshot pending). The token object's own label,
+lowering a token with `SetTokenInformation` and the label entry in
+`TokenGroups` are not changed by the candidate.
+
+**For a Wine bug report.** `TokenIntegrityLevel` is High in every
+process; Windows reports Medium for a non-elevated one. The .NET
+Framework COM shim then skips per-user registrations of .NET classes and
+`CreateObject` fails with 0x1AD. Steps: `per-user-dotnet-class.vbs` with
+cscript in a prefix with .NET 4.8. Related: bug 17019.
+
+Validation level: L0, L1, local paired L2, L3 and L4 (Nastran) for the token candidate (2026-11-24); the four earlier
+candidates as in the table.
 
 ## Result log
+
+**2026-11-24 - Nastran works without the 0x80040154 dialog (token candidate, L3/L4):** runtime = winum "Build Wine" run 45317855190 of `test-run/token-integrity-level-1` (series + `server-limited-token-medium-integrity`) with the four Nastran overlays (wbemdisp, msado15, combase, kernelbase), on a copy of the Inventor 2027.2 + Nastran prefix (native .NET 4.8). MEASURE: Inventor-like process (limited token) S-1-16-8192, linked token 12288. `CreateObject` of `NEWPFUI.NEProgressImpl` and `NEWPFUI.NEWPFUIImpl`: `err=0x0` (0x1AD without the candidate). Nastran: part, Nastran environment, Generate Mesh (parabolic, 0.167 mm, 1,254,416 nodes, 806,387 elements), Run (linear static), von Mises contour, Deformed + Animate - all work, no dialog. The first attempt used the Build Wine artifact of `topic/token-integrity-level` (run 45307586910), which does not contain the candidate (still High, 0x1AD) - only the test-run build does. With a Wine virtual desktop (`INV_VDESKTOP`) Inventor is a child of explorer.exe, which Wine runs with an administrator token, so the dialog would stay there. Open: Inventor smoke test, ODIS, AutoCAD; `MSCOREE.DLL` `DllGetClassObject` 0x80070002 for four unregistered CLSIDs (no visible effect, not yet attributed); a black bar above the Nastran result legend (separate). Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
+
+**2026-11-24 - Nastran: the last 0x80040154 is the token integrity level:** after the kernelbase candidate (`kernelbase-hkcr-class-reads`, HKCR read opens of per-user CLSIDs) the `NEWPFUI` key opens through HKEY_CLASSES_ROOT, but `mscoree`'s `DllGetClassObject` still returns `0x80070002`. Three-line VBScript `CreateObject` repro without Inventor: Wine `err=0x1AD`; Windows 10 normal console (Medium) works, elevated console (High) gives `err=0x1AD` - the same as Wine. `+relay` of the native `mscoreei.dll`: it reads the process token's `TokenIntegrityLevel` and at High uses HKLM only. Wine reports High for every token (constant in ntdll; wineserver has no level per token). winum candidate `server-limited-token-medium-integrity` (branch `topic/token-integrity-level`, two patches: wineserver keeps a level per token, Medium for the limited token, High for full/default; ntdll reports it), MEASURE program for the VM (normal and elevated console), Wine test (fails 10 checks per architecture on winum-11.22-2, as expected), synthetic VBScript repro. Pending: L1, L2, L3, L4 (Nastran and the Inventor smoke test), cross review by Codex. Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
+
+**2026-11-24 - Windows reference for Nastran (companion capture, `tools/companion-capture.*`):** on Windows 10 (offline snapshot for before/installed, online snapshot for the first start) Nastran shows **no** 0x80040154 and no "Requested functionality" dialog; mesh, run and results work. Windows registers `NEWPFUI.NEWPFUIImpl` and `NEWPFUI.NEProgressImpl` at the first start exactly as Wine does (HKCU only, `mscoree.dll`, v4.0.30319, the same `CodeBase`, `NEWPFUI\RegisteredClsids`, the type library). Windows' Fusion log has the usual failed name bind of `NEWPFUI` (then loaded from `CodeBase`) and the same `System.Runtime 10.0.0.0` failures from `SharedViews`/`InteractiveTutorial` - those are normal Inventor behaviour, not a Wine problem. Under Wine no `NEWPFUI` bind is attempted: just before `mscoree`'s `DllGetClassObject` returns `0x80070002` the caller opens `CLSID\{29DEEFDB-...}\InprocServer32` through HKEY_CLASSES_ROOT and then `HKLM\SOFTWARE\Classes`, both failing, and never HKCU - 0x80070002 is `ERROR_FILE_NOT_FOUND` from that open. Next: a winum candidate for kernelbase so that opening and reading through HKEY_CLASSES_ROOT sees `HKCU\Software\Classes` as Windows does (part of Wine bug 17019), measured first. The Linux capture tool still missed the `HKLM\Software\Autodesk\Autodesk Inventor Nastran 2027` keys of the Wine prefix (fix pending), so that group of differences is not a Wine finding.
+
+**2026-11-23 - Inventor Nastran 2027, three Wine gaps closed, one open:** with three winum candidates on a fresh copy of a 2027.2 prefix (winum branches `topic/wbemdisp-method-invoke-measure`, `topic/msado15-stream-charset-measure`, `topic/combase-per-user-classes-measure`; each measured on offline Windows 10 first) Nastran's `Register_Addin` script now completes: `wbemdisp` answers WMI method calls through `IDispatch` (Wine bug 39463), `msado15`'s `ADODB.Stream` reads and writes UTF-8 text, so the `.addin` gets its full path and `NEiInventor.dll` loads; `combase` finds COM classes registered per user (`HKCU\Software\Classes`, part of Wine bug 17019), which Nastran writes at its first start for its .NET Framework class `NEWPFUI.NEWPFUIImpl` (`InprocServer32` = `mscoree.dll`, `RuntimeVersion` v4.0.30319, `CodeBase` `In-CAD\System\NEWPFUI.dll`, file present). **Still open:** the dialog "Could not start the user interface components ... 0x80040154" stays (mesh, solve and results work after OK). What is known: combase now passes the class to `mscoree.dll`; the shim opens the HKCU registration successfully (`+reg`: `<- 0x11a0`), .NET Framework 4's `clr.dll` runs in the Inventor process next to CoreCLR 10, and `DllGetClassObject` of `mscoree.dll` returns `0x80070002` (file not found) without `NEWPFUI.dll` showing up in a failed bind. .NET Framework's own bind-failure log (Fusion, `LogFailures` in the copy only) shows something separate but worth a look for the whole of Inventor: `clr.dll` v4 is loaded at every start (right after `CCAddIn.dll`), and the .NET 10 add-ins `SharedViews` and, with that one off, `InteractiveTutorial` are bound in it and fail on `System.Runtime 10.0.0.0`. Turning `SharedViews` off does not remove Nastran's dialog. Three rounds done on the Wine side; **next is a Windows reference** (online VM snapshot, Inventor 2027.2 with Nastran 2027): whether the dialog appears there, the values under `HKCU\Software\Classes\CLSID\{29DEEFDB-1653-39CB-A663-9103D3F3DED7}`, and the same Fusion failure log - do `SharedViews`/`InteractiveTutorial` fail to bind in .NET 4 on Windows too. Commands: `WINEDEBUG=+reg,err+ole` around the dialog filtered on the CLSID; Fusion: `HKLM\Software\Microsoft\Fusion` `LogFailures`=1, `LogPath`=`C:\fusionlog\` (native .NET Framework 4.8 observed from outside).
+
+Use the [companion capture tools](../tools/README.md#inventor-nastran-2027-companion-capture) for the Windows reference and the comparable Wine captures. The offline before and installed phases isolate installer changes. The separate, signed-in started phase captures the per-user registration and the selected Fusion bind diagnostics.
+
+**2026-11-23 - Inventor Nastran 2027 as a companion product, first try:** `Create_Installer_NINCAD_2027_English_WIN64.exe` under winum (as for Inventor) gives a 2.4 GB image with one application (`app.nastran.xml`); `install-from-image.py IMAGE --prefix <copy of a 2027.2 prefix>` installs it (steps 1-8 already done from Inventor's image, including Licensing Service 17.1 and Identity Manager 1.19.2; VC++ 2015-2019 declines the downgrade, 0x666 seen as 102; `Nastran.msi` 1.1 GB, exit 0). **Symptom:** no Nastran environment in Inventor, not listed in the Add-In Manager. **Cause:** the MSI's deferred custom action `Register_Addin` (type 0xc22, `cscript //nologo "[System_Folder]addin.vbs"`) uses `GetObject("winmgmts:{impersonationLevel=impersonate}!\\.\root\default:StdRegProv")` and calls a StdRegProv method directly (`oReg.Method args`, `IDispatch::Invoke` with `DISPATCH_METHOD`); Wine's `wbemdisp` `object_Invoke` only answers property gets (`fixme:wbemdisp:object_Invoke flags 0x1 not supported`), the script stops with "Object doesn't support this action", `cscript` still exits 0, so `autodesk.inventor.nastran.addin` keeps `<Assembly>NEiInventor.dll</Assembly>` without a path and the script's other registration never happens. Known upstream as Wine bug 39463 (a VBScript custom action calling `StdRegProv.GetStringValue`). Observed from outside only: `WINEDEBUG=+msi` for the action, `+wbemdisp` for the calls; the script was run, not read. **Check by hand on a copy:** with the full path to `In-CAD\System\NEiInventor.dll` written into the `.addin`, the Nastran environment appears, meshing, a linear static run and the results work, but several steps show "Could not start the user interface components ... 0x80040154" (class not registered) - presumably what the rest of the script would have registered. **Next:** a winum candidate for `wbemdisp` method calls through `Invoke` (MEASURE in the offline VM first: StdRegProv methods called directly, return value and out parameters; also whether Windows `cscript` exits non-zero on a runtime error), then the installer path for companion products (AGENTS.md exception).
+
+**2026-11-23 - Assistant on again in 2027.2 (migration 0013, #36):** Inventor 2027.2 has the Autodesk Assistant add-in in `ProgramData\Autodesk\Inventor 2027\Addins\Assistant\31.20.33400\` (LoadOnStartUp 1) instead of `Bin\Addins`, where `cfg_disable_addins` looked; found by @krokosik in the Nix package, seen in a fresh 2027.2 prefix from the script installer (its panel on the right in Frame Analysis). `cfg_disable_addins` (after every install and update) and migration 0013 move that `.addin` to `Addins.disabled\programdata\` with its relative path; `addins.sh` lists, enables and disables add-ins in both places. Tests: `tests/test_migrations.py` (0013 applied, nothing to do, already off, --restore, addins.sh). Checked by the maintainer on the fresh 2027.2 prefix (winum 11.22-2 test build): 0013 applied, `addins.sh list` shows the Assistant off, Inventor starts without its panel and the ribbon button no longer opens it.
+
+**2026-11-23 - Frame Analysis repaint, first trace:** the stale panes after switching to Frame Analysis (section "Inventor 2027" under Frame Analysis) traced with `+win,+msg`: Wine copies the old (0,0) area - ribbon and browser - into the right pane's container on a frame-changed `SetWindowPos`. Hypothesis and next steps there; not fixed.
+
+**2026-11-16 - Wine's menu builder off in the prefix itself:** a plain
+`wine reg query` by hand in the fresh 2026 prefix let `wineboot` run
+`winemenubuilder.exe -a -r`, which wrote 18 file-association and protocol
+entries (`wine-extension-ipt`, `wine-protocol-adskidmgr`, ...) for the
+prefix into `~/.local/share/applications`. The menu builder was off only
+through `WINEDLLOVERRIDES`, which a terminal does not have. Migration
+`0011-winemenubuilder-off` sets `DllOverrides` `"winemenubuilder.exe"=""`
+(disabled, as Wine's loader reads it) and removes the prefix's menu
+entries. Section "Wine's menu builder off in the prefix (migration 0011)".
+
+**2026-11-16 - Fresh installations of 2027 and 2026 from `main` (after
+PR #21):** the maintainer's Arch machine (31 GiB, winum-11.20-2), each
+with `install.sh --skip-packages`: Inventor 2027 (base + 2027.2) into
+`~/.wine-inventor2027`, Inventor 2026 (base + 2026.4) into
+`~/.wine-inventor2026`. Both installed with 0 WARN/FAILED in their logs;
+the 2027 smoke test (part, assembly, drawing, save/reopen) is fine.
+- *Disk numbers confirmed.* 2027 (download already unpacked, winum
+  present): the check said "prefix + small downloads disk /home: 23 GB
+  needed"; `df` showed 18 GB used, the prefix is 20 GB (`du`). 2026
+  (download still to unpack): "prefix + unpacked downloads + small
+  downloads disk /home: 35 GB needed"; `df` showed 29 GB used, the prefix
+  21 GB. The memory line said 31.2 GiB, correct. The README numbers stand.
+- *sudo with `--skip-packages`:* `install.sh` ran `sudo -v` always,
+  though only the system packages (`phase0-setup.sh`) need root. Now it
+  asks only when it installs them.
+- *The 2026 installation hung at the .NET Framework 4.0 step* for about
+  40 minutes, until `wineserver -k` by hand (then it finished).
+  `run_framework_installer()` stops the prefix (`wineserver -k`), then
+  `reg_query()` ran `wine reg query` with its output read from a pipe.
+  That wine started a new wineserver and the prefix's services - in a
+  2026 prefix FlexNet's `FNPLicensingService64.exe` (2027 has none) and
+  `MicrosoftEdgeUpdate.exe /c` - which inherited the pipe and never exit,
+  so `subprocess.run()` waited for its end forever (Python's only child
+  was a defunct `start.exe`; no `dotnet40.log` had been written yet). Now
+  every captured wine call in `install-from-image.py` (`reg_query`,
+  `wine_mono_entries`) goes through a temporary file and returns when wine
+  exits, as `run()` always did; the shell's `$(wine reg query ...)` in
+  `dotnet48_why`, `mig_reg_get` and the launcher's icon sync use
+  `wine_capture` (common.sh) for the same reason. Test:
+  `tests/test_wine_capture.py`, with a fake wine that leaves a child
+  holding stdout open (the old code waits for it, the new one does not).
+- *GPU ray tracing:* 2027 works after Graphics Driver = DirectX 12;
+  2026 does not and is not supported (section "GPU ray tracing").
+- *Cosmetic, open:* first start of 2027: "The following projects could
+  not be found on disk ... `C:\users\Public\Documents\Autodesk\.desktop-connect\.docstore\guided-tutorial-plugin\INVNTOR\2027\TutorialData.ipj`"
+  - the Interactive Tutorial add-in (on since PR #20) points at its project
+  before any tutorial is downloaded; OK dismisses it. Not compared with
+  Windows; likely the same there until checked. A small "Default" window
+  at the top left of Inventor 2027.
+
+**2026-11-16 - Installer checks: disk space per filesystem, memory:** the
+checks now follow the README requirements (measured with du on a full
+2027.2 installation: prefix 20 GB with Content Center 7.4 GB, unpacked
+downloads 10.5 GB, winum 0.9 GB). Before, four places had four numbers
+(GUI start page 60/40 GB, GUI summary 43 GB, `install.sh` 40 GB,
+`check-system.sh` 30 GB), all measured on `$HOME` although the prefix
+(`--prefix`, the GUI's choice), the unpacked downloads (`XDG_CACHE_HOME`)
+and winum (`XDG_DATA_HOME`) can be on other disks. Now one file,
+`scripts/lib/requirements.env` (prefix 20 GB, 13 GB without Content
+Center, unpacked downloads 11 GB only when not unpacked yet, Wine 1 GB +
+small downloads 0.5 GB, 10 % margin; memory warnings below 15 GiB and
+7.5 GiB), and one implementation, `scripts/lib/requirements.py`: what goes
+to each filesystem (`st_dev` of the nearest existing folder) is added up
+and compared with its free space ("prefix disk /mnt/nvme: 22 GB needed,
+15 GB free"). Memory is MemTotal from `/proc/meminfo` (`INV_MEMINFO` for
+tests) - a warning, never a stop. `install.sh` warns, `check-system.sh`
+reports, the GUI start page warns (it does not stop: the prefix may still
+go to another disk), the summary stops only when a disk is really short
+and names it, and says the memory; the done page says the unpacked
+downloads can be deleted (Uninstall… already offers "Unpacked
+downloads"). Not in what the Nix build runs (`install-from-image.py`,
+`finish-install.sh`). "12.7 GB" for Content Center -> about 7.5 GB in
+`install.sh`, `install-from-image.py --help` and the GUI. Checked: 11 tests
+in `tests/test_requirements.py` (fake `st_dev`/`statvfs`, fake meminfo).
+Open: the maintainer's fresh installations of 2027 and 2026 with `df`
+before and after. Later: old winum releases stay in
+`~/.local/share/inventor-on-linux` (0.9 GB each).
+
+**2026-11-16 - Default add-ins: all but the Assistant on:** the maintainer
+turned every add-in on at once (`bash scripts/addins.sh enable-safe`) on a
+copy of a 2027 prefix with .NET Framework 4.8, winum-11.20-2 and
+vkd3d-proton 3.0.1-winum-1, and tried each:
+Autodesk.SharedViews works (share, Autodesk Viewer) - it crashed on
+wine-mono, so it moves to `INV_DOTNET48_ADDINS` (on with .NET 4.8, off
+without); Autodesk.InteractiveTutorial works (the tutorial downloads and
+runs; its window opens at the far right and has to be moved by hand, a
+WebView placement issue for later), so `cfg_crash_sources` no longer moves
+`InteractiveTutorial.dll` and `en-US\InteractiveTutorial.resources.dll`
+aside; Autodesk.Feedback and Autodesk.PerfFeedbackAddin load and nothing
+broke (on as on Windows; Inventor's own settings turn usage reporting
+off); autodesk.translatorfusion loads (real use needs Autodesk Desktop
+Connector and Fusion Team data, not installed); Autodesk.AssistantAddin
+loads but its panel is drawn wrongly (WebView2) - it stays the only add-in
+off by default (maintainer's decision; revisit with the WebView work).
+`INV_DEFAULT_DISABLED_ADDINS` now holds only the Assistant. Migration
+`0010-default-addins-on` moves exactly those five add-ins (SharedViews only
+with .NET 4.8) and the tutorial's two libraries back from `Addins.disabled`
+into `Bin`, leaves an add-in already in `Bin\Addins` alone, and saves both
+ends of every move (the runner now takes `MIG_BACKUP` one path per line,
+for paths with spaces). `addins.sh`: the "SharedViews crashes" warning is
+gone, `enable-safe` keeps every `INV_DOTNET48_ADDINS` add-in off without
+.NET 4.8, and `reset` turns the formerly disabled add-ins on again with the
+tutorial's libraries. Checked: 5 new tests in `tests/test_migrations.py`
+(without and with .NET 4.8, an add-in already on, nothing to do, restore,
+`addins.sh disable`/`enable`/`enable-safe`/`reset`). Open: the
+maintainer's check on a prefix copy. Table: `notes/disabled-addins.md`.
+**2026-11-16 - vkd3d-proton from winum for the script install too:** the
+installer and migration `0009-vkd3d-proton-winum` put winum's
+`vkd3d-proton-3.0.1-winum-1` in place of upstream's 3.0.1 (release
+archive SHA-256 `7d20a226...38c8b7`, same layout as upstream's: `x64/`,
+`x86/`; the four DLLs are pinned by SHA-256 too). It is upstream 3.0.1
+(commit `3b10bd7a`) plus the dxil-spirv ray payload fix that GPU ray
+tracing needs (section "GPU ray tracing"); krokosik's Nix change (PR #17)
+makes the same archive the NixOS default, so Arch and NixOS run the same
+DLLs. The step runs only with `INV_VKD3D=pinned`, saves the old DLLs in
+`.inventor-on-linux/backup/0009-vkd3d-proton-winum/`, and is put off while
+offline, so it never stops a start. `fetch_vkd3d` (common.sh) is shared
+with `install_vkd3d`, which still stops a new installation that cannot
+download it. Patch, tests, review and validation: winum
+[gpu/vkd3d-proton/README.md](https://github.com/Harvi654/winum/blob/main/gpu/vkd3d-proton/README.md)
+(L4 in Inventor 2027 on an RX 6400, an RTX 5080 and an RX 9060 XT, the last
+with the released DLLs; open review points P2-2, an inherited `float2x2`
+payload limitation of 3.0.1, and P3, fixtures not yet covering every
+payload shape). A `VKD3D_VER` set by the user leaves the prefix alone:
+the DLL hashes belong to one release (`VKD3D_DLL_SHA256_VER`), and without
+that check the step would fail at every start (maintainer's review). The
+real archive's layout was listed once (`tar --zstd -tvf`): top folder
+`vkd3d-proton-3.0.1-winum-1/` with `x64/`, `x86/`, as `install_vkd3d`
+expects. Checked here: 6 new tests in `tests/test_migrations.py` (winum
+DLLs with a backup and the native overrides, already winum, `INV_VKD3D=off`
+untouched, another `VKD3D_VER` untouched and nothing downloaded, offline
+put off and then `--run 0009`, wrong checksum put off). Open: the maintainer's smoke test on a prefix copy.
+
+**2026-11-16 - Nix: complete installer regression suite in the sandbox:**
+The fixtures now resolve their shell interpreters and preserve the supplied
+PATH instead of assuming /bin and /usr/bin. The `installer` flake check runs
+all 202 tests, which passed in the Nix sandbox, with iconv for synthetic .NET
+logs and standalone coreutils for the tests that give sleep a Windows process
+name. CI builds this synthetic
+check after evaluation; no Autodesk media is needed. Application installation
+and prefix contents are unchanged. Details and the check command:
+`docs/nixos.md`.
+
+**2026-11-16 - msiexec and a property value with a space: not a Wine
+bug.** Measured on Windows 10 (19045.6466) and winum-11.20-2 with a
+synthetic MSI: a property passed as one quoted argument
+(`"INSTALLDIR=C:\quote test\a"`) is rejected with 1639 on both;
+`INSTALLDIR="C:\quote test\a\"` installs on both. msiexec needs
+`NAME="value"` everywhere; the installer's batch file passes that form, as
+ODIS does. No WineHQ report. `docs/wine-repro/msiexec-property-spaces/`,
+`docs/installer-completeness-review.md`.
+
+**2026-11-16 - Installer completeness review: points 1-8 fixed (branch
+`installer-review`):** Inventor's registration (`Inventor.exe /install 0`,
+also migration 0005), the image's `setup.xml` properties and setup UI
+settings as variables, `INSTALLDIR` for every MSI, ODIS's standard MSI
+properties, all applications of the image (DWG TrueView, Electrical Catalog
+Browser), unknown variables skip an action, ADIX files outside VFS listed,
+Genuine Service with `--with ags`. Not yet checked on a real install.
+Details and the results: `docs/installer-completeness-review.md`, "Fixes".
+
+**2026-11-16 - Nix: candidate fixture failed evaluation-only CI:**
+After #12, `nix flake check --no-build --show-trace` could fail while reading
+the local fake-winum candidate series from an invalid store path. String
+interpolation had coerced the fixture path into a separate store source;
+a warm store hid the failure locally. Candidate directories, series and patch
+files now preserve path values when given a local source. A regression
+assertion in `launch-wine-candidates` fails before the fix even on a warm
+store. This is Nix evaluation, not a Wine or prefix change; details in
+`docs/nixos.md`.
+
+**2026-11-13 - Nix: .NET Framework 4.8 from a layer; issue #10 section:**
+the Nix package takes .NET 4.8 from nix-overlayfs's `dotnet-framework-4-8`
+layer instead of the installer's step (`--no-dotnet48`); the layer's 4.8
+installer is the one Microsoft's download page links to, its SHA-256
+recorded in the layer. The issue #10 section now describes the cause and
+the fix; the investigation notes moved unchanged to
+`docs/archive/arch-hyprland-issue-10-investigation-2026-11-12.md`.
+
+**2026-11-12/13 - AutoCAD 2027/2026 experiment:** moved to the `autocad`
+branch (`docs/autocad-experiment-2026-11.md` there). What it left on `main`:
+the licensing quirk is matched by installer file (2695dd9), and winum got the
+candidate `wldap32-winsock-cleanup`.
+
+**2026-11-12 - winum-11.20-2: Import CAD into an assembly (#10):** the
+project now uses winum-11.20-2, winum-11.20-1 plus four ole32/packager
+patches contributed by @krokosik (winum PR #1): `OleCreateFromFileEx`
+wraps a file without an embedding server in an OLE Package as Windows
+does (Inventor embeds its import report that way - the "Could not Insert
+Object"), storage error codes and `STGM_SIMPLE` sub-storages, NULL string
+properties, and the Package object's save/view/advise. L1 in the
+maintainer's Windows 10 VM (0 failures, both architectures), L2 in winum
+CI (0 regressions), L4 on Arch with Inventor 2027.2: Reference and Convert
+Model into an assembly, save, restart, reopen, File -> Open of a STEP
+without the error. Details: winum `docs/release/winum-11.20-2.md`. Existing
+prefixes switch at the next start (the launcher runs `wineboot -u` for a
+new winum build).
+
+**2026-11-12 - GPU ray tracing on an RX 9060 XT (RDNA 4):** on a reflink
+copy of the maintainer's Inventor 2027 prefix, with winum-11.20-1, the
+patched vkd3d-proton 3.0.1 copied in by hand and `EnableHydra` from
+`migrate-prefix.sh --run 0004` (0002 and 0003 run by the launcher): GPU ray
+tracing works - panel GPU, Low/Draft/High, orbiting, an assembly, status
+bar clean. Still open: white lines after Restore Down and maximising
+again (minimise and restore clears them). Next: publish the patched
+vkd3d-proton from winum and install it through a migration. Section "GPU
+ray tracing".
+
+**2026-11-11 - Clean installation on Ubuntu 26.04.1 LTS (VM, llvmpipe):**
+Inventor 2027 from `main` at `59cc489` with the whole installer: wine-mono
+removed, .NET Framework 4.0 downloaded and checked against its SHA-256,
+Microsoft's `mscoree.dll` in `system32` and `syswow64`, the 4.8 setup's
+Final Result Success, 3D PDF on. Inventor runs, 3D PDF Publish and Stress
+Analysis work, the app menu entry is 2027. Found: with no `config.env` and
+only `~/.wine-inventor2027`, `migrate-prefix.sh --status` and
+`launch-inventor.sh` (nothing given) chose 2026 and `~/.wine-inventor2026`
+("no Inventor in .../.wine-inventor2026"), and on an older VM
+`install-desktop-integration.sh` (after an update, prefix
+`~/.wine-inventor2027-msitest`) made a menu entry for a 2026 that does not
+exist. Fixed in `common.sh`: with nothing given and an empty (or missing)
+`~/.wine-inventor2026`, the installed release is taken (the newest if
+several), as when `config.env` names a prefix without Inventor; a
+`config.env` prefix with Inventor and `~/.wine-inventor2026` with Inventor
+stay as they are. `install-desktop-integration.sh` makes no entry for a
+release that is not installed.
+
+**2026-11-11 - .NET 4.8 and older installations:** a prefix from before the
+installer's .NET 4.8 step stays on wine-mono (no migration replaces it);
+README describes a new installation, and the launcher says so once per
+prefix. Section ".NET Framework 4.8 in the prefix".
+
+**2026-11-11 - Prefix migrations: L4 and merge:** on reflink copies of the
+maintainer's prefixes - Inventor 2026 from before winum (0002 and 0003
+applied, start, part, assembly, save/reopen, restart OK) and Inventor 2027
+with .NET 4.8 (`--run 0002` without the .NET shim's window and without
+wine-mono coming back, Property Mapping and 3D PDF Publish OK). Merged into
+`main`.
+
+**2026-11-11 - Prefix migrations (phases 1-3):** numbered steps that update
+an installed prefix with backups and rollback, run by the launcher,
+`migrate-prefix.sh` and the GUI's Update; first steps: winum runtime
+(`wineboot -u`), the X11 driver values for Inventor; `EnableHydra` only on
+request (it moves ray tracing to the CPU on a card without RT). Details:
+section "Prefix migrations".
+
+**2026-11-11 - .NET Framework 4.8 step: L4 on a clean installation:**
+Inventor 2027.2 installed into a new prefix from `topic/dotnet48`
+(`bea99d2`) with winum-11.20-1: .NET 4.0 + 4.8 in place (`mscoree.dll` in
+both system folders, Final Result Success), 3D PDF Publish works, Property
+Mapping opens, start, sign-in, part, assembly, save/reopen, restart and a
+Stress Analysis up to 558 221 elements work. STEP import into an assembly
+still fails (issue #10). Merged into `main`. Details: section ".NET
+Framework 4.8 in the prefix".
+
+**2026-11-11 - .NET Framework 4.8 step, third round:** `mscoree.dll` was
+still missing because .NET 4.8 does not carry it - .NET 4.0 does, and
+winetricks' `dotnet48` installs `dotnet40` first. The step now does the
+same (4.0 downloaded from Microsoft, pinned, SHA-256 confirmed by the
+maintainer), and reads the setup's UTF-16 log for its "Final Result".
+Details: section ".NET Framework 4.8 in the prefix".
+
+**2026-11-11 - .NET Framework 4.8 step, second clean installation:**
+`clr.dll` in place but no `mscoree.dll`: the installer is a self-extractor
+that returned while its setup went on, and the step's `wineserver -k`
+ended the setup. The step now waits for the setup's processes, checks
+`mscoree.dll` and the setup's "Final Result", repairs such a prefix on a
+rerun, and the add-in step always logs its decision. Details: section
+".NET Framework 4.8 in the prefix".
+
+**2026-11-11 - .NET Framework 4.8 step, first clean installation:**
+stopped in the step - wine-mono's uninstall entry was read from stdout
+while Wine prints it on stderr, so wine-mono and its NDP keys stayed and the
+installer did nothing; and `wineserver -w` waited for services that never
+end. Fixed (keys always deleted, check before the installer, `wineserver
+-k`); `wineboot -u` does not bring wine-mono back (tested with winum).
+Details: section ".NET Framework 4.8 in the prefix".
+
+**2026-11-11 - .NET Framework 4.8 step in the installer (in testing):**
+`install-from-image.py` replaces wine-mono with the image's own .NET
+Framework 4.8 installer after the product's packages, as winetricks'
+`dotnet48` does, and checks `clr.dll`; 3D PDF's add-ins are on when it is
+there. Details: section ".NET Framework 4.8 in the prefix".
+
+**2026-11-11 - winum-11.20-1:** the installer, launcher and Nix packaging
+switch from this project's own Wine build to winum-11.20-1; the own build,
+its patches and the per-DLL fixes for the system's Wine are archived; the
+false "Wine fixes not installed" warning with winum in `PATH` is gone.
+Details: section "winum as the Wine for Inventor".
+
+**2026-11-10 - Issue #10 recorded (open):** Import CAD of a STEP file fails
+with "Could not import object" and Property Mapping crashes in
+`AnyCADPropertyMappingTool.exe` running on Wine Mono (NixOS, Inventor 2027).
+First hypothesis: needs .NET 4.8; to be fixed for the next release.
+
+**2026-11-11 - Issue #10 with .NET 4.8:** Property Mapping no longer
+crashes (fixed by .NET 4.8, which goes into the installer). The STEP import
+still ends with "Could not Insert Object" after a successful Load Model;
+to be compared with Windows.
+
+**2026-11-10 - NixOS font experiment:** with compositor scaling already
+disabled for XWayland, changed Inventor 2027's grayscale smoothing to ClearType
+in its user state before UI startup. Registry readback passed; the user saw no
+improvement. A probe traced unsmoothed Tahoma to Wine's GASP handling. A second
+local experiment substituted Segoe UI for system menu/status fonts; probe
+rendering is antialiased and the user confirmed improvement. The Nix launcher
+now applies the mapping conditionally on real Segoe UI availability. Six
+regression cases cover host/prefix detection, fallback families, disappearance,
+idempotence and custom substitutions. All 17 repository tests and flake checks
+passed; the updated 2027 launcher built and started Inventor, and a probe in
+its namespace confirmed Segoe UI for menu/status fonts. DPI unchanged. No Wine
+patch.
 
 **2026-10-26 - Native Wayland remains unusable:** the draft bridge rendered
 WebView2 Home content, but was terribly slow and glitchy. Keep X11/XWayland.
@@ -1112,3 +2386,143 @@ Found on the way, to fix in the scripts:
   `mscoree`).
 - Cosmetic: Inventor files show the Inventor app icon in the file manager,
   not their type icon or a preview.
+
+**2026-11-06 - GPU ray tracing works (Inventor 2027, RX 6400):** with the
+winum opengl32 window colour-bits fix and the vkd3d-proton ray payload fix,
+*Enable Viewport GPU Ray Tracing* is available and Low/Draft/High render on
+the GPU; part, assembly and save work. Confirmed on an NVIDIA RTX 5080 by a
+tester (PR #3, 2026-11-07). Details: section "GPU ray tracing".
+
+**2026-11-07 - Status bar text overlaps after GPU ray tracing; workaround:**
+the overlap appears only after ray tracing starts in a maximised window.
+Measurements on Windows 10 and Wine traces ruled out the status bar patch;
+a diagnostic Wine build showed the switch to direct XRender drawing, and
+`ClientSideWithRender=N` for Inventor keeps the text clean with ray tracing
+working (smoke test: part, assembly, drawing, 2D PDF, save/reopen). Still
+open: window drawn shifted after Restore Down/maximise once ray tracing ran,
+and the Home page staying stale after Application Options. Details: section
+"Status bar: old text stays after GPU ray tracing".
+
+**2026-11-08 - This file re-organised:** a contents list, sections grouped
+by topic, new sections for GPU ray tracing, the status bar workaround, the
+open repaint issues and 3D PDF. The sections of the first setup (copying a
+Windows installation) and the superseded GPU ray tracing notes moved to
+`docs/archive/arch-hyprland-retired-2026-11-08.md`, unchanged.
+
+**2026-11-11 - NixOS: DXVK hidden in the 2026 state, 2026 sign-in opened
+2027:** a runtime prefix update had copied Wine's builtin `d3d11.dll`, `dxgi.dll`
+and `d3d12*.dll` into the writable 2026 state, above DXVK and vkd3d-proton.
+nix-overlayfs now keeps Wine from updating the prefix at runtime and moves such
+copies aside; the NixOS module routes `adskidmgr://` to the release whose
+session is running. Library and module tests pass; Inventor smoke test
+pending. Details: section "NixOS: writable state hid DXVK; 2026 sign-in
+opened 2027".
+
+**2026-11-12 - NixOS: winum candidates without reinstalling:** the Nix package
+builds its layers (base environment, WebView2, .NET 4.8, Inventor) with the
+winum release and runs Inventor on the same release plus `wineCandidates`.
+Wine loads builtin DLLs from its own installation when the prefix holds a
+builtin copy (`load_builtin()` in `dlls/ntdll/unix/loader.c`), and
+nix-overlayfs keeps wineboot from updating the prefix automatically, so a
+candidate that changes only code takes effect without the two Microsoft
+installers and the Inventor install running again. Candidates that change the
+prefix itself (`wine.inf`, registration, modules added or removed; detected
+from the patch text) are refused there and belong in
+`installWineCandidates`. Checked by evaluation (`launch-wine-candidates`,
+including a fixture winum with a code-only and a `wine.inf` candidate);
+Inventor smoke test with a candidate pending.
+
+**2026-11-13 - NixOS: smoke test of the runtime guards, the sign-in
+dispatcher and a launch-only candidate (winum-11.20-2):** in an isolated X11
+desktop (Xvfb at 60 Hz, llvmpipe), on copies of the user's 2026 and 2027
+state, with the packages of the rebased branch (installation derivations the
+same as #11's):
+- 2027 starts signed in, Direct3D through DXVK 2.7.1 and vkd3d-proton 3.0.1
+  (log); `.update-timestamp` is `disable`; the hidden-file check ran for the
+  new layers and found nothing to move. New part, Save As, restart, reopen
+  from Recent: OK. Quitting leaves no session directory and no mount.
+- Candidate: a test topic that only adds a `MESSAGE()` to kernel32's
+  `DllMain`, taken through `--override-input winum-candidates
+  path:<copy of winum>`. The dry run builds one Wine and the launcher, the
+  installation stays `inventor-2027.1` as without it. Every Wine process
+  prints the marker, and Inventor maps `kernel32.dll` from the candidate
+  Wine's own `lib/wine`, not the copy in the layers. Restart and reopen of
+  the saved part on it: OK.
+- Dispatcher (the module's `autodesk-inventor-url-handler`, the module's
+  launchers): with 2026 running (at its sign-in page) and 2027 not, a test
+  `adskidmgr://` callback goes to 2026 (exit 0, request queue emptied, no
+  2027 started); with neither running it starts 2027. The module's
+  launchers write no handler into `~/.local/share/applications`.
+- Crashed sessions: after SIGKILL of a 2027 launcher's process group, 17 of
+  its processes (fuse-overlayfs, wineserver, services) kept running in their
+  namespace and held `session.lock`; a 2026 launch kept that directory. Once
+  they were gone, the next launch removed it and a second crashed session's.
+- Not done here: a real Autodesk sign-in (the 2026 copy was not signed in).
+
+**2026-11-16 - NixOS: DXVK and vkd3d-proton as layers above the
+installation:** the Nix installation is built with `INV_DXVK=none` and
+`INV_VKD3D=none`; the launcher mounts DXVK 2.7.1 and winum's vkd3d-proton
+3.0.1-winum-1 as nix-overlayfs file layers, with their `native` overrides in
+the layers' registry. Wine reads `WINEDLLOVERRIDES` before the per-program
+keys (`get_load_order_value()` in `dlls/ntdll/unix/loadorder.c`), so overrides
+in the environment would have put WebView2 back on DXVK and white windows;
+in the registry the `msedgewebview2.exe` exception still wins. A new DXVK or
+vkd3d-proton now rebuilds only the launcher (`graphics-layers` check).
+Smoke test in the isolated X11 desktop on a copy of the user's 2027 state:
+the installation holds no DXVK or vkd3d-proton DLL and only `d3dcompiler_47`
+and `mscoree` in its global `DllOverrides`; Inventor logs `DXVK: v2.7.1` and
+vkd3d-proton build `3b10bd7a7ec6a73+` (upstream's source plus winum's
+ray-payload patch, per the archive's `BUILDINFO.txt`; upstream 3.0.1 logs no
+`+`); the Home page (WebView2) renders; new part, Save As, restart, reopen:
+OK; the hidden-file check ran for the new layer set and found nothing to
+move. A black rectangle in a new part's viewport, gone as soon as the
+pointer moved, is the known delayed repaint, not new. Installation rebuilt
+once for this.
+Repeated on top of the installer review branch (#14), with the 2027
+installation rebuilt by its installer (`nix build .#inventor-2027`, launcher
+`zsy52hs8...-inventor-overlay-2027.1`, 12.5 min): in the Nix sandbox's
+virtual display Inventor's registration (`Inventor.exe /install 0`) exited 0
+after 7 s and registered `Inventor.Application` and `Inventor.PartDocument`;
+`tar.exe` came from the pinned libarchive archive; the 2027.1 update moved
+176 dropped files to `.inventor-on-linux/removed-by-update/`. On a copy of
+the user's state (an upper layer from the previous installation): start
+signed in, Home renders, `d3d9`/`d3d11`/`dxgi`/`d3d12` loaded native from
+the layers, a new part's viewport renders, quit cleanly; the hidden-file
+check moved nothing.
+
+**2026-11-16 - NixOS: nix-overlayfs 182757d, the launcher as tested
+scripts:** the bash nix-overlayfs generated into every launcher (URL
+handler registration, session state, host browser broker, registry
+helpers, the writable layer's skeleton and start.exe shim, namespace mode,
+Wine shutdown) is now a set of shellchecked programs with their own checks,
+and a VM test covers an application's lifecycle (install, launch, a changed
+lower layer, the host handler turned off). The pin changes only the
+launcher; the installations are not rebuilt. Smoke test of 2027 in the
+isolated X11 desktop on a copy of the user's state: start signed in, the
+`adskidmgr` handler entry and its `mimeapps.list` default written as
+before, `d3d11`/`dxgi`/`d3d12` native from the layers, a new part, clean
+quit (no process or mount left, the start.exe shim removed, the session
+directory gone). The hidden-file check reported the shim's two `start.exe`
+copies: the state was copied while a session of the user was running, so
+its writable layer held them; the check runs before the launcher installs
+the shim, unchanged from the earlier pin.
+
+**2026-11-18 - v0.4.0 regression: the Interactive Tutorial crashed
+Inventor on Wine Mono (migration 0012):** found by @Lukas10999 while
+updating an old prefix (`wine-inventor-11.20-6`, Wine Mono, no .NET
+Framework 4.8) to winum-11.22-1 through migrations 0002-0012 (#8):
+Inventor crashed right after the splash at every start ("Can't find custom
+attr constructor image: ...InteractiveTutorial.dll", then a native crash
+in `CCWInvokeInternal`); `addins.sh disable InteractiveTutorial` fixed it.
+Cause: migration 0010 turns the tutorial on in every prefix, but it was
+only tested with .NET Framework 4.8; only SharedViews was gated on
+`dotnet48_present`. Every installation from before 2026-11-11 has no .NET
+Framework 4.8, so every v0.3.x installation upgraded to v0.4.0 was hit.
+Fix: migration `0012-tutorial-off-without-dotnet48` moves
+`Autodesk.InteractiveTutorial.Inventor.addin` back to `Addins.disabled`
+in a prefix without .NET Framework 4.8 (its two libraries stay in `Bin`, as
+in the tested workaround); the add-in is now in `INV_DOTNET48_ADDINS`, so a
+reinstall, `addins.sh enable-safe` and `addins.sh reset` keep it off
+without .NET 4.8 and on with it. 0010 itself is unchanged (old migrations
+are never edited). Tests: `tests/test_migrations.py` (0012 with and
+without .NET 4.8, an add-in in both folders, `addins.sh`), 239 OK.

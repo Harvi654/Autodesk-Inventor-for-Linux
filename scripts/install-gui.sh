@@ -7,6 +7,7 @@
 #   bash scripts/install-gui.sh
 
 set -euo pipefail
+_INV_FOR_INSTALL=1   # chooses its target itself, not the installed release (common.sh)
 source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 
 [ "$EUID" -ne 0 ] || die "run this as your normal user, not with sudo"
