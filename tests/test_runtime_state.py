@@ -58,32 +58,26 @@ fi
         self.assertEqual(result.returncode, 0, result.stderr)
         return self.actions.read_text() if self.actions.exists() else ""
 
-    def test_real_host_family_enables_substitution(self):
-        self.env["FONT_HOST_FAMILIES"] = "Segoe UI,Segoe UI Semibold"
-        actions = self.apply_fonts()
-        self.assertIn("reg add", actions)
-        self.assertIn("/v Tahoma /t REG_SZ /d Segoe UI /f", actions)
-
-    def test_prefix_font_enables_substitution(self):
-        self.env["FONT_PREFIX_FAMILIES"] = "Segoe UI"
-        self.assertIn("reg add", self.apply_fonts())
-
-    def test_fallback_and_other_segoe_families_do_not_enable_it(self):
-        self.env["FONT_HOST_FAMILIES"] = "Noto Sans\nSegoe UI Symbol\nSegoe UI Variable"
-        self.assertEqual(self.apply_fonts(), "")
-
-    def test_disappearing_font_removes_segoe_substitution(self):
+    # The Tahoma -> Segoe UI substitution of earlier launchers is removed;
+    # none is added, even with Segoe UI installed (ClearType since winum
+    # 11.22-3 makes Tahoma smooth).
+    def test_leftover_segoe_substitution_is_removed(self):
         self.env["FONT_CURRENT"] = "Segoe UI"
         self.assertIn("reg delete", self.apply_fonts())
 
-    def test_existing_segoe_substitution_needs_no_write(self):
-        self.env.update(FONT_CURRENT="Segoe UI", FONT_HOST_FAMILIES="Segoe UI")
+    def test_removed_even_with_segoe_installed(self):
+        self.env.update(FONT_CURRENT="Segoe UI", FONT_HOST_FAMILIES="Segoe UI",
+                        FONT_PREFIX_FAMILIES="Segoe UI")
+        actions = self.apply_fonts()
+        self.assertIn("reg delete", actions)
+        self.assertNotIn("reg add", actions)
+
+    def test_no_substitution_is_added(self):
+        self.env.update(FONT_HOST_FAMILIES="Segoe UI", FONT_PREFIX_FAMILIES="Segoe UI")
         self.assertEqual(self.apply_fonts(), "")
 
-    def test_custom_substitution_is_preserved_with_or_without_segoe(self):
+    def test_custom_substitution_is_preserved(self):
         self.env["FONT_CURRENT"] = "DejaVu Sans"
-        self.assertEqual(self.apply_fonts(), "")
-        self.env["FONT_HOST_FAMILIES"] = "Segoe UI"
         self.assertEqual(self.apply_fonts(), "")
 
 

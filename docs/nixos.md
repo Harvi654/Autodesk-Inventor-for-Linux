@@ -469,26 +469,28 @@ desktop was stopped, and the authenticated test state was preserved.
 
 ## Fonts and small UI text
 
-The launcher checks actual host font families with `fc-list` and prefix font
-files with `fc-scan`. If **Segoe UI** is available, it adds the Wine
-`FontSubstitutes` entry `Tahoma=Segoe UI` for smoother system menu/status text.
-This is conditional on the actual family, not Wine's Segoe-to-Noto alias or
-Fontconfig's fallback matching. If Segoe UI disappears, that specific mapping
-is removed; substitutions to other families are preserved. The check runs in
-the composed prefix at launch, for both Inventor releases. Microsoft fonts are
-not downloaded or included in the package by this change.
+Small UI text such as the status bar and system menus uses Tahoma. Since
+winum 11.22-3, Wine renders normal text with the desktop font smoothing
+values, and the launcher sets them to Windows' defaults at every start:
+ClearType with RGB subpixels (`FontSmoothing` 2, `FontSmoothingType` 2,
+`FontSmoothingOrientation` 1 in `HKCU\Control Panel\Desktop`). Tahoma then
+renders smoothly, with no other font needed. Microsoft fonts are not
+downloaded or included in the package.
 
-On 2026-11-10 the user confirmed the substitution improved Inventor 2027's UI.
-ClearType settings alone had not helped: Wine's font trace showed smoothing
-disabled by small Tahoma glyphs' GASP instructions. Explicit application
-requests for Tahoma can remain unsmoothed; this changes system font selection.
-See the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling).
+Until then the launcher mapped Tahoma to Segoe UI (`FontSubstitutes`) when a
+real Segoe UI was installed, because Wine's font trace showed that small
+Tahoma glyphs' GASP instructions turned smoothing off, and ClearType settings
+alone did not help without the winum patch (user confirmation on 2026-11-10;
+see the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling)).
+That mapping is no longer added. The launcher removes the one that earlier
+launchers left in the writable state; a substitution to another family is the
+user's own and stays.
 
 Which fonts to provide:
 
 | Fonts | Purpose and existing coverage |
 |---|---|
-| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family; needed for the conditional substitution. Supply it through your own host fonts or prefix. |
+| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family for applications that ask for it by name. No longer needed for smooth small text. Supply it through your own host fonts or prefix. |
 | Tahoma / Microsoft Sans Serif | Legacy UI families. Providing them does not itself solve small-text smoothing; free replacements already exist. |
 | Arial, Times New Roman, Courier New | Useful for matching documents that name these fonts. Liberation Sans, Serif and Mono are already bundled as substitutes. |
 | Calibri / Cambria | Optional for documents that use them; Carlito and Caladea substitutes are already bundled. |
