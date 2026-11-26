@@ -322,6 +322,10 @@ class Installer:
             "temp": r"C:\users\%s\AppData\Local\Temp" % USER,
             "tmp": r"C:\users\%s\AppData\Local\Temp" % USER,
             "inv_locale": a.lang,
+            # ODIS's language of the installation, e.g. Revit 2027's RVT.msi:
+            # TRANSFORMS=:%LANGUAGE_CODE%.mst;:all.mst - the locale the image
+            # was downloaded in (--lang, cs-CZ for a Czech image)
+            "language_code": a.lang,
             "media_root": MEDIA_DRIVE.upper(),
             "install_source": MEDIA_DRIVE.upper(),
         }

@@ -69,10 +69,21 @@ class ActionVariables(unittest.TestCase):
         self.assertNotIn("p.exe", log)
 
     def test_install_parameters_with_unknown_variables_are_said(self):
-        self.inst.do_exe(step(params="/quiet LANG=%LANGUAGE_CODE%"), "x.log")
-        self.assertEqual(self.seen[0][2:], ["/quiet", "LANG=%LANGUAGE_CODE%"])
-        self.assertIn("WARN install parameters of Pkg keep unknown %LANGUAGE_CODE%: /quiet LANG=%LANGUAGE_CODE%",
+        self.inst.do_exe(step(params="/quiet LANG=%SOME_UNKNOWN%"), "x.log")
+        self.assertEqual(self.seen[0][2:], ["/quiet", "LANG=%SOME_UNKNOWN%"])
+        self.assertIn("WARN install parameters of Pkg keep unknown %SOME_UNKNOWN%: /quiet LANG=%SOME_UNKNOWN%",
                       self.log())
+
+    def test_language_code_is_the_installation_locale(self):
+        # Revit 2027's RVT.msi: TRANSFORMS=:%LANGUAGE_CODE%.mst;:all.mst
+        self.inst.vars["language_code"] = "cs-CZ"
+        self.inst.do_exe(step(params="TRANSFORMS=:%LANGUAGE_CODE%.mst;:all.mst"), "x.log")
+        self.assertEqual(self.seen[0][2:], ["TRANSFORMS=:cs-CZ.mst;:all.mst"])
+        log = Path(self.inst.logdir, "install.log")
+        self.assertNotIn("keep unknown", log.read_text() if log.exists() else "")
+
+    def test_language_code_follows_lang(self):
+        self.assertEqual(self.inst.vars["language_code"], self.inst.a.lang)
 
     def test_msi_properties_left_out_are_listed(self):
         s = dict(step(msi={"UNITS": "%UNITS%", "ADSK_LANG": "en-US", "SERIAL": "%ACADSERIALNUMBER%"}), type="MSI",
