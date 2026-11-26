@@ -38,10 +38,10 @@ class AdixUpdate(unittest.TestCase):
         self.mod, self.inst = fx.installer(t / "image", self.prefix, t / "logs", dry_run=False)
         self.bin = self.prefix / "drive_c/Program Files/Autodesk/Inventor 2027/Bin"
 
-    def install(self, files, version, identity="Autodesk.InvCore", name="InvCore"):
+    def install(self, files, version, identity="Autodesk.InvCore", name="InvCore", display="Inventor Core 2027"):
         pkg = Path(self.tmp.name) / ("%s-%s.adix" % (name, version))
         pkg.write_bytes(adix(files, identity))
-        s = {"name": name, "display": "Inventor Core 2027", "version": version}
+        s = {"name": name, "display": display, "version": version}
         self.assertTrue(self.inst.do_adix(s, "%s.log" % version, str(pkg)))
         return pkg, s
 
@@ -181,6 +181,80 @@ class AdixUpdate(unittest.TestCase):
         self.assertTrue((self.bin / "B.dll").exists())
         self.assertFalse((self.bin / "A.dll").exists())
         self.assertFalse((self.bin / "C.dll").exists())
+
+    # Revit 2027.4: "Core Extension Package Component" and "Core-RVT
+    # Package Component" both carry the identity Autodesk.Revit.Ext, have
+    # the same version and go into the same folder.
+    def test_packages_sharing_an_identity_keep_each_others_files(self):
+        self.install(["Revit.exe", "RevitDB.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTEXT",
+                     display="Core Extension Package Component for Revit 2027")
+        self.install(["RevitCore.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTONLY",
+                     display="Core-RVT Package Component for Revit 2027")
+        for f in ("Revit.exe", "RevitDB.dll", "RevitCore.dll"):
+            self.assertTrue((self.bin / f).exists(), f)
+        self.assertNotIn("moved", self.log())
+        records = self.inst.read_adix_records()
+        self.assertIn("Autodesk.Revit.Ext", records)
+        self.assertIn("Autodesk.Revit.Ext#RVTONLY", records)
+        self.assertEqual(records["Autodesk.Revit.Ext#RVTONLY"]["files"],
+                         ["C:\\Program Files\\Autodesk\\Inventor 2027\\Bin\\RevitCore.dll"])
+
+    def test_an_update_of_one_of_them_removes_only_its_own_files(self):
+        self.install(["Revit.exe", "RevitDB.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTEXT")
+        self.install(["RevitCore.dll", "Old.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTONLY")
+        self.install(["RevitCore.dll"], "27.0.5.100", identity="Autodesk.Revit.Ext", name="RVTONLY")
+        self.assertFalse((self.bin / "Old.dll").exists())
+        for f in ("Revit.exe", "RevitDB.dll", "RevitCore.dll"):
+            self.assertTrue((self.bin / f).exists(), f)
+        self.assertIn("moved 1 files", self.log())
+
+    def test_a_list_from_before_names_were_kept_still_updates(self):
+        self.install(["A.dll", "B.dll"], "1")
+        rec = Path(self.inst.adix_record_path("Autodesk.InvCore"))
+        data = rec.read_text().replace('"name": "InvCore",', "")
+        rec.write_text(data)
+        self.assertNotIn('"name"', rec.read_text())
+        self.install(["A.dll"], "2")
+        self.assertFalse((self.bin / "B.dll").exists())
+
+    def nameless(self, identity):
+        rec = Path(self.inst.adix_record_path(identity))
+        rec.write_text(rec.read_text().replace('"name": ', '"was_name": '))
+
+    def test_a_nameless_list_of_a_sibling_is_not_taken_by_another_version(self):
+        # #43 review: RVTEXT's list from before names, RVTONLY of another version
+        self.install(["Revit.exe", "RevitDB.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTEXT",
+                     display="Core Extension Package Component for Revit 2027")
+        self.nameless("Autodesk.Revit.Ext")
+        self.install(["RevitCore.dll"], "27.0.5.100", identity="Autodesk.Revit.Ext", name="RVTONLY",
+                     display="Core-RVT Package Component for Revit 2027")
+        for f in ("Revit.exe", "RevitDB.dll", "RevitCore.dll"):
+            self.assertTrue((self.bin / f).exists(), f)
+        self.assertNotIn("moved", self.log())
+
+    def test_a_nameless_list_of_a_sibling_is_not_taken_on_the_already_installed_path(self):
+        self.install(["Revit.exe", "RevitDB.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTEXT",
+                     display="Core Extension Package Component for Revit 2027")
+        self.nameless("Autodesk.Revit.Ext")
+        pkg = Path(self.tmp.name) / "image" / "x64/RVTONLY/RVTONLY.adix"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_bytes(adix(["RevitCore.dll"], "Autodesk.Revit.Ext"))
+        s = {"name": "RVTONLY", "display": "Core-RVT Package Component for Revit 2027", "version": "27.0.5.100",
+             "type": "ADIX", "file": "x64/RVTONLY/RVTONLY.adix"}
+        self.inst.record_installed_adix(s, self.mod.odis.Image(str(Path(self.tmp.name) / "image")))
+        self.assertTrue((self.bin / "Revit.exe").exists())
+        self.assertIn("Autodesk.Revit.Ext#RVTONLY", self.inst.read_adix_records())
+
+    def test_suffixed_and_plain_keys_never_share_a_file(self):
+        # #43 review: a package without AppxManifest is identified by its name
+        self.install(["A.dll"], "1", identity="Autodesk.Revit.Ext", name="RVTEXT")
+        self.install(["B.dll"], "1", identity="Autodesk.Revit.Ext", name="RVTONLY")
+        self.install(["C.dll"], "1", identity=None, name="Autodesk.Revit.Ext_RVTONLY")
+        records = self.inst.read_adix_records()
+        self.assertEqual(sorted(records), ["Autodesk.Revit.Ext", "Autodesk.Revit.Ext#RVTONLY",
+                                           "Autodesk.Revit.Ext_RVTONLY"])
+        self.assertNotEqual(self.inst.adix_record_path("Autodesk.Revit.Ext#RVTONLY"),
+                            self.inst.adix_record_path("Autodesk.Revit.Ext_RVTONLY"))
 
     def test_without_appx_manifest_the_name_identifies(self):
         self.install(["A.dll", "B.dll"], "1", identity=None, name="Pkg")

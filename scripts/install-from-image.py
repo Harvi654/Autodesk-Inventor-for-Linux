@@ -779,6 +779,7 @@ class Installer:
         """ADIX = Autodesk's MSIX-style package: VFS/<KnownFolder>/... files."""
         written = 0
         identity, files, regs, dropped, mapper = self.adix_entries(s, path)
+        identity = self.adix_key(identity, s)
         # files of this package's installed version: an update replaces
         # them, as Windows replaces the package - no version check, no
         # "shared file" line (2027.2 logged 1 685 of them)
@@ -828,7 +829,47 @@ class Installer:
         return os.path.join(self.prefix, ".inventor-on-linux", "adix")
 
     def adix_record_path(self, identity):
-        return os.path.join(self.adix_record_dir(), re.sub(r"[^A-Za-z0-9._-]", "_", identity) + ".json")
+        # A plain identity keeps the file name lists always had (other
+        # characters as "_"). A "<identity>#<name>" key is percent-encoded
+        # instead: its name holds "%", which the plain form never has, and
+        # two such keys never share a file (#43 review: "Autodesk.Revit.Ext#
+        # RVTONLY" and a package named "Autodesk.Revit.Ext_RVTONLY").
+        if "#" in identity:
+            name = urllib.parse.quote(identity, safe="")
+        else:
+            name = re.sub(r"[^A-Za-z0-9._-]", "_", identity)
+        return os.path.join(self.adix_record_dir(), name + ".json")
+
+    def adix_key(self, identity, s, records=None):
+        """The key of a package's file list. Usually the AppxManifest
+        identity, which stays the same across a package's versions. But
+        Revit 2027.4 has several packages with the same identity
+        (Autodesk.Revit.Ext: "Core Extension Package Component" and
+        "Core-RVT Package Component", the same version, into the same
+        folder): taken for versions of one package, each removed the
+        other's files (3328, Revit.exe among them). A list another
+        package of the manifest wrote stays its own; this one is kept
+        under "<identity>#<manifest name>"."""
+        if records is None:
+            records = self.read_adix_records()
+        name = s["name"]
+        own = "%s#%s" % (identity, name)
+        if own in records:
+            return own
+        old = records.get(identity)
+        if old is None:
+            return identity
+        if "name" in old:
+            same = old["name"] == name
+        else:
+            # A list written before the name was kept: only the same
+            # display name shows it is this package's. Another version
+            # alone is no evidence - a sibling of another version would
+            # take the list and remove its files (#43 review). An update
+            # whose display name changed then keeps the old version's
+            # files: left over, not lost.
+            same = old.get("package") == (s.get("display") or name)
+        return identity if same else own
 
     def read_adix_records(self):
         out = {}
@@ -846,8 +887,8 @@ class Installer:
             return
         os.makedirs(self.adix_record_dir(), exist_ok=True)
         with open(self.adix_record_path(identity), "w") as f:
-            json.dump({"identity": identity, "package": s.get("display") or s["name"], "version": s.get("version", ""),
-                       "files": sorted(set(files), key=str.lower)}, f, indent=0)
+            json.dump({"identity": identity, "name": s["name"], "package": s.get("display") or s["name"],
+                       "version": s.get("version", ""), "files": sorted(set(files), key=str.lower)}, f, indent=0)
 
     def replace_adix_record(self, identity, s, files, logname):
         records = self.read_adix_records()
@@ -934,6 +975,7 @@ class Installer:
             identity, files, _, _, _ = self.adix_entries(s, path)
         except (OSError, zipfile.BadZipFile):
             return
+        identity = self.adix_key(identity, s)
         rec = self.read_adix_records().get(identity)
         if rec is None:
             self.write_adix_record(identity, s, [w for _, w, _ in files])
