@@ -341,7 +341,6 @@ withInventorMeta (overlayfsLib.composeWindowsLayers {
       defaultMode = "system";
     }).extraPreLaunchCommands
     }
-    ${builtins.readFile ./launch-fonts.sh}
     ${builtins.readFile ./launch-services.sh}
   '';
 }) executableName

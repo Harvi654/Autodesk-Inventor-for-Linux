@@ -370,12 +370,12 @@ in `nix/wine.nix`: the release plus a hash of the release and candidate
 patches that change prefix contents). While both name the same release, they
 are one derivation.
 
-The writable state's registry is merged after the layers' registry, so a
-value that an existing user already has wins over a changed packaged default.
-A changed setting in `inventor-config` therefore reaches only new users
-(nix/LAYERS.md). The values that name the installed Shared Components version
-are the exception: the launcher writes them again at every start, so an
-update reaches existing users.
+nix-overlayfs merges the registry three-way at launch (nix/LAYERS.md): a
+value that the user never changed follows the layers, so a changed packaged
+value, such as a new Shared Components version or a changed setting in
+`inventor-config`, reaches existing users. A value that the user changed,
+added or deleted is kept. The launcher itself writes no registry values: the
+package's settings come only from the layers.
 
 DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) are not part of the
 installation either: the launcher mounts them as separate layers (below the
@@ -471,7 +471,7 @@ desktop was stopped, and the authenticated test state was preserved.
 
 Small UI text such as the status bar and system menus uses Tahoma. Since
 winum 11.22-3, Wine renders normal text with the desktop font smoothing
-values, and the launcher sets them to Windows' defaults at every start:
+values, and the `inventor-config` layer sets them to Windows' defaults:
 ClearType with RGB subpixels (`FontSmoothing` 2, `FontSmoothingType` 2,
 `FontSmoothingOrientation` 1 in `HKCU\Control Panel\Desktop`). Tahoma then
 renders smoothly, with no other font needed. Microsoft fonts are not
@@ -482,9 +482,8 @@ real Segoe UI was installed, because Wine's font trace showed that small
 Tahoma glyphs' GASP instructions turned smoothing off, and ClearType settings
 alone did not help without the winum patch (user confirmation on 2026-11-10;
 see the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling)).
-That mapping is no longer added. The launcher removes the one that earlier
-launchers left in the writable state; a substitution to another family is the
-user's own and stays.
+That mapping is no longer added. Where earlier launchers left it in a
+user's writable state, it stays until a cleanup.
 
 Which fonts to provide:
 

@@ -90,6 +90,30 @@ only sets the release and its state directory. The licensing database is kept
 on the native filesystem under `.nix-overlayfs/licensing-data` and linked into
 the composition because it needs memory-mapped access outside the FUSE overlay.
 
+## The writable layer is state, not configuration
+
+Nothing that the package provides is written into the writable layer, so
+that every installation stays reproducible from its layers. Registry values
+and files that the package wants in the prefix go into a layer: the
+installation layer (`post-install.sh`) when they need the installed files,
+otherwise the config layer (`config-layer.sh`). The launch scripts do not run
+`wine reg add` or `wine reg delete`, and do not copy package files into the
+prefix. The writable layer holds only what Inventor and the user write.
+
+nix-overlayfs merges the registry three-way at launch: a value that the user
+never changed follows the layers, so a changed packaged value reaches
+existing users, and a value that the user changed, added or deleted is kept.
+`tests/test_runtime_state.py` checks that the launcher writes no registry
+values.
+
+The launcher still has some exceptions that should move out of it. It seeds
+`RealDWGSettings.xml` into the user's profile and creates the per-user
+`Addins` and public `Macros` folders, because the profile path depends on the
+runtime user's name, which a layer cannot know. It also resets the per-user
+IDSDK IPC folder. Earlier launchers wrote some values into existing states:
+the Tahoma to Segoe UI substitution, the graphics driver, and the Shared
+Components values and Path. These stay there until a cleanup.
+
 ## Prefix setup without migrations
 
 The installation layer runs `install-from-image.py` and `post-install.sh`.
@@ -110,10 +134,9 @@ the layers, and `winum` is the Wine that runs Inventor (both named by winum's
 release tag, now winum-11.22-3). Inventor is reinstalled by any of these:
 updating nixpkgs, nix-overlayfs or winum-install, a new Autodesk update, or
 editing the files in `installerSource` or `post-install.sh`. Batch such
-updates and say so in the commit. The writable state's registry wins over
-changed packaged defaults for existing users. A value that must follow the
-installation (like the Shared Components version) is rewritten by
-`launch-services.sh` at start.
+updates and say so in the commit. A value that must follow the installation
+(like the Shared Components version) is written by `post-install.sh` and
+reaches existing users through the three-way registry merge.
 
 ## Runtime and integration
 
