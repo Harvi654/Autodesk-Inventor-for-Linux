@@ -106,12 +106,12 @@ existing users, and a value that the user changed, added or deleted is kept.
 `tests/test_runtime_state.py` checks that the launcher writes no registry
 values.
 
-A launch writes no package settings into the writable layer. It still writes
-these, each for a stated reason. The list covers what ends up in the prefix,
-not nix-overlayfs's own bookkeeping (merge and session metadata in
-`.nix-overlayfs`, the directory skeleton of the writable layer, the handling
-of shadowed files, and the removal of markers and shims that older launchers
-left behind), which the nix-overlayfs README describes:
+A launch writes no package settings into the writable layer. It also does
+some nix-overlayfs bookkeeping, which the nix-overlayfs README describes:
+merge and session metadata in `.nix-overlayfs`, the directory skeleton of the
+writable layer, the handling of shadowed files, and the removal of markers and
+shims that older launchers left behind. Apart from that, it still writes these,
+each for a stated reason:
 - nix-overlayfs's registry merge writes the merged hives, because Wine keeps
   the registry in single files that a file overlay cannot combine. Its other
   integration settings (WineBrowser, URL schemes, the update marker, the
