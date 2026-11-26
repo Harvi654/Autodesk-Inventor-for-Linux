@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/006dd3b3f1f973a60e394747e500c5cfb5721599";
+      url = "github:krokosik/nix-overlayfs/cd01ba181042f6bd781cf190e63a1e1464a658fa";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # winum releases, named by their signed tags. Only patches/series and the
