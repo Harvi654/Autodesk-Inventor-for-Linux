@@ -80,6 +80,10 @@
     nix = [ "not-applicable" ];
     note = "Turns the Interactive Tutorial off only without .NET Framework 4.8; the Nix package always has the dotnet-framework-4-8 layer, so it stays on (post-install.sh turns off only the Assistant).";
   };
+  "0013-assistant-off-programdata" = {
+    nix = [ "post-install" ];
+    note = "post-install.sh moves the Assistant's .addin file from ProgramData (2027.2 and later) to Addins.disabled/programdata, as pd_addin_disable does; its DLLs stay.";
+  };
   "0011-winemenubuilder-off" = {
     nix = [
       "config-layer"

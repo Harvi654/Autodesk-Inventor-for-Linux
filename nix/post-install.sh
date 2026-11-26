@@ -131,6 +131,21 @@ mkdir -p "$inv/Addins.disabled/libs"
 for f in Autodesk.AssistantAddin.Inventor.addin; do
     if [ -f "$inv/Bin/Addins/$f" ]; then mv "$inv/Bin/Addins/$f" "$inv/Addins.disabled/"; fi
 done
+# Since 2027.2 the Assistant's .addin file is in ProgramData, in a folder per
+# version (migration 0013, pd_addin_disable in scripts/lib/common.sh). Each
+# copy moves to Addins.disabled/programdata with the same relative path; the
+# add-in's DLLs stay where they are. A copy that is already off is left alone.
+pd_addins="$c/ProgramData/Autodesk/Inventor $INV_YEAR/Addins"
+pd_addins_off="$inv/Addins.disabled/programdata"
+if [ -d "$pd_addins" ]; then
+    find "$pd_addins" -mindepth 1 -maxdepth 4 -type f -iname Autodesk.AssistantAddin.Inventor.addin -printf '%P\n' |
+        sort | while IFS= read -r rel; do
+            [ -e "$pd_addins_off/$rel" ] && continue
+            mkdir -p "$pd_addins_off/$(dirname "$rel")"
+            mv -n -- "$pd_addins/$rel" "$pd_addins_off/$rel"
+            say "off: ProgramData Addins/$rel"
+        done
+fi
 
 # Known crash sources.
 if [ -f "$inv/Bin/CER/senddmp.exe" ]; then mv "$inv/Bin/CER/senddmp.exe" "$inv/Bin/CER/senddmp.exe.disabled"; fi
