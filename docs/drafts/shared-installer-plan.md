@@ -171,7 +171,14 @@ below), as they concern every product.
    - the sign-in callback uses the running session's Wine, not
      `select_wine`'s (AutoCAD notes 2026-11-17, finding 2);
    - DXVK and vkd3d-proton as a common setup step, not only in Inventor's
-     `finish-install.sh` (finding 3);
+     `finish-install.sh` (finding 3) - but switched on per product
+     profile: AutoCAD keeps Wine's own Direct3D (DXVK hides its
+     overlays, vkd3d-proton crashes orbit), Revit cannot use DXVK
+     (no D3D11 class linkage, no WARP). And `install_dxvk` sets
+     `d3dcompiler_47` to `native`, which only Inventor can have: Revit
+     and AutoCAD bring no `d3dcompiler_47.dll` and need
+     `native,builtin`, otherwise Revit does not start at all (`c0000135`,
+     Revit notes 2026-11-26);
    - **Autodesk's terms before installing** (below);
    - release checklist and golden plans for Inventor.
 2. Product profiles, without changing what Inventor gets (proved by its
