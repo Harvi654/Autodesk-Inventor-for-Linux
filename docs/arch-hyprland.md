@@ -1976,6 +1976,21 @@ Also logged 4 times: `stream_wrapper_QueryInterface Unsupported interface
 {2933bf81-7b36-11d2-b20e-00c04f983e60}` (`IXMLDOMDocument` asked of a
 stream wrapper) - to be checked whether it belongs to the same step.
 
+**Correction and the step right before the close (same night).** The
+`loadXML(L"")` above only empties the library-list document before it is
+released - a common idiom, not the fault. What follows, twice, directly
+before `EndDialog`: a new `DOMDocument60` is created,
+`createProcessingInstruction("xml", "version='1.0' encoding='UTF-16'")`,
+the document is loaded from a stream (`stream_wrapper_Read`, the SAX
+reader detects UTF-16LE and parses an encoding declaration "UTF-16"),
+then `get_documentElement` and `appendChild(<the xml declaration PI>)`.
+No `err`/`warn` from msxml3, and the trace does not show results. Wine
+11.x has a rewritten msxml3 DOM (its own node tree built from SAX, with a
+Wine extension handler for the XML declaration), so this short sequence
+- load of a UTF-16 stream into DOMDocument60, read of the root element,
+appending an XML declaration PI to a loaded document - is the next thing
+to measure on Windows (HRESULTs, which nodes, the resulting `xml`).
+
 **Best hypothesis, next round.** Something during the browser dialog's
 initialisation (after its controls exist: filling the tree and the list,
 or the quick-search field) fails under Wine and MFC turns it into a C++
