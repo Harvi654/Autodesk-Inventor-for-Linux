@@ -357,10 +357,11 @@ SHA-256 recorded):
 
 The answer decides what the README tells users: "keep your installer
 file, it reinstalls the same version" or "download a fresh one when you
-reinstall". One installer change follows either way: the launchers must
-find the licensing service's version folder from what is installed
-(`AdskLicensing\<version>\`), not from a fixed version, so that an update
-of the service does not break the start (phase 1).
+reinstall". The launchers already take the newest licensing service
+folder installed in the prefix (`detect_prefix_versions`,
+`latest_version_dir` in `scripts/lib/common.sh`), so an update of the
+service needs no launcher change; the test still starts the program
+once after the update to confirm it.
 
 ## Fonts (2026-11-23)
 
