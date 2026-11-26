@@ -422,6 +422,55 @@ Autodesk installation media and license. See [the NixOS setup guide](docs/nixos.
 for installation, system integration, and known limitations. The module uses
 system graphics drivers and keeps sign-in and settings in persistent user state.
 
+The Nix package has its own tagged releases in
+[krokosik/Autodesk-Inventor-for-Nix](https://github.com/krokosik/Autodesk-Inventor-for-Nix/releases),
+separate from the releases of the script installer here. The flake takes up
+the installer's changes in batches rather than with each of its releases, so
+its releases follow their own schedule.
+
+### Quick start (NixOS)
+
+First add your Autodesk download to the Nix store. The build never downloads
+Autodesk files:
+
+```sh
+nix store add --mode flat --hash-algo sha256 ~/Downloads/Inventor/Inventor_Professional_2027_English_Win_64bit_db_002_002.7z
+nix store add --mode flat --hash-algo sha256 ~/Downloads/Inventor/Inventor_2027.2_Update.exe
+```
+
+Then add the flake and enable the module:
+
+```nix
+# flake.nix inputs
+inventor.url = "github:krokosik/Autodesk-Inventor-for-Nix";
+
+# NixOS configuration
+imports = [ inventor.nixosModules.default ];
+programs.autodesk-inventor = {
+  enable = true;
+  versions = [ "2027" ]; # and/or "2026"
+};
+```
+
+To pin a release, add its tag to the URL:
+`github:krokosik/Autodesk-Inventor-for-Nix/<tag>`. The module adds the menu
+entries, the `adskidmgr://` sign-in handler for all selected releases, and
+the system settings that Inventor needs (graphics, FUSE).
+
+### Quick start (the flake without the module)
+
+With the same files in the store, run Inventor directly from the flake:
+
+```sh
+nix run github:krokosik/Autodesk-Inventor-for-Nix#inventor-2027
+```
+
+or put `inventor.packages.x86_64-linux.inventor-2027` into your own package
+list. Without the module, the launcher registers itself as the user's
+`adskidmgr://` handler at every start, and the system must provide graphics
+drivers at `/run/opengl-driver` (`hardware.graphics.enable = true` on NixOS)
+and FUSE (`programs.fuse.enable = true`).
+
 ## FAQ
 
 **Which license do I need?** Your own Inventor 2026 or 2027 license - a paid

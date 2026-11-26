@@ -128,7 +128,7 @@ settings. Add the following sections to your system configuration.
 Inside your system `flake.nix`, add this alongside your existing inputs:
 
 ```nix
-inputs.inventor.url = "github:Harvi654/Autodesk-Inventor-for-Linux";
+inputs.inventor.url = "github:krokosik/Autodesk-Inventor-for-Nix";
 ```
 
 Commit the resulting `flake.lock` so the repository revision is pinned. Leave
