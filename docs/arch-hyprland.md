@@ -1889,7 +1889,53 @@ cscript in a prefix with .NET 4.8. Related: bug 17019.
 Validation level: L0, L1, local paired L2, L3 and L4 (Nastran) for the token candidate (2026-11-24); the four earlier
 candidates as in the table.
 
+## Content Center: filtering by a standard crashes Inventor (issue #45, open)
+
+**Symptom.** In the Content Center editor (Tools > Content Center > Editor)
+picking a standard in the filter dropdown (funnel icon, e.g. "ISO") freezes
+Inventor and it ends. Filtering in the Bolted Connection generator works.
+Reported on Inventor 2026 with this project's old Wine build; reproduced on
+2027 with winum-11.22-3 (2026-11-26), so it is not fixed by updating.
+
+**What the log shows.** .NET ends the process: "terminated due to an
+unhandled exception", exception code `e06d7363` (a C++ `throw`), with an
+empty .NET stack. With `WINEDEBUG=+seh,+loaddll` the throw comes from
+`mfc140u.dll` (the C++ exception's `info[3]` is that module's base).
+With `+win,+dialog,+seh` the order just before it is:
+
+1. `c0000005` in `AmSrv.dll+0xf099`, continued by a vectored handler
+   (`ffffffff`) - handled, probably normal;
+2. the dropdown is a WPF popup (`HwndWrapper[...]`, `WS_POPUP`,
+   `WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE`);
+3. `EndDialog(<Inventor's MDI client>, IDCANCEL)` (`NtUserSetWindowFNID
+   ... 800d`), which Wine rejects (`err:dialog:EndDialog got invalid
+   window handle`);
+4. `CCUI.DLL` loads, `InitNetworkAddressControl` (stub) is called, and the
+   Content Center browser dialog is created (quick search, tree, list, OK,
+   Apply, Cancel); every control is created;
+5. right after the controls, MFC throws and nothing catches it.
+
+**Ruled out (measured or traced).** The Network Address control: the
+dialog has none (`+dialog` lists all its controls), and the stub is also
+called at startup without harm. `EndDialog` on a non-dialog window:
+Windows 10 returns `FALSE` too and leaves the window alone (winum
+`docs/wine-repro/user32-enddialog-nondialog`, offline VM, 2026-11-26;
+only the last error differs: 1420 on Windows, unchanged in Wine), so the
+call fails on Windows as well.
+
+**Best hypothesis, next round.** Something during the browser dialog's
+initialisation (after its controls exist: filling the tree and the list,
+or the quick-search field) fails under Wine and MFC turns it into a C++
+exception. Next: a `+relay` limited to `user32`/`comctl32` calls between
+the end of the control creation and the throw (`RelayInclude` on
+`SendMessageW`, `CreateWindowExW`, `ImageList_*`, the TreeView/ListView
+messages) to find the call whose result differs, then MEASURE it on
+Windows. Three rounds done today (old version, Network Address control,
+`EndDialog`); stopped here per the three-round rule.
+
 ## Result log
+
+**2026-11-26 - Content Center filter crash (#45) reproduced, cause not found yet:** reproduced on Inventor 2027 with winum-11.22-3; the uncaught C++ exception comes from `mfc140u.dll` right after the Content Center browser dialog's controls are created. Ruled out: the Network Address control (the dialog has none) and `EndDialog` on Inventor's MDI client (Windows 10 also returns `FALSE`, measured). Next: a narrow `+relay` between control creation and the throw. Section: "Content Center: filtering by a standard crashes Inventor".
 
 **2026-11-24 - Nastran works without the 0x80040154 dialog (token candidate, L3/L4):** runtime = winum "Build Wine" run 45317855190 of `test-run/token-integrity-level-1` (series + `server-limited-token-medium-integrity`) with the four Nastran overlays (wbemdisp, msado15, combase, kernelbase), on a copy of the Inventor 2027.2 + Nastran prefix (native .NET 4.8). MEASURE: Inventor-like process (limited token) S-1-16-8192, linked token 12288. `CreateObject` of `NEWPFUI.NEProgressImpl` and `NEWPFUI.NEWPFUIImpl`: `err=0x0` (0x1AD without the candidate). Nastran: part, Nastran environment, Generate Mesh (parabolic, 0.167 mm, 1,254,416 nodes, 806,387 elements), Run (linear static), von Mises contour, Deformed + Animate - all work, no dialog. The first attempt used the Build Wine artifact of `topic/token-integrity-level` (run 45307586910), which does not contain the candidate (still High, 0x1AD) - only the test-run build does. With a Wine virtual desktop (`INV_VDESKTOP`) Inventor is a child of explorer.exe, which Wine runs with an administrator token, so the dialog would stay there. Open: Inventor smoke test, ODIS, AutoCAD; `MSCOREE.DLL` `DllGetClassObject` 0x80070002 for four unregistered CLSIDs (no visible effect, not yet attributed); a black bar above the Nastran result legend (separate). Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
 
