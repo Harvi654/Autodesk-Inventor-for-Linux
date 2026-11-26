@@ -829,7 +829,16 @@ class Installer:
         return os.path.join(self.prefix, ".inventor-on-linux", "adix")
 
     def adix_record_path(self, identity):
-        return os.path.join(self.adix_record_dir(), re.sub(r"[^A-Za-z0-9._-]", "_", identity) + ".json")
+        # A plain identity keeps the file name lists always had (other
+        # characters as "_"). A "<identity>#<name>" key is percent-encoded
+        # instead: its name holds "%", which the plain form never has, and
+        # two such keys never share a file (#43 review: "Autodesk.Revit.Ext#
+        # RVTONLY" and a package named "Autodesk.Revit.Ext_RVTONLY").
+        if "#" in identity:
+            name = urllib.parse.quote(identity, safe="")
+        else:
+            name = re.sub(r"[^A-Za-z0-9._-]", "_", identity)
+        return os.path.join(self.adix_record_dir(), name + ".json")
 
     def adix_key(self, identity, s, records=None):
         """The key of a package's file list. Usually the AppxManifest
@@ -853,10 +862,13 @@ class Installer:
         if "name" in old:
             same = old["name"] == name
         else:
-            # a list written before the name was kept: the same display
-            # name, or another version (an update), is the same package
-            same = (old.get("package") == (s.get("display") or name)
-                    or version_key(old.get("version")) != version_key(s.get("version")))
+            # A list written before the name was kept: only the same
+            # display name shows it is this package's. Another version
+            # alone is no evidence - a sibling of another version would
+            # take the list and remove its files (#43 review). An update
+            # whose display name changed then keeps the old version's
+            # files: left over, not lost.
+            same = old.get("package") == (s.get("display") or name)
         return identity if same else own
 
     def read_adix_records(self):

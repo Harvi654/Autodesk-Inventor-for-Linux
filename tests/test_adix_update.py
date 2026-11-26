@@ -217,6 +217,45 @@ class AdixUpdate(unittest.TestCase):
         self.install(["A.dll"], "2")
         self.assertFalse((self.bin / "B.dll").exists())
 
+    def nameless(self, identity):
+        rec = Path(self.inst.adix_record_path(identity))
+        rec.write_text(rec.read_text().replace('"name": ', '"was_name": '))
+
+    def test_a_nameless_list_of_a_sibling_is_not_taken_by_another_version(self):
+        # #43 review: RVTEXT's list from before names, RVTONLY of another version
+        self.install(["Revit.exe", "RevitDB.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTEXT",
+                     display="Core Extension Package Component for Revit 2027")
+        self.nameless("Autodesk.Revit.Ext")
+        self.install(["RevitCore.dll"], "27.0.5.100", identity="Autodesk.Revit.Ext", name="RVTONLY",
+                     display="Core-RVT Package Component for Revit 2027")
+        for f in ("Revit.exe", "RevitDB.dll", "RevitCore.dll"):
+            self.assertTrue((self.bin / f).exists(), f)
+        self.assertNotIn("moved", self.log())
+
+    def test_a_nameless_list_of_a_sibling_is_not_taken_on_the_already_installed_path(self):
+        self.install(["Revit.exe", "RevitDB.dll"], "27.0.4.412", identity="Autodesk.Revit.Ext", name="RVTEXT",
+                     display="Core Extension Package Component for Revit 2027")
+        self.nameless("Autodesk.Revit.Ext")
+        pkg = Path(self.tmp.name) / "image" / "x64/RVTONLY/RVTONLY.adix"
+        pkg.parent.mkdir(parents=True)
+        pkg.write_bytes(adix(["RevitCore.dll"], "Autodesk.Revit.Ext"))
+        s = {"name": "RVTONLY", "display": "Core-RVT Package Component for Revit 2027", "version": "27.0.5.100",
+             "type": "ADIX", "file": "x64/RVTONLY/RVTONLY.adix"}
+        self.inst.record_installed_adix(s, self.mod.odis.Image(str(Path(self.tmp.name) / "image")))
+        self.assertTrue((self.bin / "Revit.exe").exists())
+        self.assertIn("Autodesk.Revit.Ext#RVTONLY", self.inst.read_adix_records())
+
+    def test_suffixed_and_plain_keys_never_share_a_file(self):
+        # #43 review: a package without AppxManifest is identified by its name
+        self.install(["A.dll"], "1", identity="Autodesk.Revit.Ext", name="RVTEXT")
+        self.install(["B.dll"], "1", identity="Autodesk.Revit.Ext", name="RVTONLY")
+        self.install(["C.dll"], "1", identity=None, name="Autodesk.Revit.Ext_RVTONLY")
+        records = self.inst.read_adix_records()
+        self.assertEqual(sorted(records), ["Autodesk.Revit.Ext", "Autodesk.Revit.Ext#RVTONLY",
+                                           "Autodesk.Revit.Ext_RVTONLY"])
+        self.assertNotEqual(self.inst.adix_record_path("Autodesk.Revit.Ext#RVTONLY"),
+                            self.inst.adix_record_path("Autodesk.Revit.Ext_RVTONLY"))
+
     def test_without_appx_manifest_the_name_identifies(self):
         self.install(["A.dll", "B.dll"], "1", identity=None, name="Pkg")
         self.install(["A.dll"], "2", identity=None, name="Pkg")
