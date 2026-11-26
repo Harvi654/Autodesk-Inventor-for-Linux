@@ -39,15 +39,12 @@ ones are small and rebuild in minutes.
 
 This has two consequences:
 
-- The writable state's registry is merged last. A value that it already has
-  (any value merged in at the user's earlier launches) wins over a changed
-  packaged default. If you change, say, a WebView2 argument in
-  `inventor-config`, only new users get the change. A general fix would need
-  nix-overlayfs to refresh values that still equal the previous packaged
-  default. The launcher writes the values that name the installed Shared
-  Components version again at every start (`nix/launch-services.sh`):
-  `SharedComponents\<year>` Version and InstallPath, and the system `Path`.
-  So an update reaches existing users.
+- The writable state's registry is merged three-way. nix-overlayfs keeps a
+  record of what the layers provided at the last merge. A value that the
+  user never changed follows the layers, so a changed packaged value (a new
+  Shared Components version, a changed setting in `inventor-config`)
+  reaches existing users. A value that the user changed, added or deleted
+  is kept. The launcher writes no registry values (nix/AGENTS.md).
 - The installation's files and registry win over `inventor-config`, DXVK and
   vkd3d-proton where both have the same file or value. The layers are kept
   disjoint.
@@ -65,8 +62,8 @@ flowchart LR
     subgraph inputs["Flake inputs"]
         np["nixpkgs"]
         no["nix-overlayfs"]
-        wi_i["winum-install<br/>(tag winum-11.20-2)"]
-        wi["winum<br/>(tag winum-11.20-2)"]
+        wi_i["winum-install<br/>(tag winum-11.22-3)"]
+        wi["winum<br/>(tag winum-11.22-3)"]
     end
     subgraph repo["This repository"]
         inst["install-from-image.py, odis.py, regf.py,<br/>bsdtar.env, libarchive license"]

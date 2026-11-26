@@ -77,6 +77,12 @@ current_link() {
 current_link "$lic_base" Current
 current_link "$lic_base" CurrentSDK AdskLicensingSDK
 current_link "$idmgr_base" Current
+# The Shared Components have no Current junction of their own. A link with
+# that name gives the system Path a directory that stays the same across
+# updates: a user who adds a Path segment then keeps up with new Shared
+# Components versions (the three-way registry merge keeps a changed Path as
+# a whole).
+current_link "$asc_base" Current
 lic_ver="$(latest_version_dir "$lic_base")"
 asc_ver="$(latest_version_dir "$asc_base")"
 [ -n "$lic_ver" ] || { say "no AdskLicensing in $lic_base"; exit 1; }
@@ -91,7 +97,7 @@ reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v InstallPath /
     /d "C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR"
 reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v Version /t REG_EXPAND_SZ /d "$asc_ver"
 reg_add 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' /v Path /t REG_EXPAND_SZ \
-    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\$asc_ver;C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin"
+    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\Current;C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin"
 # Licensing service on manual start: the launcher runs it as a process; under
 # Wine it never reports "running" as a service.
 reg_add 'HKLM\SYSTEM\CurrentControlSet\Services\AdskLicensingService' /v Start /t REG_DWORD /d 3
@@ -131,6 +137,21 @@ mkdir -p "$inv/Addins.disabled/libs"
 for f in Autodesk.AssistantAddin.Inventor.addin; do
     if [ -f "$inv/Bin/Addins/$f" ]; then mv "$inv/Bin/Addins/$f" "$inv/Addins.disabled/"; fi
 done
+# Since 2027.2 the Assistant's .addin file is in ProgramData, in a folder per
+# version (migration 0013, pd_addin_disable in scripts/lib/common.sh). Each
+# copy moves to Addins.disabled/programdata with the same relative path; the
+# add-in's DLLs stay where they are. A copy that is already off is left alone.
+pd_addins="$c/ProgramData/Autodesk/Inventor $INV_YEAR/Addins"
+pd_addins_off="$inv/Addins.disabled/programdata"
+if [ -d "$pd_addins" ]; then
+    find "$pd_addins" -mindepth 1 -maxdepth 4 -type f -iname Autodesk.AssistantAddin.Inventor.addin -printf '%P\n' |
+        sort | while IFS= read -r rel; do
+            [ -e "$pd_addins_off/$rel" ] && continue
+            mkdir -p "$pd_addins_off/$(dirname "$rel")"
+            mv -n -- "$pd_addins/$rel" "$pd_addins_off/$rel"
+            say "off: ProgramData Addins/$rel"
+        done
+fi
 
 # Known crash sources.
 if [ -f "$inv/Bin/CER/senddmp.exe" ]; then mv "$inv/Bin/CER/senddmp.exe" "$inv/Bin/CER/senddmp.exe.disabled"; fi

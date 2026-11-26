@@ -90,6 +90,54 @@ only sets the release and its state directory. The licensing database is kept
 on the native filesystem under `.nix-overlayfs/licensing-data` and linked into
 the composition because it needs memory-mapped access outside the FUSE overlay.
 
+## The writable layer is state, not configuration
+
+Nothing that the package provides is written into the writable layer, so
+that every installation stays reproducible from its layers. Registry values
+and files that the package wants in the prefix go into a layer: the
+installation layer (`post-install.sh`) when they need the installed files,
+otherwise the config layer (`config-layer.sh`). The launch scripts do not run
+`wine reg add` or `wine reg delete`, and do not copy package files into the
+prefix. The writable layer holds only what Inventor and the user write.
+
+nix-overlayfs merges the registry three-way at launch: a value that the user
+never changed follows the layers, so a changed packaged value reaches
+existing users, and a value that the user changed, added or deleted is kept.
+`tests/test_runtime_state.py` checks that the launcher writes no registry
+values.
+
+A launch writes no package settings into the writable layer. It also does
+some nix-overlayfs bookkeeping, which the nix-overlayfs README describes:
+merge and session metadata in `.nix-overlayfs`, the directory skeleton of the
+writable layer, the handling of shadowed files, and the removal of markers and
+shims that older launchers left behind. Apart from that, it still writes these,
+each for a stated reason:
+- nix-overlayfs's registry merge writes the merged hives, because Wine keeps
+  the registry in single files that a file overlay cannot combine. Its other
+  integration settings (WineBrowser, URL schemes, the update marker, the
+  `start.exe` shim) come from a layer that it generates for each launcher.
+  URL schemes that are only discovered at launch, or whose program lies
+  outside `drive_c`, are still registered at launch; Inventor's
+  `adskidmgr` is neither.
+- The licensing database lives on the native filesystem, because the
+  licensing service memory-maps it, and a link in the prefix points to it.
+  It is the user's licensing state, and the link target depends on the
+  host's `$XDG_DATA_HOME`.
+- The launcher resets the per-user IDSDK IPC folder: it holds data of one
+  session only.
+- The launcher seeds `RealDWGSettings.xml` and creates the per-user `Addins`
+  folder in the profile `users/$USER`, because the layers are built as
+  `users/nixbld`. Wine names the profile after `$USER`. Running Wine under
+  the build's name would remove this exception, but it would also leave the
+  existing users' profiles (settings, sign-in data) behind. So it waits for
+  a migration of the state.
+- The launcher creates the public `Macros` folder, because nix-overlayfs
+  drops empty directories when it captures a layer.
+
+Earlier launchers wrote some values into existing states: the Tahoma to
+Segoe UI substitution, the graphics driver, and the Shared Components values
+and Path. These stay there until a cleanup.
+
 ## Prefix setup without migrations
 
 The installation layer runs `install-from-image.py` and `post-install.sh`.
@@ -107,13 +155,12 @@ into its own layer: nix-overlayfs drops the MSI cache (`windows/Installer`)
 that an MSP update needs, and layer builds (direct mode) cannot delete files
 of a lower layer. Wine is the one duplicated input: `winum-install` builds
 the layers, and `winum` is the Wine that runs Inventor (both named by winum's
-release tag, now winum-11.20-2). Inventor is reinstalled by any of these:
+release tag, now winum-11.22-3). Inventor is reinstalled by any of these:
 updating nixpkgs, nix-overlayfs or winum-install, a new Autodesk update, or
 editing the files in `installerSource` or `post-install.sh`. Batch such
-updates and say so in the commit. The writable state's registry wins over
-changed packaged defaults for existing users. A value that must follow the
-installation (like the Shared Components version) is rewritten by
-`launch-services.sh` at start.
+updates and say so in the commit. A value that must follow the installation
+(like the Shared Components version) is written by `post-install.sh` and
+reaches existing users through the three-way registry merge.
 
 ## Runtime and integration
 
@@ -124,7 +171,9 @@ installation (like the Shared Components version) is rewritten by
   logs in `$XDG_STATE_HOME/autodesk-inventor-<year>` (default `~/.local/state`).
   Preserve sign-in, licensing data, settings, and documents during upgrades.
 - Use system graphics (`/run/opengl-driver`). X11/XWayland is the validated
-  path; native Wayland remains experimental. Build success alone is not GUI
+  path; native Wayland remains experimental (a separate package:
+  `inventor-2027.withArgs { wineDriver = "wayland"; }`, whose config layer
+  names the Wayland driver). Build success alone is not GUI
   validation. For GPU changes, verify 2026 before testing 2027.
 - Never upload Autodesk media, extracted images, application packages, or
   containing system closures to a public binary cache. Never copy authenticated

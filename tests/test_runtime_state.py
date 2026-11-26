@@ -1,5 +1,5 @@
-"""Exercise the launch scripts (release state, native licensing-state migration,
-fonts, registry refresh) without Wine. nix-overlayfs's session lock, which
+"""Exercise the launch scripts (release state, native licensing-state migration)
+without Wine. nix-overlayfs's session lock, which
 allows one session per release, is tested in nix-overlayfs."""
 from pathlib import Path
 import os
@@ -12,79 +12,6 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 STATE = ROOT / "nix/launch-state.sh"
 SERVICES = ROOT / "nix/launch-services.sh"
-FONTS = ROOT / "nix/launch-fonts.sh"
-
-
-class RuntimeFonts(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory(prefix="inventor-runtime-fonts-")
-        self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
-        mock_bin = self.root / "bin"
-        mock_bin.mkdir()
-        self.actions = self.root / "actions"
-        self.env = os.environ | {
-            "PATH": str(mock_bin) + os.pathsep + os.environ["PATH"],
-            "WINEPREFIX": str(self.root / "prefix"),
-            "FONT_HOST_FAMILIES": "",
-            "FONT_PREFIX_FAMILIES": "",
-            "FONT_CURRENT": "",
-            "FONT_ACTIONS": str(self.actions),
-        }
-        scripts = {
-            "fc-list": 'printf "%s\\n" "$FONT_HOST_FAMILIES"',
-            "fc-scan": 'printf "%s\\n" "$FONT_PREFIX_FAMILIES"',
-            "wine": '''
-if [ "$2" = query ]; then
-    if [ -z "$FONT_CURRENT" ]; then
-        printf 'reg: Unable to find the specified registry value\\n'
-        exit 1
-    fi
-    printf 'HKEY_LOCAL_MACHINE\\n    Tahoma    REG_SZ    %s\\n' "$FONT_CURRENT"
-else
-    printf '%s\\n' "$*" >> "$FONT_ACTIONS"
-fi
-''',
-        }
-        for name, script in scripts.items():
-            path = mock_bin / name
-            path.write_text(f"#!{shutil.which('bash')}\n{script}\n")
-            path.chmod(0o755)
-
-    def apply_fonts(self):
-        result = subprocess.run(["bash", "-euo", "pipefail", str(FONTS)],
-                                env=self.env, text=True, capture_output=True,
-                                timeout=10)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        return self.actions.read_text() if self.actions.exists() else ""
-
-    def test_real_host_family_enables_substitution(self):
-        self.env["FONT_HOST_FAMILIES"] = "Segoe UI,Segoe UI Semibold"
-        actions = self.apply_fonts()
-        self.assertIn("reg add", actions)
-        self.assertIn("/v Tahoma /t REG_SZ /d Segoe UI /f", actions)
-
-    def test_prefix_font_enables_substitution(self):
-        self.env["FONT_PREFIX_FAMILIES"] = "Segoe UI"
-        self.assertIn("reg add", self.apply_fonts())
-
-    def test_fallback_and_other_segoe_families_do_not_enable_it(self):
-        self.env["FONT_HOST_FAMILIES"] = "Noto Sans\nSegoe UI Symbol\nSegoe UI Variable"
-        self.assertEqual(self.apply_fonts(), "")
-
-    def test_disappearing_font_removes_segoe_substitution(self):
-        self.env["FONT_CURRENT"] = "Segoe UI"
-        self.assertIn("reg delete", self.apply_fonts())
-
-    def test_existing_segoe_substitution_needs_no_write(self):
-        self.env.update(FONT_CURRENT="Segoe UI", FONT_HOST_FAMILIES="Segoe UI")
-        self.assertEqual(self.apply_fonts(), "")
-
-    def test_custom_substitution_is_preserved_with_or_without_segoe(self):
-        self.env["FONT_CURRENT"] = "DejaVu Sans"
-        self.assertEqual(self.apply_fonts(), "")
-        self.env["FONT_HOST_FAMILIES"] = "Segoe UI"
-        self.assertEqual(self.apply_fonts(), "")
 
 
 class RuntimeState(unittest.TestCase):
@@ -182,10 +109,9 @@ class RuntimeState(unittest.TestCase):
         self.assertTrue(database.is_symlink())
         self.assertEqual(database.read_bytes(), b"updated-genuine-authorization")
 
-    def test_shared_components_values_follow_the_installation(self):
-        # The writable registry is merged after the layers: after an update
-        # that moves the Shared Components version, the launcher writes the
-        # installed version again, so old values cannot win.
+    def test_launcher_writes_no_registry_values(self):
+        # Package settings come from the layers; the launcher must not write
+        # registry values into the writable state (nix/AGENTS.md).
         year = "2027"
         self.env["INVENTOR_YEAR"] = year
         prefix = Path(self.env["WINEPREFIX"])
@@ -194,77 +120,24 @@ class RuntimeState(unittest.TestCase):
         (service / "AdskLicensingService.sds").write_bytes(b"state")
         (prefix / ("drive_c/Program Files (x86)/Common Files/"
                    "Autodesk Shared/AdskLicensing/1.0")).mkdir(parents=True)
-        components = prefix / f"drive_c/Program Files/Common Files/Autodesk Shared/Components/{year}"
-        for version in ["31.0.2", "31.0.10"]:
-            (components / version).mkdir(parents=True)
+        (prefix / f"drive_c/Program Files/Common Files/Autodesk Shared/Components/{year}/31.0.10").mkdir(parents=True)
         profile = prefix / "drive_c/users" / self.env["USER"] / (
             f"AppData/Roaming/Autodesk/Inventor {year}/RealDWGSettings.xml")
         profile.parent.mkdir(parents=True)
         profile.write_text("settings")
         log = self.root / "wine.log"
-        # what `reg query ... /v Path` answers: a user's own segment and the
-        # Shared Components folder of the version before the update
-        current_path = self.root / "path.txt"
-        current_path.write_text(
-            "C:\\windows\\system32;C:\\windows;C:\\Tools\\mine;"
-            f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.2;"
-            f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
         mock_bin = self.root / "bin"
         mock_bin.mkdir()
-        (mock_bin / "wine").write_text(
-            f"#!{shutil.which('bash')}\n"
-            f"printf '%s\\n' \"$*\" >> {log}\n"
-            "if [ \"$1 $2\" = 'reg query' ]; then\n"
-            f"  printf '\\r\\n%s\\r\\n    Path    REG_EXPAND_SZ    %s\\r\\n' \"$3\" \"$(cat {current_path})\"\n"
-            "fi\n")
+        (mock_bin / "wine").write_text(f"#!{shutil.which('bash')}\nprintf '%s\\n' \"$*\" >> {log}\n")
         (mock_bin / "sleep").write_text(f"#!{shutil.which('bash')}\nexit 0\n")
         for name in ["wine", "sleep"]:
             (mock_bin / name).chmod(0o755)
         self.env["PATH"] = str(mock_bin) + os.pathsep + self.env["PATH"]
         out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
         self.assertEqual(out.returncode, 0, out.stderr)
-        calls = log.read_text()
-        key = f"reg add HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\{year}"
-        self.assertIn(f"{key} /v Version /t REG_EXPAND_SZ /d 31.0.10 /f", calls)
-        self.assertIn(f"{key} /v InstallPath /t REG_EXPAND_SZ "
-                      f"/d C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year} /f", calls)
-        # only the Shared Components segment changes; the user's stays
-        self.assertIn("/v Path /t REG_EXPAND_SZ /d C:\\windows\\system32;C:\\windows;C:\\Tools\\mine;"
-                      f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;"
-                      f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin /f", calls)
-        self.assertNotIn("31.0.2", calls)
-        # a Path that is already current is not written again
-        current_path.write_text(
-            "C:\\windows\\system32;C:\\Tools\\mine;"
-            f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;"
-            f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
-        log.write_text("")
-        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertNotIn("/v Path /t", log.read_text())
-        # a custom subdirectory of the Shared Components folder is not the
-        # managed version directory: it stays, only 31.0.2 is replaced
-        custom = f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\Plugins"
-        current_path.write_text(
-            f"C:\\windows\\system32;{custom};"
-            f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.2;"
-            f"C:\\Program Files\\Autodesk\\Inventor {year}\\Bin")
-        log.write_text("")
-        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertIn(f"/d C:\\windows\\system32;{custom};"
-                      f"C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year}\\31.0.10;", log.read_text())
-        # a failed query leaves Path alone instead of writing defaults
-        (mock_bin / "wine").write_text(
-            f"#!{shutil.which('bash')}\n"
-            f"printf '%s\\n' \"$*\" >> {log}\n"
-            "if [ \"$1 $2\" = 'reg query' ]; then exit 1; fi\n")
-        log.write_text("")
-        out = self.run_script(f'. "{STATE}"; . "{SERVICES}"')
-        self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertNotIn("/v Path /t", log.read_text())
-        self.assertIn("could not read the Windows Path", out.stderr)
-
+        calls = log.read_text() if log.exists() else ""
+        self.assertNotIn("reg add", calls)
+        self.assertNotIn("reg delete", calls)
 
 if __name__ == "__main__":
     unittest.main()

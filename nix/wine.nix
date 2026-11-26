@@ -30,6 +30,8 @@ let
     in
     if m == null then throw "winum wine/version.env has no ${key}" else builtins.head m;
   wineVersion = envValue "WINE_VERSION";
+  # SHA-256 of the Wine source tarball, as winum's release names it.
+  wineSha256 = envValue "WINE_SHA256";
   winumBuild = envValue "WINUM_BUILD";
   # patches/series of winum: the patches of a normal winum build, in order.
   # Nothing else in winum's patches/ (candidates, debug) is applied.
@@ -76,7 +78,7 @@ in
     version = "${wineVersion}-${winumBuild}";
     src = fetchurl {
       url = "https://dl.winehq.org/wine/source/11.x/wine-${wineVersion}.tar.xz";
-      hash = "sha256-6sjKRI+cAIf5YwJrTcJ20eK3+7ZAVu3Ak+Wbu35W/ig=";
+      sha256 = wineSha256;
     };
     patches = (old.patches or [ ]) ++ seriesPatches ++ candidatePatches;
     passthru = (old.passthru or { }) // {

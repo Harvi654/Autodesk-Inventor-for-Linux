@@ -14,8 +14,8 @@ Broader application compatibility has not been validated.
 
 The default flake target is Inventor Professional 2027 English with the 2027.2
 update and Content Center, on x86_64 Linux. Inventor 2026 English with update
-2026.4 is also available as a separate package. The runtime builds Wine 11.20 with the patches of
-[winum](https://github.com/Harvi654/winum) `winum-11.20-2` (its `patches/series`,
+2026.4 is also available as a separate package. The runtime builds Wine 11.22 with the patches of
+[winum](https://github.com/Harvi654/winum) `winum-11.22-3` (its `patches/series`,
 in order; flake input `winum`, pinned to the tag's commit). Nixpkgs, the
 nix-overlayfs fork and winum are pinned in `flake.lock`; no local checkout is required by the committed input definitions.
 The base environment has no Wine Mono (`managedRuntime = "external"`):
@@ -128,7 +128,7 @@ settings. Add the following sections to your system configuration.
 Inside your system `flake.nix`, add this alongside your existing inputs:
 
 ```nix
-inputs.inventor.url = "github:Harvi654/Autodesk-Inventor-for-Linux";
+inputs.inventor.url = "github:krokosik/Autodesk-Inventor-for-Nix";
 ```
 
 Commit the resulting `flake.lock` so the repository revision is pinned. Leave
@@ -360,7 +360,7 @@ other edits in `scripts/` do not. Those inputs change often, so update them
 on purpose and in batches rather than with every commit.
 
 Wine has two inputs, both named by winum's release tag (now
-`winum-11.20-2`): `winum-install` builds the layers, and `winum` is the Wine
+`winum-11.22-3`): `winum-install` builds the layers, and `winum` is the Wine
 that runs Inventor. The Nix package does not read this repository's
 `wine/version.env` (the script installer's release). Instead, the
 `winum-pin` check verifies that each input's tag matches the release in
@@ -370,12 +370,12 @@ in `nix/wine.nix`: the release plus a hash of the release and candidate
 patches that change prefix contents). While both name the same release, they
 are one derivation.
 
-The writable state's registry is merged after the layers' registry, so a
-value that an existing user already has wins over a changed packaged default.
-A changed setting in `inventor-config` therefore reaches only new users
-(nix/LAYERS.md). The values that name the installed Shared Components version
-are the exception: the launcher writes them again at every start, so an
-update reaches existing users.
+nix-overlayfs merges the registry three-way at launch (nix/LAYERS.md): a
+value that the user never changed follows the layers, so a changed packaged
+value, such as a new Shared Components version or a changed setting in
+`inventor-config`, reaches existing users. A value that the user changed,
+added or deleted is kept. The launcher itself writes no registry values: the
+package's settings come only from the layers.
 
 DXVK (Direct3D 8-11) and vkd3d-proton (Direct3D 12) are not part of the
 installation either: the launcher mounts them as separate layers (below the
@@ -469,26 +469,27 @@ desktop was stopped, and the authenticated test state was preserved.
 
 ## Fonts and small UI text
 
-The launcher checks actual host font families with `fc-list` and prefix font
-files with `fc-scan`. If **Segoe UI** is available, it adds the Wine
-`FontSubstitutes` entry `Tahoma=Segoe UI` for smoother system menu/status text.
-This is conditional on the actual family, not Wine's Segoe-to-Noto alias or
-Fontconfig's fallback matching. If Segoe UI disappears, that specific mapping
-is removed; substitutions to other families are preserved. The check runs in
-the composed prefix at launch, for both Inventor releases. Microsoft fonts are
-not downloaded or included in the package by this change.
+Small UI text such as the status bar and system menus uses Tahoma. Since
+winum 11.22-3, Wine renders normal text with the desktop font smoothing
+values, and the `inventor-config` layer sets them to Windows' defaults:
+ClearType with RGB subpixels (`FontSmoothing` 2, `FontSmoothingType` 2,
+`FontSmoothingOrientation` 1 in `HKCU\Control Panel\Desktop`). Tahoma then
+renders smoothly, with no other font needed. Microsoft fonts are not
+downloaded or included in the package.
 
-On 2026-11-10 the user confirmed the substitution improved Inventor 2027's UI.
-ClearType settings alone had not helped: Wine's font trace showed smoothing
-disabled by small Tahoma glyphs' GASP instructions. Explicit application
-requests for Tahoma can remain unsmoothed; this changes system font selection.
-See the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling).
+Until then the launcher mapped Tahoma to Segoe UI (`FontSubstitutes`) when a
+real Segoe UI was installed, because Wine's font trace showed that small
+Tahoma glyphs' GASP instructions turned smoothing off, and ClearType settings
+alone did not help without the winum patch (user confirmation on 2026-11-10;
+see the [diagnosis and synthetic probe](arch-hyprland.md#hidpi--fractional-scaling)).
+That mapping is no longer added. Where earlier launchers left it in a
+user's writable state, it stays until a cleanup.
 
 Which fonts to provide:
 
 | Fonts | Purpose and existing coverage |
 |---|---|
-| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family; needed for the conditional substitution. Supply it through your own host fonts or prefix. |
+| Segoe UI (regular, bold, italic, semibold as available) | Optional Windows UI family for applications that ask for it by name. No longer needed for smooth small text. Supply it through your own host fonts or prefix. |
 | Tahoma / Microsoft Sans Serif | Legacy UI families. Providing them does not itself solve small-text smoothing; free replacements already exist. |
 | Arial, Times New Roman, Courier New | Useful for matching documents that name these fonts. Liberation Sans, Serif and Mono are already bundled as substitutes. |
 | Calibri / Cambria | Optional for documents that use them; Carlito and Caladea substitutes are already bundled. |

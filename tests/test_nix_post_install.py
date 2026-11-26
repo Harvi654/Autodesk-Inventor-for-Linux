@@ -108,7 +108,11 @@ elif args[:2] == ["reg", "query"]:
         calls = self.calls.read_text()
         self.assertIn(f"SharedComponents\\{self.year} /v Version /t REG_EXPAND_SZ /d 29.0.1", calls)
         self.assertIn("Services\\AdskLicensingService /v Start /t REG_DWORD /d 3", calls)
-        self.assertIn(f"Components\\{self.year}\\29.0.1;C:\\Program Files\\Autodesk\\Inventor {self.year}\\Bin", calls)
+        # Path points at the version-independent Current link, which in turn
+        # points at the installed Shared Components version
+        self.assertIn(f"Components\\{self.year}\\Current;C:\\Program Files\\Autodesk\\Inventor {self.year}\\Bin", calls)
+        asc = self.c / f"Program Files/Common Files/Autodesk Shared/Components/{self.year}"
+        self.assertEqual(os.readlink(asc / "Current"), "29.0.1")
 
     def test_runs_twice(self):
         self.assertEqual(self.run_script().returncode, 0)
@@ -173,6 +177,37 @@ elif args[:2] == ["reg", "query"]:
         out = subprocess.run(["bash", str(SCRIPT)], env=self.env, capture_output=True, text=True, timeout=40)
         self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
 
+
+    def test_turns_off_the_assistant_in_programdata(self):
+        # 2027.2 and later keep the Assistant's .addin file in ProgramData, in
+        # a folder per version (migration 0013); another add-in stays on
+        pd = self.c / f"ProgramData/Autodesk/Inventor {self.year}/Addins"
+        (pd / "Assistant/31.20.33400").mkdir(parents=True)
+        (pd / "Assistant/31.20.33400/Autodesk.AssistantAddin.Inventor.addin").write_text("addin")
+        (pd / "Assistant/31.20.33400/AutodeskAssistantAddin.dll").write_text("dll")
+        (pd / "Other").mkdir()
+        (pd / "Other/Other.Inventor.addin").write_text("addin")
+        out = self.run_script()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        inv = self.c / f"Program Files/Autodesk/Inventor {self.year}"
+        off = inv / "Addins.disabled/programdata/Assistant/31.20.33400/Autodesk.AssistantAddin.Inventor.addin"
+        self.assertTrue(off.is_file())
+        self.assertFalse((pd / "Assistant/31.20.33400/Autodesk.AssistantAddin.Inventor.addin").exists())
+        self.assertTrue((pd / "Assistant/31.20.33400/AutodeskAssistantAddin.dll").is_file())
+        self.assertTrue((pd / "Other/Other.Inventor.addin").is_file())
+
+    def test_leaves_an_assistant_copy_that_is_already_off(self):
+        pd = self.c / f"ProgramData/Autodesk/Inventor {self.year}/Addins/Assistant/1.0"
+        pd.mkdir(parents=True)
+        (pd / "Autodesk.AssistantAddin.Inventor.addin").write_text("on")
+        inv = self.c / f"Program Files/Autodesk/Inventor {self.year}"
+        off = inv / "Addins.disabled/programdata/Assistant/1.0"
+        off.mkdir(parents=True)
+        (off / "Autodesk.AssistantAddin.Inventor.addin").write_text("off")
+        out = self.run_script()
+        self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+        self.assertEqual((pd / "Autodesk.AssistantAddin.Inventor.addin").read_text(), "on")
+        self.assertEqual((off / "Autodesk.AssistantAddin.Inventor.addin").read_text(), "off")
 
 if __name__ == "__main__":
     unittest.main()

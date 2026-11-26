@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/b25309931cfda5f0b8805f462a29897eeae50168";
     nix-overlayfs = {
-      url = "github:krokosik/nix-overlayfs/006dd3b3f1f973a60e394747e500c5cfb5721599";
+      url = "github:krokosik/nix-overlayfs/cd01ba181042f6bd781cf190e63a1e1464a658fa";
       inputs.nixpkgs.follows = "nixpkgs";
     };
     # winum releases, named by their signed tags. Only patches/series and the
@@ -16,11 +16,11 @@
     #   To test candidates from a winum checkout, use `--override-input winum
     #   path:/path/to/winum` (this rebuilds only the launch Wine and the launcher).
     winum-install = {
-      url = "github:Harvi654/winum/winum-11.20-2";
+      url = "github:Harvi654/winum/winum-11.22-3";
       flake = false;
     };
     winum = {
-      url = "github:Harvi654/winum/winum-11.20-2";
+      url = "github:Harvi654/winum/winum-11.22-3";
       flake = false;
     };
   };
@@ -325,7 +325,6 @@
               cp ${./tests/test_runtime_state.py} tests/test_runtime_state.py
               cp ${./nix/launch-state.sh} nix/launch-state.sh
               cp ${./nix/launch-services.sh} nix/launch-services.sh
-              cp ${./nix/launch-fonts.sh} nix/launch-fonts.sh
               python3 tests/test_runtime_state.py
               touch "$out"
             '';
@@ -507,6 +506,15 @@
             checks = {
               "the launcher starts from the installation layer" =
                 drv inventor2027.basePackage == drv built.layer.basePackage;
+              # The display driver is set in the config layer: the Wayland
+              # variant shares the installation and differs in the launcher.
+              "the Wayland variant changes only the config layer and the launcher" =
+                let
+                  wayland = inventor2027.withArgs { wineDriver = "wayland"; };
+                in
+                drv wayland.basePackage == drv inventor2027.basePackage
+                && drv wayland != drv inventor2027
+                && lib.any (layer: lib.hasPrefix "inventor-config-wayland" layer.name) wayland.overlayDependencies;
               # The same expectations as in tests/test_bsdtar.py for Python's
               # read_env_file, so that both readers agree on the format.
               "nix/env-file.nix reads like install-from-image.py" =

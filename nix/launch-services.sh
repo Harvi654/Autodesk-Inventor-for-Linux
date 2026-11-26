@@ -10,78 +10,13 @@ case "$inventor_driver" in
         ;;
     *) echo "Inventor: unsupported Wine display driver: $inventor_driver" >&2; exit 1 ;;
 esac
-wine reg add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d "$inventor_driver" /f || exit 1
+# The package sets INVENTOR_WINE_DRIVER (mkInventor's wineDriver), and its
+# config layer names the same driver in HKCU\Software\Wine\Drivers, so the
+# launcher writes no registry value (nix/AGENTS.md). For Wayland, DISPLAY is
+# unset as well, so that no program of the session reaches for X11.
 if [ "$inventor_driver" = wayland ]; then
     unset DISPLAY
 fi
-# Registry values that name the installed Shared Components version
-# (nix/post-install.sh writes them into the installation layer). The writable
-# state's registry is merged after the layers, so after an update that moves
-# the version, an existing user would keep the old values, which point at
-# files that the update removed. Writing them again at every start makes them
-# follow the installation instead.
-inventor_asc_base="$WINEPREFIX/drive_c/Program Files/Common Files/Autodesk Shared/Components/$inventor_year"
-inventor_asc_version=$(find "$inventor_asc_base" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null |
-    grep -E '^[0-9]+(\.[0-9]+)+$' | sort -V | tail -1)
-if [ -n "$inventor_asc_version" ]; then
-    inventor_asc_key="HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$inventor_year"
-    inventor_asc_dir="C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$inventor_year"
-    wine reg add "$inventor_asc_key" /v InstallPath /t REG_EXPAND_SZ /d "$inventor_asc_dir" /f || exit 1
-    wine reg add "$inventor_asc_key" /v Version /t REG_EXPAND_SZ /d "$inventor_asc_version" /f || exit 1
-    # The system Path: only its Shared Components segment is replaced, and
-    # other segments (the user's, other programs') stay. The output is read
-    # through a file, not a pipe, because a wine call can leave a service that
-    # holds stdout open.
-    inventor_env_key='HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment'
-    inventor_path_out=$(mktemp) || exit 1
-    # A failed query, or output without a Path value, leaves Path as it is.
-    inventor_path_status=0
-    WINEDEBUG=-all wine reg query "$inventor_env_key" /v Path </dev/null >"$inventor_path_out" 2>/dev/null ||
-        inventor_path_status=$?
-    inventor_path_new=$(python3 -I - "$inventor_path_out" "$inventor_year" "$inventor_asc_dir\\$inventor_asc_version" \
-        "$inventor_path_status" <<'PY'
-import re, sys
-out, year, managed, status = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
-current = None
-for line in open(out, encoding="utf-8", errors="replace"):
-    m = re.match(r"\s*Path\s+REG_[A-Z_]+\s+(.*?)\s*$", line, re.I)
-    if m:
-        current = m.group(1)
-        break
-if status != "0" or not current:
-    # the query failed or gave no Path: keep whatever is there
-    print("Inventor: could not read the Windows Path; left as it is", file=sys.stderr)
-    print("")
-    sys.exit(0)
-inventor_bin = "C:\\Program Files\\Autodesk\\Inventor %s\\Bin" % year
-# only the version directory in the release's Shared Components folder is
-# managed; other segments stay, including custom subdirectories of that folder
-version_dir = re.compile(r"(?i)^c:\\program files\\common files\\autodesk shared\\components\\%s\\\d+(\.\d+)+\\?$"
-                         % re.escape(year))
-kept, placed = [], False
-for s in [s for s in current.split(";") if s]:
-    if version_dir.match(s):
-        if not placed:
-            kept.append(managed)
-            placed = True
-        continue
-    kept.append(s)
-if not placed:
-    lower = [s.lower() for s in kept]
-    kept.insert(lower.index(inventor_bin.lower()) if inventor_bin.lower() in lower else len(kept), managed)
-if inventor_bin.lower() not in [s.lower() for s in kept]:
-    kept.append(inventor_bin)
-new = ";".join(kept)
-print("" if new == current else new)
-PY
-    ) || exit 1
-    rm -f -- "$inventor_path_out"
-    if [ -n "$inventor_path_new" ]; then
-        wine reg add "$inventor_env_key" /v Path /t REG_EXPAND_SZ /d "$inventor_path_new" /f || exit 1
-    fi
-fi
-unset inventor_asc_base inventor_asc_version inventor_asc_key inventor_asc_dir inventor_env_key \
-    inventor_path_out inventor_path_new inventor_path_status
 licensing_root="$WINEPREFIX/drive_c/Program Files (x86)/Common Files/Autodesk Shared/AdskLicensing"
 licensing_version=$(find "$licensing_root" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
     grep -E '^[0-9]+(\.[0-9]+)+$' | sort -V | tail -1)

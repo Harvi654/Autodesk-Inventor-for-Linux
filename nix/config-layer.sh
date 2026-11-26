@@ -34,6 +34,20 @@ wine_reg_add 'HKCU\Software\Wine\AppDefaults\Inventor.exe\X11 Driver' /v ClientS
 # prefix does not write menu entries and file associations either.
 wine_reg_add 'HKCU\Software\Wine\DllOverrides' /v winemenubuilder.exe /t REG_SZ /d ""
 
+# Font smoothing as on Windows by default: ClearType with RGB subpixels. The
+# win32u-font-smoothing patch of winum (since 11.22-3) follows these desktop
+# values for normal text such as Tahoma's; Wine's own default is grayscale
+# (FontSmoothingType 1).
+wine_reg_add 'HKCU\Control Panel\Desktop' /v FontSmoothing /t REG_SZ /d 2
+wine_reg_add 'HKCU\Control Panel\Desktop' /v FontSmoothingType /t REG_DWORD /d 2
+wine_reg_add 'HKCU\Control Panel\Desktop' /v FontSmoothingOrientation /t REG_DWORD /d 1
+
+# The display driver, chosen per package (mkInventor's wineDriver): x11, the
+# validated path, or the experimental wayland. Naming it here rather than at
+# launch keeps it in a layer, and the launcher chooses nothing at runtime.
+: "${INVENTOR_WINE_DRIVER:?}"
+wine_reg_add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d "$INVENTOR_WINE_DRIVER"
+
 wine_stop
 test -s "$WINEPREFIX/drive_c/windows/Fonts/NotoSans.ttf"
 test -s "$WINEPREFIX/drive_c/windows/Fonts/LiberationSans-Regular.ttf"

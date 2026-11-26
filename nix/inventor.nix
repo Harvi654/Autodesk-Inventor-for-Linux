@@ -24,7 +24,15 @@
   # null = the pinned defaults below. Changing them rebuilds only the launcher.
   dxvkLayer ? null,
   vkd3dLayer ? null,
+  # Wine's display driver: "x11" (validated; X11 or XWayland) or "wayland"
+  # (experimental). It is set in the config layer, so each choice is its own
+  # package (for example `inventor-2027.withArgs { wineDriver = "wayland"; }`).
+  wineDriver ? "x11",
 }@inventorArgs:
+assert builtins.elem wineDriver [
+  "x11"
+  "wayland"
+];
 let
   inherit (pkgs) lib;
   inventorMeta = {
@@ -192,14 +200,15 @@ let
   dotnet48 = modules.dotnet-framework-4-8;
   # Fonts, WebView2 and X11 settings (nix/config-layer.sh): a separate layer
   # that the launcher adds, independent of the installation. A change rebuilds
-  # only this layer and the launcher. Every release uses the same layer.
+  # only this layer and the launcher. Every release with the same display
+  # driver uses the same layer.
   configLayer =
     (overlayfsLib.mkWindowsPackage {
       inherit (modules) runtime;
       managedRuntime = "external";
-      pname = "inventor-config";
+      pname = "inventor-config-${wineDriver}";
       version = "1";
-      packageName = "inventor-config";
+      packageName = "inventor-config-${wineDriver}";
       src = configSource;
       unshareInstall = { session, ... }: ''
         set -euo pipefail
@@ -218,7 +227,7 @@ let
         INV_FONT_DIRS=(${fonts}/share/fonts ${modules.runtime.toolsPackage}/share/wine)
         EOF
         export INV_LOGDIR="$TMPDIR/inventor-config-logs" XDG_CACHE_HOME="$TMPDIR/inventor-config-cache"
-        bash ${./config-layer.sh}
+        INVENTOR_WINE_DRIVER=${lib.escapeShellArg wineDriver} bash ${./config-layer.sh}
         ${session.commands.wineserver} --wait
       '';
     }).overrideAttrs
@@ -306,6 +315,7 @@ withInventorMeta (overlayfsLib.composeWindowsLayers {
   workingDirectory = "/drive_c/Program Files/Autodesk/Inventor ${year}/Bin";
   runtimeEnvVars = {
     INVENTOR_YEAR = year;
+    INVENTOR_WINE_DRIVER = wineDriver;
     WINE_LARGE_ADDRESS_AWARE = "1";
   };
   # Merged with the layers' overrides (mscoree=n comes from the dotnet48 layer).
@@ -341,7 +351,6 @@ withInventorMeta (overlayfsLib.composeWindowsLayers {
       defaultMode = "system";
     }).extraPreLaunchCommands
     }
-    ${builtins.readFile ./launch-fonts.sh}
     ${builtins.readFile ./launch-services.sh}
   '';
 }) executableName
