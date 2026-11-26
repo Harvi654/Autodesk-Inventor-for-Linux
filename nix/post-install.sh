@@ -77,6 +77,12 @@ current_link() {
 current_link "$lic_base" Current
 current_link "$lic_base" CurrentSDK AdskLicensingSDK
 current_link "$idmgr_base" Current
+# The Shared Components have no Current junction of their own. A link with
+# that name gives the system Path a directory that stays the same across
+# updates: a user who adds a Path segment then keeps up with new Shared
+# Components versions (the three-way registry merge keeps a changed Path as
+# a whole).
+current_link "$asc_base" Current
 lic_ver="$(latest_version_dir "$lic_base")"
 asc_ver="$(latest_version_dir "$asc_base")"
 [ -n "$lic_ver" ] || { say "no AdskLicensing in $lic_base"; exit 1; }
@@ -91,7 +97,7 @@ reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v InstallPath /
     /d "C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR"
 reg_add "HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\$INV_YEAR" /v Version /t REG_EXPAND_SZ /d "$asc_ver"
 reg_add 'HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment' /v Path /t REG_EXPAND_SZ \
-    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\$asc_ver;C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin"
+    /d "C:\\windows\\system32;C:\\windows;C:\\windows\\system32\\wbem;C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\$INV_YEAR\\Current;C:\\Program Files\\Autodesk\\Inventor $INV_YEAR\\Bin"
 # Licensing service on manual start: the launcher runs it as a process; under
 # Wine it never reports "running" as a service.
 reg_add 'HKLM\SYSTEM\CurrentControlSet\Services\AdskLicensingService' /v Start /t REG_DWORD /d 3

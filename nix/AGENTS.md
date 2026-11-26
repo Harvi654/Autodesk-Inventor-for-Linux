@@ -106,13 +106,29 @@ existing users, and a value that the user changed, added or deleted is kept.
 `tests/test_runtime_state.py` checks that the launcher writes no registry
 values.
 
-The launcher still has some exceptions that should move out of it. It seeds
-`RealDWGSettings.xml` into the user's profile and creates the per-user
-`Addins` and public `Macros` folders, because the profile path depends on the
-runtime user's name, which a layer cannot know. It also resets the per-user
-IDSDK IPC folder. Earlier launchers wrote some values into existing states:
-the Tahoma to Segoe UI substitution, the graphics driver, and the Shared
-Components values and Path. These stay there until a cleanup.
+Only these writes at launch remain, each for a stated reason:
+- nix-overlayfs's registry merge writes the merged hives, because Wine keeps
+  the registry in single files that a file overlay cannot combine. Its other
+  integration settings (WineBrowser, URL schemes, the update marker, the
+  `start.exe` shim) come from a layer that it generates for each launcher.
+- The licensing database lives on the native filesystem, because the
+  licensing service memory-maps it, and a link in the prefix points to it.
+  It is the user's licensing state, and the link target depends on the
+  host's `$XDG_DATA_HOME`.
+- The launcher resets the per-user IDSDK IPC folder: it holds data of one
+  session only.
+- The launcher seeds `RealDWGSettings.xml` and creates the per-user `Addins`
+  folder in the profile `users/$USER`, because the layers are built as
+  `users/nixbld`. Wine names the profile after `$USER`, so running it under
+  the build's name would remove this exception, but it would also leave the
+  existing users' profiles (settings, sign-in data) behind, so it waits for a
+  migration of the state.
+- The launcher creates the public `Macros` folder, because nix-overlayfs
+  drops empty directories when it captures a layer.
+
+Earlier launchers wrote some values into existing states: the Tahoma to
+Segoe UI substitution, the graphics driver, and the Shared Components values
+and Path. These stay there until a cleanup.
 
 ## Prefix setup without migrations
 
@@ -147,7 +163,9 @@ reaches existing users through the three-way registry merge.
   logs in `$XDG_STATE_HOME/autodesk-inventor-<year>` (default `~/.local/state`).
   Preserve sign-in, licensing data, settings, and documents during upgrades.
 - Use system graphics (`/run/opengl-driver`). X11/XWayland is the validated
-  path; native Wayland remains experimental. Build success alone is not GUI
+  path; native Wayland remains experimental (a separate package:
+  `inventor-2027.withArgs { wineDriver = "wayland"; }`, whose config layer
+  names the Wayland driver). Build success alone is not GUI
   validation. For GPU changes, verify 2026 before testing 2027.
 - Never upload Autodesk media, extracted images, application packages, or
   containing system closures to a public binary cache. Never copy authenticated

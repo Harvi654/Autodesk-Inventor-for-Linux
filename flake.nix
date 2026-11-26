@@ -506,6 +506,15 @@
             checks = {
               "the launcher starts from the installation layer" =
                 drv inventor2027.basePackage == drv built.layer.basePackage;
+              # The display driver is set in the config layer: the Wayland
+              # variant shares the installation and differs in the launcher.
+              "the Wayland variant changes only the config layer and the launcher" =
+                let
+                  wayland = inventor2027.withArgs { wineDriver = "wayland"; };
+                in
+                drv wayland.basePackage == drv inventor2027.basePackage
+                && drv wayland != drv inventor2027
+                && lib.any (layer: lib.hasPrefix "inventor-config-wayland" layer.name) wayland.overlayDependencies;
               # The same expectations as in tests/test_bsdtar.py for Python's
               # read_env_file, so that both readers agree on the format.
               "nix/env-file.nix reads like install-from-image.py" =

@@ -10,11 +10,10 @@ case "$inventor_driver" in
         ;;
     *) echo "Inventor: unsupported Wine display driver: $inventor_driver" >&2; exit 1 ;;
 esac
-# Wine's desktop tries the drivers mac, x11, wayland in this order when the
-# prefix names none (programs/explorer/desktop.c), so no registry value is
-# written: X11 is used while DISPLAY is set, and without DISPLAY Wine falls
-# back to Wayland. The launcher writes no registry values (nix/AGENTS.md);
-# package settings come from the layers.
+# The package sets INVENTOR_WINE_DRIVER (mkInventor's wineDriver), and its
+# config layer names the same driver in HKCU\Software\Wine\Drivers, so the
+# launcher writes no registry value (nix/AGENTS.md). For Wayland, DISPLAY is
+# unset as well, so that no program of the session reaches for X11.
 if [ "$inventor_driver" = wayland ]; then
     unset DISPLAY
 fi
