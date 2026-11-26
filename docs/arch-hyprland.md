@@ -1962,6 +1962,20 @@ query returns nothing under Wine (the NULL BSTR) and so sends Inventor
 down the "close and reopen" path; winum already carries msxml3 fixes, so
 compare with them.
 
+**`+msxml` around the pick (same evening).** The last MSXML work before
+`EndDialog`: a library list is parsed with SAX (`Library` elements with
+`InternalName`, `IsReadOnly`, `LibraryAttachName` = `Custom`,
+`ServerName` = `localhost`), `selectNodes("//Library")` finds 15, the
+`InternalName` of each is read, and then `loadXML(L"")` - an **empty
+string** is loaded as a document - right before `EndDialog` and the
+close-and-reopen path. So the most specific lead so far: the XML text
+that should describe the filter result reaches MSXML empty under Wine.
+Where it comes from is the next round (the Content Center server proxy,
+`CCServerProxies`, and whatever it reads the desktop libraries with).
+Also logged 4 times: `stream_wrapper_QueryInterface Unsupported interface
+{2933bf81-7b36-11d2-b20e-00c04f983e60}` (`IXMLDOMDocument` asked of a
+stream wrapper) - to be checked whether it belongs to the same step.
+
 **Best hypothesis, next round.** Something during the browser dialog's
 initialisation (after its controls exist: filling the tree and the list,
 or the quick-search field) fails under Wine and MFC turns it into a C++
