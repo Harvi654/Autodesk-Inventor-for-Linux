@@ -1923,6 +1923,18 @@ Windows 10 returns `FALSE` too and leaves the window alone (winum
 only the last error differs: 1420 on Windows, unchanged in Wine), so the
 call fails on Windows as well.
 
+**Windows reference (API Monitor, online snapshot, 2026-11-26).** On
+Windows the same steps work. A capture during the filter (`EndDialog`,
+`CreateDialogIndirectParamW`, `CreateWindowExW` among the monitored
+functions - to be confirmed) shows none of them: Windows only refreshes
+the open Content Center window, while Wine calls `EndDialog` on the MDI
+client and creates a new browser dialog. So under Wine Inventor takes a
+different path after the pick, and the MFC exception comes on that path.
+(Inventor crashes on Windows only when API Monitor detaches - a tool
+effect.) The write access violations continued by a vectored handler
+(`AmSrv.dll`, `rse.dll`, `FWSrv.dll`, `SMData.dll`, ... about 40 in a run)
+are normal: they happen all through the session.
+
 **Best hypothesis, next round.** Something during the browser dialog's
 initialisation (after its controls exist: filling the tree and the list,
 or the quick-search field) fails under Wine and MFC turns it into a C++
@@ -1935,7 +1947,7 @@ Windows. Three rounds done today (old version, Network Address control,
 
 ## Result log
 
-**2026-11-26 - Content Center filter crash (#45) reproduced, cause not found yet:** reproduced on Inventor 2027 with winum-11.22-3; the uncaught C++ exception comes from `mfc140u.dll` right after the Content Center browser dialog's controls are created. Ruled out: the Network Address control (the dialog has none) and `EndDialog` on Inventor's MDI client (Windows 10 also returns `FALSE`, measured). Next: a narrow `+relay` between control creation and the throw. Section: "Content Center: filtering by a standard crashes Inventor".
+**2026-11-26 - Content Center filter crash (#45) reproduced, cause not found yet:** reproduced on Inventor 2027 with winum-11.22-3; the uncaught C++ exception comes from `mfc140u.dll` right after the Content Center browser dialog's controls are created. Ruled out: the Network Address control (the dialog has none) and `EndDialog` on Inventor's MDI client (Windows 10 also returns `FALSE`, measured). Windows (API Monitor) only refreshes the window, so Wine takes a different path after the pick; next: find the first call after the WPF selection whose result differs. Section: "Content Center: filtering by a standard crashes Inventor".
 
 **2026-11-24 - Nastran works without the 0x80040154 dialog (token candidate, L3/L4):** runtime = winum "Build Wine" run 45317855190 of `test-run/token-integrity-level-1` (series + `server-limited-token-medium-integrity`) with the four Nastran overlays (wbemdisp, msado15, combase, kernelbase), on a copy of the Inventor 2027.2 + Nastran prefix (native .NET 4.8). MEASURE: Inventor-like process (limited token) S-1-16-8192, linked token 12288. `CreateObject` of `NEWPFUI.NEProgressImpl` and `NEWPFUI.NEWPFUIImpl`: `err=0x0` (0x1AD without the candidate). Nastran: part, Nastran environment, Generate Mesh (parabolic, 0.167 mm, 1,254,416 nodes, 806,387 elements), Run (linear static), von Mises contour, Deformed + Animate - all work, no dialog. The first attempt used the Build Wine artifact of `topic/token-integrity-level` (run 45307586910), which does not contain the candidate (still High, 0x1AD) - only the test-run build does. With a Wine virtual desktop (`INV_VDESKTOP`) Inventor is a child of explorer.exe, which Wine runs with an administrator token, so the dialog would stay there. Open: Inventor smoke test, ODIS, AutoCAD; `MSCOREE.DLL` `DllGetClassObject` 0x80070002 for four unregistered CLSIDs (no visible effect, not yet attributed); a black bar above the Nastran result legend (separate). Section: "Inventor Nastran 2027: 0x80040154 at Generate Mesh / Run".
 
