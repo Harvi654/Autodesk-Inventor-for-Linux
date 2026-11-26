@@ -106,11 +106,19 @@ existing users, and a value that the user changed, added or deleted is kept.
 `tests/test_runtime_state.py` checks that the launcher writes no registry
 values.
 
-Only these writes at launch remain, each for a stated reason:
+A launch writes no package settings into the writable layer. It still writes
+these, each for a stated reason. The list covers what ends up in the prefix,
+not nix-overlayfs's own bookkeeping (merge and session metadata in
+`.nix-overlayfs`, the directory skeleton of the writable layer, the handling
+of shadowed files, and the removal of markers and shims that older launchers
+left behind), which the nix-overlayfs README describes:
 - nix-overlayfs's registry merge writes the merged hives, because Wine keeps
   the registry in single files that a file overlay cannot combine. Its other
   integration settings (WineBrowser, URL schemes, the update marker, the
   `start.exe` shim) come from a layer that it generates for each launcher.
+  URL schemes that are only discovered at launch, or whose program lies
+  outside `drive_c`, are still registered at launch; Inventor's
+  `adskidmgr` is neither.
 - The licensing database lives on the native filesystem, because the
   licensing service memory-maps it, and a link in the prefix points to it.
   It is the user's licensing state, and the link target depends on the
