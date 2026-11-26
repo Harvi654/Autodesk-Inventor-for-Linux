@@ -226,6 +226,11 @@ class RuntimeState(unittest.TestCase):
         calls = log.read_text()
         key = f"reg add HKLM\\SOFTWARE\\Autodesk\\SharedComponents\\{year}"
         self.assertIn(f"{key} /v Version /t REG_EXPAND_SZ /d 31.0.10 /f", calls)
+        # ClearType with RGB subpixels, as on Windows, at every start
+        desktop = "reg add HKCU\\Control Panel\\Desktop"
+        self.assertIn(f"{desktop} /v FontSmoothing /t REG_SZ /d 2 /f", calls)
+        self.assertIn(f"{desktop} /v FontSmoothingType /t REG_DWORD /d 2 /f", calls)
+        self.assertIn(f"{desktop} /v FontSmoothingOrientation /t REG_DWORD /d 1 /f", calls)
         self.assertIn(f"{key} /v InstallPath /t REG_EXPAND_SZ "
                       f"/d C:\\Program Files\\Common Files\\Autodesk Shared\\Components\\{year} /f", calls)
         # only the Shared Components segment changes; the user's stays

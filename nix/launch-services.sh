@@ -14,6 +14,14 @@ wine reg add 'HKCU\Software\Wine\Drivers' /v Graphics /t REG_SZ /d "$inventor_dr
 if [ "$inventor_driver" = wayland ]; then
     unset DISPLAY
 fi
+# Font smoothing as on Windows by default: ClearType with RGB subpixels. The
+# win32u-font-smoothing patch of winum (since 11.22-3) follows these desktop
+# values for normal text such as Tahoma's; Wine's own default is grayscale
+# (FontSmoothingType 1). They are written at every start, because a value
+# that the writable state already has wins over one from a layer.
+wine reg add 'HKCU\Control Panel\Desktop' /v FontSmoothing /t REG_SZ /d 2 /f || exit 1
+wine reg add 'HKCU\Control Panel\Desktop' /v FontSmoothingType /t REG_DWORD /d 2 /f || exit 1
+wine reg add 'HKCU\Control Panel\Desktop' /v FontSmoothingOrientation /t REG_DWORD /d 1 /f || exit 1
 # Registry values that name the installed Shared Components version
 # (nix/post-install.sh writes them into the installation layer). The writable
 # state's registry is merged after the layers, so after an update that moves
