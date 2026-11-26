@@ -328,6 +328,40 @@ build. In steps, each time-boxed (three rounds):
 If step 1 does not work, step 2 still works with files the user
 downloads, so no step is wasted.
 
+Maintainer, 2026-11-26: **stability first, updates are not a priority.**
+A user who downloads a `Create_Installer_*.exe` gets the latest release
+with its update already in it, so most users never need an update path.
+Autodesk's release notes decide when a new release is worth installing.
+Autodesk Access (Autodesk's own updater) inside the prefix is an
+experiment for later, not part of the plan. Updates within a release year
+stay what step 2 describes: the project's installer on a reflink copy of
+the prefix, never a downgrade, a new release year always a new prefix.
+
+What is known about `Create_Installer_*.exe` (tests of 2026-11-23): it
+carries the image's `setup.xml` and manifests and its own downloader, and
+the product version is in its name and its manifests (Inventor 2027.2,
+Revit 2027.4). That points to a fixed version, but it is not tested.
+Test to run once Autodesk publishes the next update of a product we have
+an older `Create_Installer` for (the Inventor 2027.2 file of 2026-11-23,
+SHA-256 recorded):
+
+1. Run the old file again in a throwaway prefix (download only, as in the
+   second test) and record whether it still downloads at all (the open
+   question of an expiring link above).
+2. Compare the new image with the one of 2026-11-23 with
+   `tools/image-manifest.py compare`: identical (the file is pinned to
+   its version), or the newer update (it asks the server for the latest).
+3. Download a fresh `Create_Installer` from Autodesk Account for the same
+   product and compare file names and sizes with the old one: does
+   Autodesk publish a new file per update?
+
+The answer decides what the README tells users: "keep your installer
+file, it reinstalls the same version" or "download a fresh one when you
+reinstall". One installer change follows either way: the launchers must
+find the licensing service's version folder from what is installed
+(`AdskLicensing\<version>\`), not from a fixed version, so that an update
+of the service does not break the start (phase 1).
+
 ## Fonts (2026-11-23)
 
 What is known: Wine ships its own Tahoma (LGPL) and maps the classic
