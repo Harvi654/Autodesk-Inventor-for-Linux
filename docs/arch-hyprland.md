@@ -1947,6 +1947,21 @@ shown in the combo boxes' style on Windows, was tried as an overlay and
 did not change the crash (winum `patches/candidates/combo-hasstrings-style`,
 experiment, negative). Six rounds that evening; stopped.
 
+**Last run of the evening: relay from the Content Center modules.**
+`RelayFromInclude` = `CCUI;CCServerProxies.Object;FDUI` (note: Wine
+ignores `RelayFromInclude` while `RelayFromExclude` is set in the prefix,
+`check_from_module` in `dlls/ntdll/relay.c`; it was removed for this run).
+The last native calls before `EndDialog`: `FDUI.DLL` (Design Accelerator
+UI, loaded on the pick) initialises, then calls `msxml3.DllGetClassObject`
+(an MSXML object is created), sends `WM_MDIGETACTIVE` to the MDI client,
+does three `__RTDynamicCast`, frees a NULL BSTR (`SysFreeString(NULL)`)
+and calls `EndDialog`. The MSXML object's methods are COM calls, which
+relay does not show. Lead for the next round: what FDUI reads from XML at
+that moment (`WINEDEBUG=+msxml` around the pick, filtered), whether a
+query returns nothing under Wine (the NULL BSTR) and so sends Inventor
+down the "close and reopen" path; winum already carries msxml3 fixes, so
+compare with them.
+
 **Best hypothesis, next round.** Something during the browser dialog's
 initialisation (after its controls exist: filling the tree and the list,
 or the quick-search field) fails under Wine and MFC turns it into a C++
