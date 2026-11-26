@@ -1935,6 +1935,18 @@ effect.) The write access violations continued by a vectored handler
 (`AmSrv.dll`, `rse.dll`, `FWSrv.dll`, `SMData.dll`, ... about 40 in a run)
 are normal: they happen all through the session.
 
+**Later the same evening (relay, window trees, one experiment).** A
+`+relay` of user32's window-hierarchy calls shows Inventor, right after
+the pick, walking up from the Content Center controls with `GetParent`
+to the MDI client and calling `EndDialog` on it; before that Wine hides
+the WPF popup, enables two windows and sets the focus to the main frame,
+as a program does when it leaves a modal state. A window-tree dump of the
+same state on Windows and Wine (winum `docs/wine-repro/user32-window-tree`)
+matches except for small style bits; the clearest, `CBS_HASSTRINGS`
+shown in the combo boxes' style on Windows, was tried as an overlay and
+did not change the crash (winum `patches/candidates/combo-hasstrings-style`,
+experiment, negative). Six rounds that evening; stopped.
+
 **Best hypothesis, next round.** Something during the browser dialog's
 initialisation (after its controls exist: filling the tree and the list,
 or the quick-search field) fails under Wine and MFC turns it into a C++
