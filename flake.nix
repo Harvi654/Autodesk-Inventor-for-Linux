@@ -16,11 +16,11 @@
     #   To test candidates from a winum checkout, use `--override-input winum
     #   path:/path/to/winum` (this rebuilds only the launch Wine and the launcher).
     winum-install = {
-      url = "github:Harvi654/winum/winum-11.20-2";
+      url = "github:Harvi654/winum/winum-11.22-3";
       flake = false;
     };
     winum = {
-      url = "github:Harvi654/winum/winum-11.20-2";
+      url = "github:Harvi654/winum/winum-11.22-3";
       flake = false;
     };
   };

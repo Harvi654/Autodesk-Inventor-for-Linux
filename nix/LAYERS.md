@@ -65,8 +65,8 @@ flowchart LR
     subgraph inputs["Flake inputs"]
         np["nixpkgs"]
         no["nix-overlayfs"]
-        wi_i["winum-install<br/>(tag winum-11.20-2)"]
-        wi["winum<br/>(tag winum-11.20-2)"]
+        wi_i["winum-install<br/>(tag winum-11.22-3)"]
+        wi["winum<br/>(tag winum-11.22-3)"]
     end
     subgraph repo["This repository"]
         inst["install-from-image.py, odis.py, regf.py,<br/>bsdtar.env, libarchive license"]

@@ -14,8 +14,8 @@ Broader application compatibility has not been validated.
 
 The default flake target is Inventor Professional 2027 English with the 2027.2
 update and Content Center, on x86_64 Linux. Inventor 2026 English with update
-2026.4 is also available as a separate package. The runtime builds Wine 11.20 with the patches of
-[winum](https://github.com/Harvi654/winum) `winum-11.20-2` (its `patches/series`,
+2026.4 is also available as a separate package. The runtime builds Wine 11.22 with the patches of
+[winum](https://github.com/Harvi654/winum) `winum-11.22-3` (its `patches/series`,
 in order; flake input `winum`, pinned to the tag's commit). Nixpkgs, the
 nix-overlayfs fork and winum are pinned in `flake.lock`; no local checkout is required by the committed input definitions.
 The base environment has no Wine Mono (`managedRuntime = "external"`):
@@ -360,7 +360,7 @@ other edits in `scripts/` do not. Those inputs change often, so update them
 on purpose and in batches rather than with every commit.
 
 Wine has two inputs, both named by winum's release tag (now
-`winum-11.20-2`): `winum-install` builds the layers, and `winum` is the Wine
+`winum-11.22-3`): `winum-install` builds the layers, and `winum` is the Wine
 that runs Inventor. The Nix package does not read this repository's
 `wine/version.env` (the script installer's release). Instead, the
 `winum-pin` check verifies that each input's tag matches the release in

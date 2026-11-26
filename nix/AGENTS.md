@@ -107,7 +107,7 @@ into its own layer: nix-overlayfs drops the MSI cache (`windows/Installer`)
 that an MSP update needs, and layer builds (direct mode) cannot delete files
 of a lower layer. Wine is the one duplicated input: `winum-install` builds
 the layers, and `winum` is the Wine that runs Inventor (both named by winum's
-release tag, now winum-11.20-2). Inventor is reinstalled by any of these:
+release tag, now winum-11.22-3). Inventor is reinstalled by any of these:
 updating nixpkgs, nix-overlayfs or winum-install, a new Autodesk update, or
 editing the files in `installerSource` or `post-install.sh`. Batch such
 updates and say so in the commit. The writable state's registry wins over
