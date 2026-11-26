@@ -119,10 +119,10 @@ Only these writes at launch remain, each for a stated reason:
   session only.
 - The launcher seeds `RealDWGSettings.xml` and creates the per-user `Addins`
   folder in the profile `users/$USER`, because the layers are built as
-  `users/nixbld`. Wine names the profile after `$USER`, so running it under
+  `users/nixbld`. Wine names the profile after `$USER`. Running Wine under
   the build's name would remove this exception, but it would also leave the
-  existing users' profiles (settings, sign-in data) behind, so it waits for a
-  migration of the state.
+  existing users' profiles (settings, sign-in data) behind. So it waits for
+  a migration of the state.
 - The launcher creates the public `Macros` folder, because nix-overlayfs
   drops empty directories when it captures a layer.
 

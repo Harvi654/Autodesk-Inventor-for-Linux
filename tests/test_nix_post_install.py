@@ -108,8 +108,8 @@ elif args[:2] == ["reg", "query"]:
         calls = self.calls.read_text()
         self.assertIn(f"SharedComponents\\{self.year} /v Version /t REG_EXPAND_SZ /d 29.0.1", calls)
         self.assertIn("Services\\AdskLicensingService /v Start /t REG_DWORD /d 3", calls)
-        # Path names the version-independent Current link, which points at
-        # the installed Shared Components version
+        # Path points at the version-independent Current link, which in turn
+        # points at the installed Shared Components version
         self.assertIn(f"Components\\{self.year}\\Current;C:\\Program Files\\Autodesk\\Inventor {self.year}\\Bin", calls)
         asc = self.c / f"Program Files/Common Files/Autodesk Shared/Components/{self.year}"
         self.assertEqual(os.readlink(asc / "Current"), "29.0.1")
