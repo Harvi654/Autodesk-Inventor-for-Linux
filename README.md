@@ -145,7 +145,7 @@ prefix of the same year, next to Inventor.
 
 | Add-on | Status | Notes |
 |---|---|---|
-| Inventor Nastran | 🧪 | in testing: mesh, solve and results work with Inventor 2027.2 and Nastran 2027 in the development setup, with Wine fixes coming in the next winum release. After that release it can be installed into an existing Inventor prefix with the new installer (GUI); until then it is not part of the installer |
+| Inventor Nastran | 🧪 | works with Inventor 2027.2 and Nastran 2027 on winum-11.22-3 (mesh, solve and results, no 0x80040154 dialog) when Nastran is installed by hand into the Inventor prefix (`scripts/install-from-image.py` with its Create Installer image); the installer path for add-ons comes later. Inside a Wine virtual desktop (`INV_VDESKTOP`) the dialog remains |
 | Vault Basic client | planned | contribution in review ([#8](https://github.com/Harvi654/Autodesk-Inventor-for-Linux/pull/8)); moves onto the new installer |
 | Tolerance Analysis | planned | |
 
@@ -545,7 +545,8 @@ Done:
 
 Next release (in progress):
 
-- [ ] Wine 11.22 (winum-11.22-1)
+- [x] Wine 11.22 (winum-11.22-3: the 11.22 base plus Inventor Nastran's
+      fixes and ClearType font smoothing)
 - [ ] GPU ray tracing set up by the installer, with a check whether the card
       and driver support it (Inventor 2027: Graphics Driver = DirectX 12 and
       `EnableHydra`; the registry value of the Graphics Driver choice is still
