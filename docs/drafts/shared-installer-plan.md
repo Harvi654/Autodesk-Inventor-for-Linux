@@ -94,7 +94,12 @@ first, it would sit on parts that are still changing.
   wrapper and `%ERRORLEVEL%`), so .NET's "newer version already
   installed" is not logged as FAILED; the sign-in callback with the
   running session's Wine; DXVK and vkd3d-proton as a common step;
-  Autodesk's terms before installing. With them the safety net (section
+  Autodesk's terms before installing; the image's language detected
+  when `--lang` is not given (one language besides English: use it and
+  say so; several: stop and list them; a `--lang` the image lacks: an
+  error) - a Czech Revit 2027.4 image installed with the default
+  `en-US` would get the English transform and miss its Czech packages
+  without a warning. With them the safety net (section
   below): golden plans for Inventor, an upgrade of a copy of the previous
   release's prefix, the release checklist. Every later phase relies on it.
 - **Phase 2 - Create Installer as the input.** `install.sh` takes
