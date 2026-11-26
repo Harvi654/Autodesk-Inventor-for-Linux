@@ -84,6 +84,7 @@ PKGS=(
     libxcursor libxfixes libxinerama mesa         # ... the X11 driver (winex11.so)
     git                                           # updates of this project
     python 7zip                                   # install-from-image.py, Autodesk's .exe downloads
+    unixodbc                                      # Wine's odbc32 loads libodbc.so.2 (as libodbc2 / unixODBC below)
     ttf-liberation noto-fonts ttf-dejavu          # fonts instead of Windows' (linux-fonts.sh)
 )
 # Vulkan driver for the GPU(s) present. Skipped for NVIDIA if any nvidia utils
