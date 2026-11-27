@@ -21,7 +21,7 @@ source "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/lib/common.sh"
 WINE_PKG=wine
 [ "${1:-}" = "--staging" ] && WINE_PKG=wine-staging
 
-if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ]; then
+if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ] || [ "$INV_DISTRO" = openSUSE ]; then
     _STEPS=2
     # Libraries this project's Wine (WoW64, 64-bit host only) loads, found
     # with ldd/dlopen names on Ubuntu 24.04; tools used by the scripts.
@@ -41,6 +41,20 @@ if [ "$INV_DISTRO" = debian ] || [ "$INV_DISTRO" = fedora ]; then
         step "Installing packages (apt)..."
         sudo env DEBIAN_FRONTEND=noninteractive apt-get update
         sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "${PKGS[@]}"
+    elif [ "$INV_DISTRO" = openSUSE ]; then
+        PKGS=(
+            libX11-6 libXext6 libXcomposite1 libXcursor1 libXfixes3 libXi6 libXinerama1
+            libXrandr2 libXrender1 libXxf86vm1 libxkbcommon0 libxkbregistry0
+            libvulkan1 libvulkan_radeon vulkan-tools Mesa-libEGL1 Mesa-libGL1 libwayland-client0 libwayland-egl1
+            libfreetype6 libfontconfig1 libgnutls30 libasound2 libpulse0 libdbus-1-3
+            krb5 gstreamer-plugins-base gstreamer
+            libSDL2-2_0-0 libudev1 libusb-1_0-0 libcups2 libpcsclite1 libv4l
+            python3 p7zip-full rsync curl xz zstd cabextract unzip ImageMagick
+            xdg-utils desktop-file-utils libnotify4 git
+            liberation-fonts google-noto-fonts dejavu-fonts
+        )
+        step "Installing packages (dnf)..."
+        sudo zypper install -y "${PKGS[@]}"
     else
         PKGS=(
             libX11 libXext libXcomposite libXcursor libXfixes libXi libXinerama libXrandr libXrender
